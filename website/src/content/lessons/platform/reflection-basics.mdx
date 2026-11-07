@@ -1,0 +1,60 @@
+---
+title: "Reflection: discovery, construction and invocation"
+module: "platform"
+group: "Annotations and reflection"
+summary: "Reflection: discovery, construction and invocation with focused examples, failure traces and solved practice."
+order: 1130
+version: "Java 8+"
+prerequisites: ["generics/generic-types", "objects/inheritance-and-composition", "reliability/exception-contracts"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Inspect a type when the source-level member is not fixed
+
+An ordinary call such as receiver.greet("Hello") names its member in source and is checked by the compiler. Reflection instead represents types and members as runtime objects. It is useful when a framework discovers a constructor or operation from configuration, but it moves some name, type and access failures to runtime. Prefer an ordinary interface call when the contract is already known.
+
+<JavaExample file="ReflectionStepsDemo.java" output={"Sample\nHello Mira\nmissing member\nwrong argument type\ntarget cause=NumberFormatException"} />
+
+Sample.class obtains the runtime Class object without constructing a Sample. getConstructor(String.class) locates its public constructor with one String parameter. newInstance("Mira") invokes that constructor, producing the receiver. getMethod("greet", String.class) locates a public method; invoke then performs the call on that receiver. Its result is Hello Mira. These are distinct operations, not one opaque reflection step.
+
+## Lookup asks for declared parameter classes
+
+getMethod searches public methods, including inherited public methods. getDeclaredMethod searches declarations on the selected class, including nonpublic declarations. Neither operation runs the method, and discovering a declaration does not grant permission to call it.
+
+Lookup takes exact declared parameter classes. An int parameter requires int.class, rather than Integer.class. This is not overload resolution based on the eventual argument's runtime value. Invocation supports defined conversions, but cannot invent a signature that lookup did not find. Method.invoke returns Object, boxing a primitive result where appropriate.
+
+<Diagram client:visible definition={"flowchart LR\n T[Class and requested signature] --> L[Find Method metadata]\n L --> A[Check invocation access and arguments]\n A --> B[Execute target body]\n B --> R[Return result or target failure]"} caption="Locate the member before asking whether it can be invoked and what its body does." />
+
+## Diagnose the failed stage
+
+| Output | Stage and meaning |
+| --- | --- |
+| missing member | NoSuchMethodException: lookup found no requested declaration |
+| wrong argument type | IllegalArgumentException: invocation arguments do not fit |
+| target cause=NumberFormatException | Invocation reached parse; its body failed and reflection wrapped the failure |
+
+InvocationTargetException preserves the target's failure as its cause. IllegalAccessException instead reports an access problem. Keep these distinctions when adding operation context; replacing every case with null loses the information required to repair it. Static method invocation has no ordinary instance receiver requirement; constructor invocation uses a Constructor rather than a Method.
+
+## Access remains an explicit boundary
+
+Finding private metadata is different from invoking private behavior. Java/module access rules still apply. trySetAccessible (Java 9+) can return false under strong encapsulation; blindly suppressing checks is not a portable strategy. An exported public API and a package opened for deep reflection are different module contracts, taught in the modules chapter.
+
+## Practice: look up an int overload
+
+A type declares `public void setLevel(int level)`. Will `getMethod("setLevel", Integer.class)` locate it? What if invocation of the correctly located method throws?
+
+<details>
+<summary>Answer</summary>
+
+No: request int.class for lookup. A later invocation can accept a compatible boxed argument under its conversion rules, but that does not alter the lookup signature. If the target body throws, inspect/preserve InvocationTargetException.getCause. If lookup fails, there was no target-body execution to diagnose. Cache member metadata only when the owning type/loader and access policy remain appropriate; reflection is not automatically faster or simpler than a direct interface.
+
+</details>
+
+## Reflection references
+
+- [Dev.java: method lookup and invocation](https://dev.java/learn/api/reflection-method-handles/reflection/methods/)
+- [Class member-discovery APIs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html)
+- [Method invocation and exception contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/reflect/Method.html)

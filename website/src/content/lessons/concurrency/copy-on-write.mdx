@@ -1,11 +1,11 @@
 ---
-title: "CopyOnWriteArrayList and concurrent iteration"
+title: "CopyOnWriteArrayList and snapshot iteration"
 module: "concurrency"
 group: "Concurrent data structures"
-summary: "Distinguish snapshots, weak consistency and fail-fast iteration by their actual guarantees."
-order: 510
-version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["concurrency/locks-interruption"]
+summary: "Follow two array generations and distinguish stable membership from mutable element contents."
+order: 930
+version: "Java 8+"
+prerequisites: ["concurrency/concurrent-collections", "concurrency/volatile-publication"]
 advanced: true
 ---
 
@@ -13,116 +13,58 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Structural snapshots and values
+<span id="mechanics-and-tradeoffs"></span>
+<span id="structural-snapshots-and-values"></span>
+<span id="implement-snapshot-experiments"></span>
+<span id="snapshot-assumptions-to-avoid"></span>
+## A listener traversal needs stable membership
 
-CopyOnWriteArrayList is a thread-safe list optimized for workloads where iteration greatly outnumbers mutation. Readers can traverse a stable array snapshot without coordinating every step with writers. Mutations normally create and publish replacement storage instead of changing the array an existing iterator holds.
+A dispatcher is iterating listeners while another operation registers a new listener. Should the current dispatch include that new registration? CopyOnWriteArrayList lets an iterator keep the membership array it captured, while writers publish replacement arrays for subsequent readers.
 
-This is a container-level snapshot. Element references in that array can still identify mutable objects. Copying references neither freezes those objects nor creates a historical version of their fields. Separate structural consistency from the data model’s immutability and publication rules.
+This fits read-mostly small registries where stable traversal is valuable and updates are infrequent. A large frequently changed list pays substantial copying/allocation cost. Thread-safe is not a universal performance recommendation.
 
 <span id="worked-example"></span>
-## Trace old and new memberships
-
-Create values A and B, then capture an iterator. Replace A with changed and append C. Traversing the old iterator still returns `[A, B]`, while the current list is `[changed, B, C]`. The iterator retained the original array, rather than consulting the list’s current array on every next call.
-
-Now store a mutable StringBuilder and capture an iterator. Mutating that builder to old-new is visible when the iterator returns the same object. This deliberately disproves the tempting conclusion that snapshot iteration makes every contained value historical or immutable.
-
-<span id="mechanics-and-tradeoffs"></span>
-## Array publication and iteration
-
-### Publication and mutation
-
-The implementation holds its current backing array in a volatile field. Readers obtain an array reference and read it. Writers coordinate mutations with an internal lock, construct the new state and publish the replacement array reference. The publication protocol establishes visibility of the new container state to readers observing that replacement.
-
-For append, copying n references and adding one gives O(n) mutation work and temporary storage. For ordinary get(index), reading one captured current array permits O(1) positional access. A mutating method can optimize cases such as setting the same reference; teach copy-on-write as the semantic approach rather than asserting a new allocation for absolutely every possible call path.
-
-### Iterator ownership
-
-An iterator captures one array and a cursor. Later structural changes do not alter that captured array, so the iterator does not throw ConcurrentModificationException merely because another thread changes the list. Iterator.remove and ListIterator.remove/set/add are unsupported: there is no simple in-place edit to its historical snapshot that would define a current-list mutation.
-
-A retained iterator keeps its snapshot array reachable. A small listener registry is often a reasonable use; a large frequently replaced list can create high allocation and retain several arrays through long-lived iterators. Old arrays may also retain element references that the current list has removed. Reclamation depends on reachability, not the instant a current remove operation completes.
-
-### Compare iterator contracts
-
-| Container family | Iterator model | What concurrent changes mean |
-| --- | --- | --- |
-| ArrayList / HashMap | Best-effort fail-fast | Unsupported interference can be detected, but detection is not a safety protocol |
-| CopyOnWriteArrayList | Snapshot of captured array | Later container changes are not reflected |
-| ConcurrentHashMap | Weakly consistent | May reflect some updates; not a single whole-map snapshot |
-| Synchronized wrapper | Caller follows documented locking | Multi-step traversal needs the wrapper’s specified lock protocol |
-
-Avoid the loose term fail-safe: it does not identify which values an iterator can observe. A snapshot and a weakly consistent traversal can both avoid ConcurrentModificationException while answering different application questions.
-
-### Compound operations
-
-A thread-safe get followed by another thread-safe get is not necessarily one snapshot of the current list. If a writer removes/reorders entries between those calls, their combined interpretation can be inconsistent. Use a snapshot iterator/array when a fixed membership set is required, or a larger coordination protocol when multiple fields/containers must agree.
-
-addIfAbsent is a useful atomic membership-oriented operation. Writing `if (!list.contains(x)) list.add(x)` exposes a race between individually safe calls. Equality work can itself be expensive or have side effects; avoid callbacks/equality implementations that introduce surprising locking or mutation behavior.
-
-<Diagram client:visible definition={"flowchart TD\n A[Current array A B] --> I[Iterator captures old array]\n A --> W[Writer copies and publishes changed B C]\n W --> N[New readers use replacement]\n I --> O[Old iterator still visits A B]\n M[Mutable element object] --> I\n M --> N"} caption={"Distinguish snapshots, weak consistency and fail-fast iteration by their actual guarantees."} />
-
 <span id="java-implementation"></span>
-## Implement snapshot experiments
+## Trace old and new memberships
 
 <JavaExample file="SnapshotIterationLesson.java" output={"[A, B]\n[changed, B, C]\nold-new"} />
 
-The source deliberately keeps the iterator across both a replacement and append, then consumes it into an independent ArrayList for an easy-to-read result. That proves which array membership is observed without sleeps or concurrent scheduling assumptions. It is still a valid demonstration of concurrent iteration semantics because snapshot ownership does not depend on which thread made the later change.
+The first iterator captures an array holding A and B. Replacing A and appending C update the current list, but not the captured array. The iterator therefore yields A/B while the current list reports changed/B/C. This sequential experiment isolates the iterator contract without relying on a race to expose it.
 
-The mutable-element portion captures a StringBuilder reference, changes its contents and retrieves it through the snapshot. No structural update to the copy-on-write list is required for this observation. A deeply immutable event/listener model can avoid that ambiguity, but would be an application-level ownership decision.
+The second experiment captures a StringBuilder reference and later mutates that builder. The iterator returns the same object, now containing old-new. Capturing membership copies references, not the objects' historical fields. Concurrent mutation of element contents would still need its own visibility/consistency policy.
 
-To hand-implement the principle, keep a volatile immutable-by-convention array reference, serialize writers, copy before mutation and never expose the internal array for arbitrary writes. A complete List implementation additionally needs all bounds, bulk, iterator and failure contracts; the production source is the reference for that larger API.
+<Diagram client:visible definition={"flowchart TD\n A[Published array: A B] --> I[Iterator retains this array]\n A --> W[Writer copies and changes membership]\n W --> N[Publish replacement: changed B C]\n I --> O[Old iteration still returns A B]\n M[One mutable element object] --> I\n M --> N"} caption="Old and new arrays can coexist. An element reference can still name one shared mutable object across snapshots." />
+
+<span id="publication-and-mutation"></span>
+<span id="iteration-interview-questions"></span>
+## Array publication and iteration
+
+The implementation holds a current array in a volatile field. Readers capture a reference. Writers serialize changes, construct replacement storage and publish it. Never mutating a published array is the crucial representation invariant; the volatile reference alone would not make arbitrary in-place element writes safe.
+
+Appending to n elements normally copies O(n) references and uses O(n) temporary storage. Ordinary positional get is O(1). Specific calls can optimize cases such as setting an identical reference, so do not assert a new allocation for every conceivable method path.
+
+An iterator owns an array reference and cursor. Iterator.remove and list-iterator remove/set/add are unsupported: changing a historical array would not define a coherent current-list edit. Keeping an iterator alive can retain its old array and removed element references after the current list no longer contains them. Reachability, not the time of remove, controls reclamation.
+
+<span id="iterator-ownership"></span>
+<span id="compare-iterator-contracts"></span>
+<span id="compound-operations"></span>
+## Compare iterator contracts and compound operations
+
+ArrayList/HashMap fail-fast detection is best effort and supplies no sharing protocol. ConcurrentHashMap-style weak consistency can reflect some concurrent changes without a single snapshot. Synchronized wrappers require their documented complete traversal locking. Avoid the vague label fail-safe; state what the traversal can observe.
+
+Two thread-safe get calls need not select one array generation if a writer changes membership between them. Use an iterator/toArray snapshot when a stable membership set is required, or a larger protocol when multiple objects must agree. AddIfAbsent is an atomic membership operation; contains followed by add leaves a race. Equality implementations can themselves be costly or introduce surprising side effects.
 
 <span id="common-mistakes"></span>
-## Snapshot assumptions to avoid
-
-Do not select copy-on-write for a high-write large collection merely because it is thread-safe. Do not expect an old iterator to show a newly registered listener, mutate through iterator.remove, or call a mutable-object snapshot deeply immutable. Avoid assuming all non-fail-fast iterators share one consistency model.
-
 <span id="exercises-and-interview-questions"></span>
-## Iteration interview questions
+<span id="coding-exercise-and-solution"></span>
+## Exercise and complete reference solution
 
-<details>
-<summary>Why can old elements remain retained after removal?</summary>
+Capture an iterator, replace/append membership, then compare the old traversal with the current list. Add one mutable element and explain why the snapshot still returns its changed contents. `SnapshotIterationLesson` is the complete solution.
 
-An existing iterator can hold the previous array, which still references them. They remain reachable until those snapshots and any other owners are released.
-
-</details>
-
-<details>
-<summary>Can a snapshot traversal see a changed field in an element?</summary>
-
-Yes, because it snapshots references. Field visibility still depends on the element synchronization/publication contract; container snapshot semantics alone do not guarantee all later element writes are safely observed.
-
-</details>
-
-<details>
-<summary>When is a synchronized list preferable?</summary>
-
-For some write-heavy or compound-operation workloads where one deliberate lock protocol is simpler and copying is too expensive. Measure the actual access pattern rather than treating either container as universally faster.
-
-</details>
-
-<details>
-<summary>Why does addIfAbsent matter?</summary>
-
-It combines the relevant membership decision and insertion under the implementation protocol. A separate contains/add pair permits competing callers to both insert.
-
-</details>
-
-<details>
-<summary>Why is ConcurrentHashMap iteration not the same snapshot?</summary>
-
-Its weakly consistent traversal can observe states from during iteration. It does not retain one immutable whole-table membership array representing the exact creation instant.
-
-</details>
-
-### Coding exercise and solution
-
-Capture an iterator, replace one element, append another, then predict both the old iterator result and the current list. Next mutate an object referenced by a captured snapshot. SnapshotIterationLesson is the full reference solution: the first iterator retains A/B membership, the current list contains changed/B/C, and a shared StringBuilder still changes to old-new.
-
-Translate the same ownership rule to a listener registry: a listener registered after a notification pass captures its iterator belongs to a subsequent pass. Keep callback failure and mutable listener state explicit rather than claiming the container guarantees them.
+To implement the principle, serialize writers, copy before changing, publish one volatile array reference and never expose that array for arbitrary mutation. A complete List additionally needs bounds, bulk, iterator and failure contracts; this explanation does not claim to replace the production implementation.
 
 <span id="references"></span>
 ## Primary iteration contracts
 
-- [CopyOnWriteArrayList publication and iterators](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CopyOnWriteArrayList.java)
-- [ConcurrentHashMap iteration guarantees](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentHashMap.java)
-- [Synchronized wrappers](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Collections.java)
+- [CopyOnWriteArrayList snapshot guarantees](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CopyOnWriteArrayList.html)
+- [OpenJDK writer and iterator implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CopyOnWriteArrayList.java)

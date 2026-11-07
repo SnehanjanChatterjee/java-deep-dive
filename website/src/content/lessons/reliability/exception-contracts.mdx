@@ -1,0 +1,55 @@
+---
+title: "Throw, throws, checked failures and causes"
+module: "reliability"
+group: "Failure contracts"
+summary: "Declare checked failures, throw specific exception objects and preserve causes across API boundaries."
+order: 270
+version: "Java 8+"
+prerequisites: ["reliability/exception-flow", "objects/nested-and-enums"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Declare what a caller must handle
+
+Throw executes a failure path: `throw new CountFormatException(cause)`. Throws declares a method's checked failure contract: callers must catch that checked type or declare it in their own throws clause. A throws declaration does not install a handler, automatically throw anything or exclude unchecked failures.
+
+Throwable has Exception and Error branches. RuntimeException and its subclasses are unchecked; other Exception subclasses are checked. Errors are also unchecked and usually describe serious runtime/linkage conditions rather than ordinary input validation. Checked means a compiler obligation, not a guarantee that a failure is recoverable. Unchecked does not mean harmless.
+
+<JavaExample file="CheckedFailureLesson.java" output={"12\nInvalid count\nNumberFormatException\nattempt finished"} />
+
+ReadCount returns 12 on its first call. The second parse fails. Its catch wraps the underlying IllegalArgumentException subtype in a checked CountFormatException, preserving the original object as cause. Main handles that checked failure and reports its category. Finally then executes before the program continues or returns from the enclosing method.
+
+## Let the compiler expose the missing obligation
+
+Temporarily call `readCount("12")` from a method with neither catch nor throws: compilation rejects it even though this literal is valid. The obligation follows the declared API contract, not a prediction that this particular input succeeds. Restore a specific catch or declare `throws CountFormatException` to pass the obligation to a caller.
+
+An override cannot broaden checked exceptions compared with the base signature. Catch specific subtypes before broad types; a later catch already covered by an earlier one is unreachable. Multi-catch combines alternatives handled identically, but they cannot have a subtype relationship.
+
+## Preserve the cause when translating an abstraction
+
+CountFormatException describes failure at the count-reading API boundary; NumberFormatException explains the low-level reason. Passing the cause into super retains that chain. Using only `cause.getMessage()` discards the original type and stack. A file-backed settings API can similarly wrap an IOException rather than forcing all callers to depend on its storage choice.
+
+The application boundary decides whether to report, retry or abort. Logging and rethrowing at every layer duplicates reports. Catching Throwable and returning an empty result can hide Errors and violate invariants. Select a failure policy the layer can actually implement.
+
+## Finally preserves cleanup opportunity, not guaranteed success
+
+Finally normally runs when leaving try through normal completion, return or exception. It need not run after process termination, VM failure or a path that never leaves the try. Returning or throwing from finally can replace a pending result/failure. Use it carefully for owned state; resource closing has a construct that explicitly preserves simultaneous failures in the next chapter.
+
+## Practice: choose catch or declare
+
+A reusable parser cannot decide whether the application should prompt again or abort. Should it catch everything and print an error?
+
+<details>
+<summary>Answer</summary>
+
+No. Return a parsed value or throw its declared contextual failure, preserving the cause. Let the application boundary decide how to respond. A caller choosing to recover catches CountFormatException; an intermediate method with no recovery policy declares it. A retry needs idempotency, deadline, partial-effect and cancellation rules; recognizing an exception type alone does not establish safety, and a timeout does not prove a remote write never happened.
+
+</details>
+
+## Failure-contract references
+
+- [Dev.java: throwing and declaring exceptions](https://dev.java/learn/language/annotations-exceptions/exceptions/throwing/)
+- [JLS: exception checking](https://docs.oracle.com/javase/specs/jls/se25/html/jls-11.html)
+- [JLS: try/catch/finally execution](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.20)

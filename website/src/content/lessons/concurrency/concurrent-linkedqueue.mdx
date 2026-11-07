@@ -1,0 +1,52 @@
+---
+title: "ConcurrentLinkedQueue: nonblocking FIFO endpoints"
+module: "concurrency"
+group: "Concurrent data structures"
+summary: "Use immediate endpoint outcomes, then follow logical removal and helping in the linked representation."
+order: 940
+version: "Java 8+"
+prerequisites: ["concurrency/concurrent-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## An empty poll returns instead of waiting
+
+A queue can be thread-safe without offering a blocking take. ConcurrentLinkedQueue supplies a FIFO whose offer/poll operations do not acquire a shared blocking lock. Poll returns null when no item is available at that operation. The caller must choose what to do next: return to an event loop, await an external signal, or end a known batch. Accidentally busy-polling indefinitely wastes work.
+
+It is unbounded and rejects null elements. There is no capacity constructor that changes it into a bounded BlockingQueue.
+
+## Follow the endpoint API
+
+<JavaExample file="ConcurrentQueueDrainLesson.java" output={"null\nA\nA\nB\nC\nnull"} />
+
+The first poll reports current emptiness. Offering A/B establishes their FIFO order. Peek observes A without claiming/removing it; the following poll removes A. After adding C, the next polls return B then C. The last null describes this operation's observation, not permanent shutdown while producers may still insert.
+
+This sequential trace isolates endpoint contracts. Under competition, two consumers must use poll to claim an item; peek followed by another operation does not reserve it for the observer. Actions before insertion are published through the queue's documented access/removal relationship. Later mutable element updates need another policy.
+
+## Trace logical removal before physical cleanup
+
+On the selected OpenJDK implementation, the linked algorithm belongs to the Michael–Scott family, adapted for garbage collection and extra removal operations. Offer CAS-links a new node. Poll can claim a live item by changing that node's item to null with CAS. Claiming membership and unlinking an old node are distinct operations.
+
+For one node containing A, two consumers can both reach it. If consumer one changes item from A to null successfully, consumer two's stale expected-A update cannot claim A again. It must continue/retry according to the representation. Head and tail pointers may lag; traversals can help repair/advance them. A physically reachable old node is not necessarily a live queue element.
+
+<Diagram client:visible definition={"flowchart LR\n H[Head path] --> N[Node item A]\n N --> T[Later node]\n C[Consumer CAS A to null] --> L[Item logically claimed]\n L --> R[Subsequent traversal can unlink old node]"} caption="Logical membership and pointer cleanup are different transitions. This is one conceptual path, not the complete concurrent queue algorithm." />
+
+## Progress does not promise each caller a deadline
+
+Lock-free is a property of algorithm-wide progress under interference. One caller can repeatedly lose a retry while another succeeds. Wait-free requires a stronger bounded per-operation argument. Scheduling, allocation and user callbacks still affect actual latency; nonblocking does not mean every operation finishes in a fixed number of nanoseconds.
+
+Size traverses the queue and can be inaccurate as a concurrent admission decision. Contains, remove-by-value and bulk operations are not automatically constant-time or atomic. Checking size below a limit then offering can race with other producers and does not enforce a bound. Iterators are weakly consistent rather than a whole-queue snapshot.
+
+## Exercise and complete reference solution
+
+Predict every output in `ConcurrentQueueDrainLesson`, then explain what changes when a second consumer can poll between peek and poll. The original peek result grants no ownership. To enforce a storage limit and wait for capacity, choose a matching bounded BlockingQueue rather than combining a changing size observation with offer.
+
+A complete hand implementation needs interference, deletion, traversal and helping cases beyond a singly linked list with CAS added. Study the selected source after understanding these public outcomes.
+
+## Primary references
+
+- [ConcurrentLinkedQueue contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentLinkedQueue.html)
+- [OpenJDK linked queue algorithm](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentLinkedQueue.java)

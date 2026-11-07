@@ -1,0 +1,96 @@
+---
+title: "Compare algorithm time and space complexity"
+module: "collections"
+group: "Collection foundations"
+summary: "Count work, distinguish growth from timings, and explain worst-case, expected and amortized costs."
+order: 340
+version: "Java 8+"
+prerequisites: ["language/arrays", "language/methods-and-recursion"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Ask how work grows when the input grows
+
+Two algorithms can return the same result while doing very different amounts of work. Complexity describes how a chosen cost grows with a problem size, usually called n. For an array traversal, n might be the number of elements. For text processing, it might be the number of characters or code points. State that choice before comparing formulas.
+
+Start with counts instead of a stopwatch. A loop that visits n items once performs n body executions. Two nested loops that each range over n items perform n × n pair visits. This difference becomes more significant as n increases, even when both programs finish quickly for tiny examples.
+
+<JavaExample file="OperationCounts.java" output={"1:1:1\n2:2:4\n4:4:16\n8:8:64"} />
+
+Each line prints input size, linear count and quadratic count. Doubling 4 to 8 doubles the first count from 4 to 8 and quadruples the second from 16 to 64. The code does not measure milliseconds. A counter increment is the selected unit of work in this experiment.
+
+These are logical operations in the source algorithm. An optimizing JVM can implement them differently while preserving the result, so the count is not a measurement of machine instructions.
+
+## Read common growth classes
+
+Big O gives an asymptotic upper bound on a specified cost function. Constants and lower-order terms are suppressed to focus on growth. For example, 3n + 10 is O(n). A tight growth description can be written Θ(n). An O(n) upper bound can also satisfy a looser O(n²) bound, so use the most informative bound you can justify.
+
+| Growth | A useful mental model | What doubling n does to the main term |
+| --- | --- | --- |
+| O(1) | A fixed amount of work independent of n | Stays bounded by the same model |
+| O(log n) | Repeatedly halve the remaining search space | Adds a constant number of levels |
+| O(n) | Visit every item a bounded number of times | Roughly doubles it |
+| O(n log n) | Logarithmic levels doing linear total work | More than doubles it |
+| O(n²) | Visit every ordered pair | Roughly quadruples it |
+
+O(1) does not mean one machine instruction or zero latency. A constant-time operation can have a larger fixed cost than a small linear scan. Big O also does not name the unit automatically: count comparisons, copied references, allocations or another relevant operation consistently.
+
+## Derive the bound from the code
+
+In `linear`, initialization and the final failed condition add fixed overhead around n increments. The count grows linearly. In `quadratic`, every outer iteration runs the whole inner loop, so there are n² increments. The long counter can represent the square of any nonnegative int size, although deliberately running enormous inputs would still take enormous time.
+
+Two loops one after another add their costs. Visiting n items and then n items gives 2n, which is O(n). Nested loops multiply only when their iteration ranges justify it. An inner traversal of half, then a quarter, then an eighth has a different total from blindly assuming every nested loop is quadratic.
+
+The sorted-array search lesson repeatedly removes about half the candidate range. After k halvings, only about n/2^k candidates remain; reaching a constant-sized range takes logarithmic levels. This bound assumes random indexed access and bounded comparison cost. A different representation can change the cost of reaching a midpoint.
+
+## Distinguish best, worst and expected cases
+
+For linear search, finding a match at the first element takes constant comparisons. An absent match can require checking all n elements. These are different cost functions: best case and worst case. Big O can describe either, so saying only “Big O means worst case” is incomplete.
+
+An expected cost uses an explicit probabilistic model, such as assumptions about input distribution or hashing. It is not simply the time observed during one convenient run. Later container chapters state the assumptions behind expected lookup costs and the work hidden inside user-supplied equality, hashing or comparison methods.
+
+Method calls can conceal nonconstant work. Comparing two long strings may inspect many characters. Copying an array of n references still performs n copied-reference operations even though source code expresses the operation in one call. Count the behavior of the called operation rather than the number of source lines.
+
+## Explain amortized growth without averaging away a slow operation
+
+Imagine a growable array that doubles whenever its current storage is full. Most appends write one new element. A growth append also allocates larger storage and copies existing elements. That individual append can require linear work.
+
+Across a long sequence of appends, the copied prefixes have sizes such as 2, 4, 8 and 16. Their geometric sum stays proportional to the total number of appended elements. Including the ordinary element writes, total work across n appends remains O(n), giving amortized O(1) per append under this growth policy.
+
+Amortized analysis distributes a sequence's total cost; it does not promise that each call is fast. It also does not require random inputs in the way an expected-case analysis does. The dynamic-array implementation chapter will connect this accounting to its actual capacity policy and copy operation.
+
+## Count storage as carefully as work
+
+The two counters above use constant auxiliary storage: their loop variables do not grow with n. An algorithm that builds a new array of n outputs uses O(n) output storage. State whether your space claim includes that output or measures only extra working memory.
+
+A recursive algorithm may use call-stack space even when it allocates no explicit collection. A chain of depth d has d active invocations in the ordinary execution model. Java does not promise general tail-call elimination. An iterative rewrite can reduce that auxiliary stack cost while retaining the same result, although it may need an explicit work stack for a branching traversal.
+
+## Complexity exercises with worked answers
+
+<details>
+<summary>What happens to the pair count when n grows from 8 to 16?</summary>
+
+It grows from 64 to 256, a factor of four. The linear count grows from 8 to 16. These are operation counts, not a prediction that wall-clock time will follow an identical ratio on every machine.
+
+</details>
+
+<details>
+<summary>A loop visits n items and then another loop visits n items. Is it quadratic?</summary>
+
+No. The work adds to 2n, so its tight linear growth remains Θ(n) under bounded work per visit. If the second full loop ran inside every first-loop iteration, the pair traversal would instead have n² visits.
+
+</details>
+
+<details>
+<summary>Why can a single append be linear while a sequence has amortized constant cost per append?</summary>
+
+A growth operation copies a prefix, but growth happens geometrically rather than on every insertion. Sum the copies across the entire append sequence. A policy that grows capacity by only one each time would have a different total copy cost.
+
+</details>
+
+## References for analysis and container costs
+
+- [MIT introduction to asymptotic complexity](https://ocw.mit.edu/courses/6-006-introduction-to-algorithms-fall-2011/resources/mit6_006f11_rec01/)
+- [ArrayList's documented amortized-add contract and growth implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ArrayList.java)

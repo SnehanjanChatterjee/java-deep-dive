@@ -1,170 +1,109 @@
 ---
-title: "Virtual threads, scoped values and structured lifetimes"
+title: "Virtual threads and blocking task execution"
 module: "modern-concurrency"
-group: "Virtual threads and resource limits"
-summary: "Separate lightweight task execution from limits on external resources."
-order: 520
-version: "Java 25 · Java 8 comparison"
-prerequisites: ["concurrency/executors-futures"]
+group: "Virtual threads"
+summary: "Start with a familiar Thread, explain carrier reuse during blocking, then bound the real scarce resource."
+order: 1020
+version: "Java 21+"
+prerequisites: ["concurrency/future-cancellation", "concurrency/semaphore", "concurrency/countdown-latch"]
 advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts"></span>
-## Virtual threads and scarce resources
+<span id="mechanics-and-tradeoffs"></span>
+<span id="java-25-executable-examples"></span>
+<span id="additional-interview-questions"></span>
+## Many tasks are waiting rather than calculating
 
-Virtual threads are JVM-managed threads designed to make large numbers of blocking tasks easier to express. They do not make CPU-bound code execute faster merely by increasing thread count. A virtual thread is still a Thread with lifecycle, interruption and stack-trace behavior, but its scheduling is not one permanently dedicated operating-system thread per task.
+A request calls another service and waits for its response. With a dedicated platform thread, that request retains an operating-system-thread resource while blocked. A large number of mostly waiting requests can need many more concurrent task lifetimes than the machine has processors.
 
-Resource limits remain: a database pool, remote service or file-descriptor budget can be exhausted even when threads are inexpensive. Limit the scarce resource directly rather than pooling virtual threads as though they were expensive workers. CPU-intensive tasks still compete for available processors.
+Virtual threads make a thread-per-task programming style economical for suitable blocking work. They preserve familiar sequential calls, exceptions, interruption and stack traces. They do not make a CPU calculation faster just because more task threads exist. Understand the task's blocking behavior before changing its execution mechanism.
+
+<span id="virtual-threads-and-scarce-resources"></span>
+<span id="complete-resource-limit-experiment-with-actual-virtual-threads"></span>
+<span id="virtual-thread-assumptions"></span>
+<span id="virtual-thread-interview-practice"></span>
+<span id="why-is-a-semaphore-still-useful-with-virtual-threads"></span>
+## Start and join one virtual thread
+
+<JavaExample file="modern/VirtualThreadStartLesson.java" output={"virtual=true\nfinished=true"} />
+
+OfVirtual builds a thread of a different scheduling kind. Start still creates the independent execution, currentThread still identifies that task's Thread, and join still waits for termination. The program uses the stable Java 21 API and needs no preview flags. Compile with a JDK supporting Java 21 or later.
+
+A virtual thread is a real Thread with lifecycle and interruption status; it is not merely a callback name. It is also a daemon thread, so an owner must keep the process alive while required task work remains. Joining or owning an executor lifetime makes that obligation visible.
 
 <span id="worked-example"></span>
-## Separate scheduling from admission
-
-The Java 8-compatible example uses a Semaphore to express the underlying resource bound independently of thread count. Modern virtual-thread code can use the same conceptual limit. The permit is released in finally, so failure does not permanently reduce capacity.
-
-<span id="mechanics-and-tradeoffs"></span>
-## Scheduling, pinning and context lifetimes
-
-Scoped values, final in Java 25, express bounded sharing of immutable context along a dynamic call scope. They differ from arbitrary mutable ThreadLocal state. Structured concurrency treats related subtasks as a unit with coordinated lifetime and failure handling; in Java 25 it is preview functionality and requires the appropriate flags.
-
-Pinning guidance is version-sensitive. Java 24 changed monitor handling so ordinary blocking inside synchronized code no longer causes the same pinning behavior described for Java 21–23. Native/foreign interactions and other runtime constraints still need investigation. Use the target JDK's diagnostics instead of repeating older blanket advice.
-
-<Diagram client:visible definition={"flowchart LR\n T[Many concurrent tasks] --> S[Semaphore limits resource use]\n S --> R[Limited downstream resource]\n R --> F[Finally releases permit]"} caption={"Cheap task execution does not remove downstream limits. Resource permits must be released on every acquired-permit path."} />
-
-### Mounting is scheduling, not parallel execution capacity
-
-A platform thread is generally tied to an operating-system thread. A virtual thread is scheduled by the JVM onto a carrier platform thread while it runs. Supported blocking operations can unmount it so its carrier can execute another virtual thread. A virtual thread executing CPU work still occupies execution capacity; adding thousands does not create more processors. Stack and task state still consume memory, even when suspended work is cheaper than thousands of dedicated OS threads.
-
-<Diagram client:visible definition={"sequenceDiagram\n participant V as Virtual thread A\n participant C as Carrier\n participant B as Blocking operation\n V->>C: mount and run\n V->>B: supported blocking I/O\n Note over V,C: A unmounts, carrier can run another task\n B-->>V: completion makes A runnable\n V->>C: remount on an available carrier"} caption={"Supported blocking can release a carrier. The resumed virtual thread need not use the same carrier as before."} />
-
-Use one virtual thread per task rather than pooling them to protect a connection limit. Bound connections or other scarce resources directly with a pool/semaphore. Cheap waiting still needs deadlines, cancellation, queue/in-flight limits and overload handling: otherwise an application can retain unbounded request state.
-
-### Pinning guidance must name the JDK
-
-| Release | Relevant behavior |
-| --- | --- |
-| Java 21–23 | Blocking while holding a synchronized monitor can pin a carrier |
-| Java 24+ | Monitor implementation changes remove that common synchronized-block pinning cause |
-| Java 25 | Native/foreign call paths and runtime constraints can still matter; investigate the actual blocking path |
-
-Do not mechanically replace all synchronized blocks with ReentrantLock based on advice for an older release. A long critical section still serializes contenders regardless of pinning. Use JFR events and version-appropriate thread diagnostics for observed symptoms.
-
-### Scoped values are bounded context bindings
-
-ScopedValue is final in Java 25. `ScopedValue.where(KEY, value).run(action)` binds a value during the action's dynamic execution; methods called within it can read through the same accessible key. A nested binding can shadow the value, and exiting restores the outer binding even after exceptions. Outside a binding, get fails; isBound allows an explicit policy.
-
-The binding is immutable, but an object stored in it can still be mutable. Prefer immutable context values. Scoped values avoid arbitrary long-lived set/remove protocols for this use case, while ThreadLocal remains useful for some per-thread mutable state. Ordinary newly created threads do not automatically inherit every scoped binding. StructuredTaskScope supports controlled inheritance from its owning scope; do not assume an arbitrary executor callback has captured the dynamic scope.
-
-### ThreadLocal lifetime and retained state
-
-ThreadLocal associates a value with a thread, rather than with one method invocation. In a reused platform worker, leaving a request-specific value installed can retain data and expose stale context to later work. Use a try/finally remove policy when a task owns a temporary binding. ThreadLocal map keys are weak, but retained values can still survive until stale entries are cleaned or the thread ends; weak keys alone are not a complete leak-prevention policy.
-
-InheritableThreadLocal copies context at thread creation, not automatically at every executor submission. Virtual-thread-per-task execution changes thread reuse but can multiply expensive per-thread values across large task counts. Scoped values address bounded context propagation; they do not replace every use of mutable thread-local state.
-
-### Structured concurrency: Java 25 preview
-
-Related child tasks belong within an owning scope. The Java 25 default `StructuredTaskScope.open()` policy waits for successful results or responds to failure by cancelling siblings. `fork` starts subtasks; `join` establishes the policy's outcome; successful Subtask.get retrieval follows joining. A failure is reported through FailedException with its cause. The API differs from earlier preview versions, so old ShutdownOnFailure examples should not be presented as Java 25 code.
-
-Closing waits for child threads to finish. Cancellation requests interruption, which cooperative subtasks must honor. A child stuck in an uninterruptible action can delay close indefinitely; structure does not force unsafe termination. Owner-thread restrictions and scope lifetime rules prevent casual sharing of a scope as a global executor.
-
-```bash
-javac --enable-preview --release 25 StructuredConcurrencyDemo.java
-java --enable-preview StructuredConcurrencyDemo
-```
-
-Only the structured-concurrency example here requires these preview flags. Records, virtual threads, gatherers, FFM and scoped values are stable on the Java 25 baseline.
-
-### Failure and resource exercise
-
-Run two child operations where one fails and the other waits interruptibly. Explain which failure is primary, when sibling cancellation is requested, and why close still waits for cleanup. Then add a semaphore for a scarce resource and ensure a permit is released only after acquire succeeded. The task tree and resource ownership should remain visible in the explanation.
-
 <span id="java-implementation"></span>
-## Run actual Java 25 threading examples
+## Trace a blocking task on carrier threads
 
-The following program is a complete executable example. Compile with `javac ResourceBound.java` and run with `java ResourceBound`.
+A platform thread is generally tied to an operating-system thread. The runtime schedules a virtual thread onto a carrier platform thread while it runs. During supported blocking operations, it can unmount, leaving the carrier available to execute another virtual thread. When the operation becomes ready, the task becomes runnable and can later mount on an available carrier.
 
-<JavaExample file="ResourceBound.java" output={"1\n2"} />
+<Diagram client:visible definition={"sequenceDiagram\n participant A as Virtual task A\n participant C as Carrier\n participant I as Supported blocking operation\n A->>C: mount and execute\n A->>I: begin blocking wait\n Note over A,C: A can unmount and the carrier runs other ready work\n I-->>A: operation becomes ready\n A->>C: mount on an available carrier and resume"} caption="Suspension preserves the task's execution state. Resumption need not use the same carrier, and no extra processor is created." />
 
-### Java 25 executable examples
+A virtual thread doing continuous CPU work still occupies execution capacity. Suspended stacks/task objects also retain memory. This is a scheduling/resource model, not a promise that every operation unmounts or every task uses less memory under every workload.
 
-These examples use the actual Java 25 APIs. Compile with Java 25; the structured-concurrency example additionally requires `--enable-preview --release 25` when compiling and `--enable-preview` when running.
+<span id="run-actual-java-25-threading-examples"></span>
+## Run a controlled blocking workload
+
+<JavaExample file="modern/VirtualBlockingLesson.java" output={"entered tasks=3\ntotal=126"} />
+
+The executor creates a new virtual thread per submitted task. Three tasks report entry before waiting on release. Main observes all entry signals, releases the work, and retrieves every result. Entered proves the milestone, not that every task has already reached one exact Thread.State at the observation instant. Finally opens release on an exceptional owner path, while closing the owned executor accounts for its task lifetimes.
+
+This experiment demonstrates concurrent task ownership and blocking coordination. It does not time the scheduler or prove a throughput improvement. In an application, use representative blocking calls and measure the actual workload rather than generalizing from arithmetic or sleep timing.
+
+The compact original API demonstration remains useful for result retrieval:
 
 <JavaExample file="modern/VirtualThreadsDemo.java" output={"true\n42"} />
 
-<JavaExample file="modern/ScopedValuesDemo.java" output={"false\nrequest-42\nfalse"} />
-
-<JavaExample file="modern/StructuredConcurrencyDemo.java" output={"43"} />
-
-
-### Complete resource-limit experiment with actual virtual threads
+<span id="separate-scheduling-from-admission"></span>
+<span id="scheduling-pinning-and-context-lifetimes"></span>
+<span id="mounting-is-scheduling-not-parallel-execution-capacity"></span>
+<span id="failure-and-resource-exercise"></span>
+## Separate scheduling from scarce-resource admission
 
 <JavaExample file="modern/VirtualResourceLimitLesson.java" output={"maximum=2\ntotal=42\npermits=2"} />
 
-Six tasks run through a virtual-thread-per-task executor while a semaphore protects two resource permits. The first two admitted tasks signal entered before waiting for release. This coordination establishes occupancy two without using timing guesses. active is incremented only after acquisition and decremented in an inner finally; permits are released in the outer finally after successful acquisition. A task interrupted before acquire succeeds never releases a permit it did not own.
+Six task lifetimes share two resource permits. The first two admitted tasks signal entered before waiting for release, establishing occupancy two. Active increases only after acquisition and decreases in its inner finally; the permit is released by the outer finally after successful acquire. A task interrupted before acquisition releases nothing.
 
-The maximum counter observes occupancy rather than controlling admission. The semaphore enforces the actual invariant. Waiting for every Future result establishes that all successful work and its cleanup completed before the final permit count is printed. The release guard in finally prevents exceptional main-thread paths from leaving the demonstration workers waiting forever.
+Maximum observes resource occupancy; Semaphore enforces it. Retrieving every Future accounts for completed work/cleanup before final permit observation. Cheap waiting still needs deadlines, request/in-flight bounds and overload policy, otherwise many retained requests can exhaust memory.
 
-This is a correctness experiment, not a performance comparison. The output proves the stated admission bound under the coordinated program; it does not claim more throughput or lower latency than platform threads. External services also need deadlines, request limits and failure policies that match their own behavior.
+Do not pool virtual threads to mimic a connection limit. Create one virtual thread per task and bound the connection/service itself. A connection pool may already enforce its own capacity. The Java 8 comparison below demonstrates only permit accounting, not virtual-thread execution:
+
+<JavaExample file="ResourceBound.java" output={"1\n2"} />
+
+<span id="pinning-guidance-must-name-the-jdk"></span>
+## Pinning and diagnostic guidance must name the runtime
+
+Blocking while holding a synchronized monitor could pin a carrier on Java 21–23. Java 24 changed monitor handling to remove that common cause. On the selected modern runtime, native/foreign interactions and other constraints can still matter. Read the actual target JDK's guidance and diagnostics before applying migration advice.
+
+A long critical section still serializes contenders even when the carrier can be released. Replacing every synchronized block with ReentrantLock based on older pinning advice is not a general performance strategy. Use suitable JFR/thread-dump facilities and recorded workload evidence. Thread.getAllStackTraces covers platform threads rather than enumerating all virtual task lifetimes.
 
 <span id="common-mistakes"></span>
-## Virtual-thread assumptions
-
-Do not equate more virtual threads with more CPU capacity, assume external pools become unlimited, or teach preview APIs without a version label. ThreadLocal values can become expensive when multiplied across very many threads.
-
-<KnowledgeCheck client:visible question={"What does using virtual threads change about a downstream connection pool's capacity?"} options={["It makes the pool effectively unlimited", "It removes the need for request deadlines", "It does not change the resource limit"]} correct={2} explanations={["Lightweight threads do not create extra downstream connections.", "Deadlines and cancellation remain necessary even if waiting threads are inexpensive.", "Thread scheduling cost and downstream resource capacity are separate constraints; bound actual resource use."]} />
-
 <span id="exercises-and-interview-questions"></span>
-## Virtual-thread interview practice
+<span id="coding-exercise"></span>
+<span id="scoped-values-are-bounded-context-bindings"></span>
+<span id="threadlocal-lifetime-and-retained-state"></span>
+<span id="structured-concurrency-java-25-preview"></span>
+## Context and related child lifetimes
 
-### Why is a semaphore still useful with virtual threads?
+<a href={lessonUrl('learn/modern-concurrency/thread-local-context/')}>ThreadLocal task context</a> explains restoration on reused workers and the cost of retained per-thread values. <a href={lessonUrl('learn/modern-concurrency/scoped-values/')}>Scoped values</a> supplies bounded dynamic context bindings (Java 25+). <a href={lessonUrl('learn/modern-concurrency/structured-concurrency/')}>Structured concurrency</a> gives related subtasks one owning lifetime (the selected Java 25 API is preview). These are separate mechanisms; virtual-thread creation itself does not teach or implicitly enable their context/cancellation policies.
 
-<details>
-<summary>Explanation</summary>
+## Exercise and complete reference solution
 
-Thread creation cost and downstream service capacity are separate constraints. A semaphore can bound simultaneous access to a scarce resource even when many tasks wait cheaply. The permit lifetime should match actual resource use, and cancellation/failure paths must release acquired permits.
+Run six tasks with two permits, establish occupancy two through signals, then observe completed results and restored permits. `VirtualResourceLimitLesson` is the complete solution. State separately the task count, actual resource bound and completed cleanup; its output makes no timing claim.
 
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Why can many virtual threads still exhaust memory?</summary>
-
-Each task retains stack/state and application objects, and waiting requests can accumulate without an admission bound. Virtual threads reduce some thread costs; they do not impose an automatic limit on accepted work or downstream resources.
-
-</details>
-
-<details>
-<summary>Should Java 25 code replace every synchronized block to avoid pinning?</summary>
-
-No. Java 24 removed the common monitor-held blocking pinning issue. Long critical sections still serialize access, and native/runtime paths can still matter. Diagnose the actual JDK and observed path rather than applying older blanket advice.
-
-</details>
-
-<details>
-<summary>Can closing a structured scope forcibly kill an uncooperative child?</summary>
-
-No. Cancellation uses cooperative interruption, and close waits for children to finish. An uninterruptible or cancellation-ignoring child can delay closure. Scope structure makes ownership visible; it does not provide unsafe forced termination.
-
-</details>
-
-### Coding exercise
-
-On Java 25, run independent blocking tasks using a virtual-thread executor and limit a simulated downstream service with a semaphore. Compare task count, maximum concurrent resource use and elapsed time. Keep structured-concurrency variants explicitly marked preview.
-
-### Coding exercise with reference solution
-
-Implement six virtual-thread tasks sharing two resource permits. Establish occupancy two with a latch, wait for every result and prove all permits are restored. VirtualResourceLimitLesson is the complete reference solution. Identify the exact successful-acquire region before placing release in finally; a blanket release after an interrupted acquire would inflate capacity.
+Context propagation and structured task ownership solve additional problems. Their dedicated scoped-value and structured-concurrency chapters build on the ThreadLocal and Future lifetime models rather than being prerequisites to this first virtual thread.
 
 <span id="references"></span>
+<span id="coding-exercise-with-reference-solution"></span>
 ## Version-specific threading sources
 
-- [Virtual threads, final in Java 21](https://openjdk.org/jeps/444)
-- [Synchronizing virtual threads without common monitor pinning](https://openjdk.org/jeps/491)
-- [Scoped values, final in Java 25](https://openjdk.org/jeps/506)
-- [ScopedValue binding and inheritance](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ScopedValue.java)
-- [Java 25 StructuredTaskScope preview contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/StructuredTaskScope.java)
-- [Structured concurrency fifth preview](https://openjdk.org/jeps/505)
+- [Virtual-thread API and availability](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html)
+- [Virtual threads and blocking on the selected runtime](https://docs.oracle.com/en/java/javase/25/core/virtual-threads.html)
+- [Dev.java virtual-thread motivation and usage](https://dev.java/learn/new-features/virtual-threads/)
+- [Virtual threads final in Java 21](https://openjdk.org/jeps/444)
+- [Monitor pinning changes in Java 24](https://openjdk.org/jeps/491)

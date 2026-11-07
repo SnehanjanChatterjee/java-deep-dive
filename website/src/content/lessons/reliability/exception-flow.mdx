@@ -1,0 +1,54 @@
+---
+title: "Exception flow and stack traces"
+module: "reliability"
+group: "Exception flow"
+summary: "Follow handler search, skipped statements and a stack trace through nested method calls."
+order: 260
+version: "Java 8+"
+prerequisites: ["language/methods-and-references", "objects/inheritance-and-composition"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+
+## A failed operation changes where execution continues
+
+An exception is an object representing an exceptional completion. Throwing it stops the current operation's normal path. Java looks for a matching handler, starting in the current invocation and then its callers. Statements between the throw and the selected handler are skipped; they are not queued to run after the catch.
+
+<JavaExample file="ExceptionFlow.java" output={"doubleInput\nparse\ninvalid integer\nafter handler"} />
+
+Main enters the try block and evaluates doubleInput before println can print its returned value. DoubleInput calls parse. Integer.parseInt cannot parse bad, so it throws NumberFormatException. Parse never returns an int; doubleInput never stores value or prints parsed; main never prints success. Main's matching catch prints invalid integer. Execution then continues after the try/catch with after handler.
+
+<ConceptAnimation client:visible model="exceptions" />
+
+The animation follows a defined illustrative call chain. It models handler search and skipped work; it does not execute the Java source above.
+
+## Read a stack trace from the failure outward
+
+A Throwable captures stack-trace information. The exception type identifies a failure category; the message provides context; frames identify methods and usually source locations. The upper relevant frame is closest to the failure. Read outward toward the caller whose input or policy needs attention, rather than assuming the last printed line caused the problem.
+
+In this example the important application chain is parse → doubleInput → main. Standard-library parsing frames can appear above those application frames. The exact message and library implementation frames vary across JDKs. To retain the full diagnostic, use `failure.printStackTrace()` at a teaching boundary, or a contextual application logger that accepts the Throwable. Printing only getMessage loses its type, frames, cause and suppressed exceptions.
+
+## Distinguish handling from continuing as if successful
+
+A catch should do something meaningful: reject input, choose a documented fallback, translate the failure or let it propagate. Returning zero from every failure silently changes invalid input into a valid numeric result. A catch does not reverse mutations performed before the failure. If no matching handler exists, the exception escapes that thread's call stack; an uncaught failure is not a normal return value.
+
+NumberFormatException is an unchecked exception. The next chapter distinguishes that runtime behavior from the compiler's checked catch-or-declare obligation. Both kinds use the same basic handler-search model.
+
+## Practice: move one statement
+
+Move `System.out.println("success")` from inside try to immediately after the catch. Does it now print for the invalid input? Is that a truthful label?
+
+<details>
+<summary>Answer</summary>
+
+Yes: the catch completes normally, so following statements run. But success would now describe handler completion, not successful parsing. Use a label such as attempt finished, or keep success inside the successful path. Changing statement placement changes observable behavior even though the original exception class is unchanged. For a valid input 6, the helper returns 12, parsed prints, and the original success path runs.
+
+</details>
+
+## Exception-flow references
+
+- [Dev.java: exception objects and handler search](https://dev.java/learn/language/annotations-exceptions/exceptions/what-is-an-exception/)
+- [JLS: normal and abrupt completion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.1)
+- [Throwable stack-trace API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Throwable.html)

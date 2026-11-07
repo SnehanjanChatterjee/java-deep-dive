@@ -1,0 +1,52 @@
+---
+title: "Interfaces and named implementations"
+module: "objects"
+group: "Interfaces and inheritance"
+summary: "Declare a capability and invoke named implementations before introducing interchangeable strategies."
+order: 160
+version: "Java 8+"
+prerequisites: ["objects/constructors-and-access"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Depend on an operation rather than one concrete class
+
+An interface declares a capability that callers can use. Pricing promises an `int apply(int amount)` operation. A class implementing Pricing must provide that operation publicly. A variable declared Pricing can refer to any compatible implementation; callers use the promised operations without depending on the implementation class's private details.
+
+<JavaExample file="CompositionExample.java" output={"90"} />
+
+Read the declarations in order. Pricing defines the method shape. DiscountPricing implements it with a named class, subtracting ten. Checkout stores a private Pricing reference supplied to its constructor. Total delegates to `pricing.apply(amount)`. In main, the concrete object is DiscountPricing, while the reference type is Pricing. A total of 100 follows the delegate and returns 90.
+
+This intentionally small policy has no currency, rounding or lower-bound contract. A real checkout must define those rules rather than silently treating every int as a valid charge. Here the example isolates the relationship between interface, implementation and caller.
+
+## Interface types describe what callers may ask
+
+The declared type determines available methods at a source call. An interface-typed reference does not acquire every extra method declared by its concrete implementation. At runtime, an instance invocation reaches the implementation on the actual object. This dispatch enables one Checkout implementation to work with multiple Pricing classes.
+
+A class may implement several interfaces but extend only one class. An abstract class can hold state and partial implementation; an interface often suits a capability shared by otherwise unrelated classes. Neither automatically creates a useful abstraction. Choose the smallest contract the callers actually need.
+
+## Practice: add regular pricing without changing Checkout
+
+Implement a named Pricing class that returns the amount unchanged. Construct another Checkout and explain what varies.
+
+<details>
+<summary>Solution</summary>
+
+```java
+static final class RegularPricing implements Pricing {
+    @Override public int apply(final int amount) {
+        return amount;
+    }
+}
+```
+
+Use `new Checkout(new RegularPricing()).total(100)`, which returns 100. Checkout's code is unchanged because it invokes the Pricing contract. The supplied collaborator varies. Constructing DiscountPricing inside total would hard-code that choice and make substitution harder. Lambda notation can express some one-method interfaces later; it is not needed to understand this model.
+
+</details>
+
+## Interface references
+
+- [Dev.java: interfaces](https://dev.java/learn/language/oop/interfaces/defining-interfaces/)
+- [JLS: interface declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html)

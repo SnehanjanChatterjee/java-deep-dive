@@ -1,0 +1,95 @@
+---
+title: "Iterators, views and collection ownership"
+module: "collections"
+group: "Iteration and views"
+summary: "Visit every element without knowing storage"
+order: 360
+version: "Java 8+; factory methods 9/10+"
+prerequisites: ["collections/choosing-collections"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Visit every element without knowing storage
+
+A caller can traverse an ArrayList or LinkedList using the same enhanced-for statement. Iterable makes that possible: it supplies an Iterator, which remembers the current traversal state. An iterator is separate from the collection; two iterators can be at different positions in the same sequence.
+
+```java
+for (final String name : names) {
+    System.out.println(name);
+}
+```
+
+For a collection, this pattern uses an iterator behind the scenes. Array enhanced-for is also supported by the language, but an array is not an Iterable object.
+
+## Expand the iterator protocol
+
+```java
+final Iterator<String> cursor = names.iterator();
+while (cursor.hasNext()) {
+    final String name = cursor.next();
+    System.out.println(name);
+}
+```
+
+hasNext asks whether another element can be returned; it does not advance. next returns that element and advances. After the final element, hasNext is false. Calling next anyway throws NoSuchElementException, rather than returning null. A stored null can be an ordinary element in a collection whose contract permits it.
+
+For [Al, Mira], the initial cursor is before Al. First next returns Al; the next position is now before Mira. Another hasNext does not skip Mira. The second next returns Mira, then the traversal is exhausted. Calling hasNext before next is useful but not mandatory when presence is known by another means.
+
+## Remove through the iterator that is traversing
+
+<JavaExample file="CollectionIteration.java" output={"Mira\nNoor\n[Ada, Noor]\n[Mira]"} />
+
+removeShortNames calls next before testing each name. If the name is short, iterator.remove deletes that last-returned element. The iterator updates its own traversal bookkeeping. It does not require the caller to decrement a numeric index. Null names are outside this example's input contract; they would fail the length access.
+
+| Last action | Is iterator.remove legal? | Meaning |
+| --- | --- | --- |
+| Iterator created | No | No returned element exists yet |
+| next returned an element | Yes, if supported | Remove that returned element |
+| remove already performed | No | Another next is needed |
+| Iterator does not support removal | No | UnsupportedOperationException |
+
+Removing directly through the list during enhanced-for can invalidate the hidden iterator. Best-effort fail-fast detection may then throw ConcurrentModificationException, including in a single thread. It is a debugging aid, not synchronization and not a guaranteed race detector. Snapshot and weakly consistent iterators have different contracts in the concurrency module.
+
+## Views, copies and fixed-size containers
+
+In the program, `view = names.subList(0, 1)` has indexes relative to that range. `view.set(0, "Ada")` replaces the same backing element, so names changes. The previously created copy keeps Mira. Both containers would still share mutable element objects if the elements were mutable.
+
+| Construction | What can change through it? | Does later source mutation remain visible? |
+| --- | --- | --- |
+| `Arrays.asList(array)` | Elements can be replaced; size cannot change | Yes: array-backed |
+| `Collections.unmodifiableList(list)` | Wrapper mutators are rejected | Yes: live backing list |
+| `new ArrayList<>(list)` | Independent mutable container | No structural connection |
+| `List.of(...)` — 9+ | Unmodifiable; rejects nulls | No external source container |
+| `List.copyOf(list)` — 10+ | Unmodifiable reference snapshot; rejects nulls | Later source changes are not reflected |
+
+Unmodifiable means the collection API does not permit mutation through that reference. Deep immutability additionally requires stable reachable state. Structural parent mutations outside the subList protocol can invalidate the view; retaining a small view can also retain a much larger backing structure. Copy a range when independent lifetime is required.
+
+Map keySet/values/entrySet are backed views. Supported removal through one removes mappings from the map. A values view can contain repeated equal values because distinct keys may map to the same value. Do not confuse a Map.Entry with an independent immutable snapshot.
+
+## Extend traversal for list editing
+
+ListIterator adds previous/hasPrevious, positions, add and set. Its cursor sits between elements; its last-returned element is different state. After adding B between A and C, next still returns C, while previous would return B. Calling add does not make B eligible for remove as a last-returned element. The LinkedList chapter traces this complete example.
+
+## Worked exercise: preserve a snapshot
+
+To return the first two names as a detached mutable container, use `new ArrayList<>(names.subList(0, 2))` after validating the size. To promise an unmodifiable snapshot on Java 10+, use List.copyOf on that range, with a declared null policy. Wrapping the range in unmodifiableList would still expose later permitted backing changes.
+
+For safe removal, the completed removeShortNames solution uses one iterator. Its tests cover empty input, no removals, all removals and invalid arguments. A synchronized wrapper requires the documented mutex around a whole traversal; individually synchronized method calls do not make the multi-call protocol atomic.
+
+<JavaExample file="CollectionIterationTest.java" />
+
+## Sequenced views on Java 21+
+
+SequencedCollection, SequencedSet and SequencedMap expose a defined encounter order with first/last/reversed operations as applicable. A reversed view changes traversal orientation while retaining a backing relationship; it is not necessarily a detached copy. Sorted collections already have a comparison-based order. HashMap does not acquire one because observed output appears stable.
+
+These APIs extend the older collection contracts; they are a version-labelled addition after the basic iterator/view model. Individual structure chapters explain ordinary add versus explicit positioning and access-order effects.
+
+## References
+
+- [Iteration, removal and implementing Iterable](https://dev.java/learn/api/collections-and-streams/collections-framework/iterating/)
+- [Iterator contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Iterator.html)
+- [ListIterator cursor and mutation rules](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ListIterator.html)
+\n- [Sequenced collections, Java 21](https://openjdk.org/jeps/431)\n

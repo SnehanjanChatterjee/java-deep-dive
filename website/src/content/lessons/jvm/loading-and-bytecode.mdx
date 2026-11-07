@@ -1,182 +1,101 @@
 ---
-title: "Class loading, initialization and bytecode"
+title: "Class loading, linking and initialization"
 module: "jvm"
-group: "Loading and execution"
-summary: "Trace when classes are defined, linked and initialized."
-order: 560
+group: "Class loading and initialization"
+summary: "Follow ordinary class use through definition, verification and static initialization before loader identity and failure cases."
+order: 1060
 version: "Java 8+"
-prerequisites: ["execution/compile-and-run", "objects/inheritance-and-composition"]
+prerequisites: ["jvm/frames-and-bytecode", "objects/classes-and-instances"]
 advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
-<span id="concepts" aria-hidden="true"></span>
+<span id="concepts"></span>
+<span id="mechanics-and-tradeoffs"></span>
+<span id="interview-experiment"></span>
+<span id="first-and-later-failure"></span>
+<span id="frames-and-exceptions"></span>
+<span id="can-a-static-final-field-be-read-without-initializing-its-class"></span>
+<span id="additional-interview-questions"></span>
+<span id="solved-interview-and-debugging-practice"></span>
+## Using a class and initializing its state are different events
 
-## Class identity and initialization
+A compiled program names classes, fields and methods in its class file. Before executing a relevant operation, the runtime needs a definition of the named type and must enforce the class-file/linking rules. Static initialization is another step: it runs the class-level initializers that establish static state when an active use requires them.
 
-The JVM identifies a class using its binary name and defining class loader. Two classes with the same name loaded by different defining loaders can be different types. Loading obtains the binary definition; linking includes verification, preparation and resolution; initialization executes static initializers under specified synchronization rules.
+Start with familiar construction rather than a custom class loader. The following program reads one constant and creates one instance.
 
-Initialization is triggered by active uses such as constructing an instance or invoking a static method declared by the class, subject to language rules. Reading a compile-time constant may not initialize its declaring class. Initializing a subclass initializes its superclass first. Instance field initializers and constructor bodies belong to a different phase from static initialization.
-
-<span id="worked-example" aria-hidden="true"></span>
-
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+<span id="constant-inlining-can-create-stale-clients"></span>
+<span id="constant-use-loading-and-active-use"></span>
 ## Trace constant use and instance construction
-
-The program prints messages from a static initializer and an instance initializer. Reading the compile-time constant does not require initializing Holder; constructing it does. The output distinguishes static class-level work from per-instance work.
-
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Loaders, symbolic resolution and bytecode
-
-<Diagram client:visible definition={"flowchart TD\n B[Binary class definition] --> L[Loading]\n L --> K[Linking: verification and preparation]\n K --> I[Initialization on active use]\n I --> O[Instance construction when requested]"} caption={"Class-level initialization and per-instance construction are separate phases; some constant reads do not trigger initialization."} />
-
-### Loading, linking and initialization are distinct
-
-Loading creates a runtime representation from a binary definition. Linking includes verification, preparation and resolution, with some resolution permitted lazily. Preparation establishes class-level storage/defaults; initialization executes the class initializer generated for static field initializers and static blocks. Instance initialization and constructors are a later per-object concern.
-
-Active uses such as constructing an instance, invoking an appropriate static method or accessing a nonconstant static field can trigger initialization of the type that declares the member. Reading a compile-time constant can be inlined and need not initialize its declaring class. Creating an array of a reference type does not itself initialize that component class.
-
-### Constant inlining can create stale clients
-
-If Library.VERSION is a static final int constant expression, a separately compiled Client can contain the literal value. Replacing only Library.class with a new constant value may leave Client printing the old value until it is recompiled. If the field is initialized by a method call, it is not a constant variable and a getstatic access can trigger initialization. This difference explains why “static final” alone is insufficient to predict initialization.
-
-### Loader identity and delegation
-
-A runtime reference type is identified by its binary name and defining loader. Two loaders defining a class named `plugin.Item` can produce incompatible types, even if the bytes match. Cast errors with apparently identical class names often involve that distinction. A loader can delegate a load to a parent, so the initiating loader need not be the defining loader.
-
-Common application loading delegates to a parent before defining a local class, but custom loaders can deliberately change policies within platform constraints. Modern JDKs distinguish bootstrap, platform and application loaders. Bootstrap-loaded classes can report a null loader through Class.getClassLoader; null here is a representation convention, not proof that the class was never loaded. A live loader or thread-context loader can retain all of its classes and associated state, causing class-loader retention.
-
-### Inspect a small method's operand stack
-
-For `static int twice(int x) { return x * 2; }`, a typical javac instruction sequence is:
-
-```text
-iload_0     // locals[0] -> operand stack
-iconst_2    // push integer 2
-imul        // pop two ints, push their product
-ireturn     // return the product
-```
-
-JVM frames contain local-variable slots and an operand stack. Instance methods reserve a slot for this; long/double use two local slots in the class-file model. `invokevirtual` performs virtual method invocation, `invokestatic` invokes a static method, `invokeinterface` invokes through an interface, and `invokespecial` handles special cases such as constructor calls. `invokedynamic` provides a linkage mechanism used by compiler translations such as lambdas and modern string concatenation; it does not mean Java source becomes dynamically typed.
-
-### Initialization failure is remembered
-
-If a static initializer fails, the first active use can receive ExceptionInInitializerError when the thrown value is an appropriate non-Error exception. The class becomes erroneous for that loading context; later active use can receive NoClassDefFoundError indicating it could not be initialized. Repeatedly retrying `new` does not rerun initialization as if it were an ordinary method. Inspect the original causal failure rather than assuming every NoClassDefFoundError means a missing JAR.
-
-<Diagram client:visible definition={"flowchart TD\n U[Active use] --> S{Initialization state}\n S -->|not initialized| I[Initialize required supertypes and class]\n I -->|success| R[Use initialized class]\n I -->|failure| E[Mark erroneous]\n S -->|erroneous| F[Later use fails]\n S -->|initialized| R"} caption={"Class initialization is synchronized and its failure state persists; it is not retried on every ordinary active use."} />
-
-### Interview experiment
-
-Run InitializationOrder, inspect its caller with javap, then change the constant to a method-computed value. Explain which instruction changes and why. Separately introduce a throwing static initializer and compare first and second active uses. Keep compilation, loading and initialization failures distinct in the explanation.
-
-## A complete class-initialization failure lab
-
-<JavaExample file="CoreInitializationLab.java" output={"7\nloaded without initialization\ninitialized\n42\nfirst initialization failure\nlater erroneous class"} />
-
-### Constant use, loading and active use
-
-The constant print does not require Holder's initializer to run. Class.forName with initialize=false requests loading without deliberately triggering class initialization. Reading the nonconstant VALUE then performs active use, runs the initializer and prints initialized before returning 42. This trace is about the declaring type's initialization, not merely whether its name appeared in source.
-
-### First and later failure
-
-Broken's initializer calls a method that throws. The first active use reports ExceptionInInitializerError for this failure path. The class becomes erroneous in its loading context. A later active use reports NoClassDefFoundError rather than rerunning the initializer normally. This is why a class-definition error can describe prior initialization failure, not only a missing class file.
-
-### Constant pool and symbolic references
-
-Bytecode refers to classes, fields and methods through class-file metadata rather than embedding ordinary object pointers. Resolution links those symbolic references to runtime definitions under access/loader rules. Runtime library mismatch can therefore make a previously valid compiled reference fail. Loading a class is not a proof that every method's lazy resolution path has already succeeded.
-
-### Frames and exceptions
-
-A frame's operand stack is not the same as the thread's entire call stack. Instructions push/pop typed values while locals store parameters/intermediate values. Exception handling uses table ranges and handlers; an abrupt method exit discards that frame's ordinary continuation. javap exposes bytecode/metadata, while optimized native execution can organize work differently under the required semantics.
-
-### Loader retention and plugin boundaries
-
-A live loader can retain its defined classes and associated static state. Thread-context loader references and long-lived registries can prevent a retired plugin loader from becoming unreachable. Two definitions with identical binary names but different defining loaders can be incompatible. Diagnosing such a cast/linkage problem requires loader identity and actual artifacts, not only a source package name.
-
-<span id="java-implementation" aria-hidden="true"></span>
-
-## Investigate class initialization in Java
-
-The following program is a complete executable example. Compile with `javac InitializationOrder.java` and run with `java InitializationOrder`.
 
 <JavaExample file="InitializationOrder.java" output={"7\nstatic\ninstance"} />
 
-<span id="common-mistakes" aria-hidden="true"></span>
+Holder.CONSTANT is a static final int initialized by a constant expression. The compiler can embed seven in the caller; this read does not require Holder's static initializer. Constructing Holder then requires its initialization, so static prints before the per-instance initializer prints instance.
 
-## Loader and initialization pitfalls
+A second new Holder would print another instance without rerunning the static initializer. Class-level preparation and per-object construction have different lifetimes. A static final field initialized by calling a method is not a constant variable merely because its reference/value cannot later be assigned.
 
-Do not assume every reference to a type initializes it, treat equal class names as proof of identical runtime types, or invoke overridable methods from constructors expecting fully initialized subclass state.
+<span id="initialization-failure-is-remembered"></span>
+<span id="loader-and-initialization-pitfalls"></span>
+## Loading, linking and initialization are distinct
 
-<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+| Step | What it establishes | What it does not establish |
+| --- | --- | --- |
+| Loading | A runtime type definition from binary form | That static initializer bodies already ran |
+| Verification | Applicable class-file/type-safety constraints | Arbitrary business correctness |
+| Preparation | Class-level storage and specified initial/default state | Execution of ordinary source initializer expressions |
+| Resolution | Symbolic references are linked to runtime definitions under access/loader rules | That every possible method path was eagerly resolved |
+| Initialization | Required static field initializers and blocks execute | Construction of every future instance |
 
-## Class-loading interview practice
+Verification, preparation and resolution form linking. Some resolution can occur lazily. The static initializer processes source initializers in their specified order after required superclass initialization. Instance fields/initializers and constructor bodies belong to individual object construction.
 
-### Can a static final field be read without initializing its class?
+<Diagram client:visible definition={"flowchart TD\n B[Class-file definition] --> L[Load runtime type]\n L --> K[Link: verify, prepare and resolve as required]\n K --> A{Active use requires initialization?}\n A -->|yes| I[Initialize required supertypes and static state]\n I --> O[Perform requested use or instance construction]\n A -->|not yet| W[Definition can exist without initializer execution]"} caption="A loaded definition can exist before initialization. Resolution timing also differs from executing a source-level static initializer." />
 
-<details>
-<summary>Explanation</summary>
+Constructing an instance, invoking an appropriate declared static method or accessing a nonconstant static field can trigger initialization. Reading an inherited static field concerns the declaring type. Creating an array of a reference type does not itself initialize that component class. Class literals and explicit loading without initialization differ from active use.
 
-If it is a constant variable whose value is available as a compile-time constant, the compiler can embed that value in the caller. The read does not necessarily trigger initialization. A static final reference produced by a method call is different and is not such a compile-time constant.
+<span id="class-identity-and-initialization"></span>
+<span id="inspect-a-small-methods-operand-stack"></span>
+<span id="a-complete-class-initialization-failure-lab"></span>
+<span id="investigate-class-initialization-in-java"></span>
+<span id="class-loading-interview-practice"></span>
+## Run loading without initialization and inspect a failed class
 
-</details>
+<JavaExample file="CoreInitializationLab.java" output={"7\nloaded without initialization\ninitialized\n42\nfirst initialization failure\nlater erroneous class"} />
 
-### Additional interview questions
+Class.forName with initialize=false requests the definition without deliberately initializing Holder. Reading nonconstant VALUE then runs initialize and prints initialized before 42. The constant read still precedes both events.
 
-<details>
-<summary>Can identically named classes fail a cast?</summary>
+Broken's initializer throws IllegalStateException. This first active use reports ExceptionInInitializerError. The class becomes erroneous in that loading context, so a later active use reports NoClassDefFoundError instead of retrying initialization. The latter error can therefore describe an earlier initialization failure, not only a missing class file. Preserve the original causal failure.
 
-Yes. Binary name plus defining loader determines runtime type identity. Two plugin loaders can define incompatible types with the same name. Inspect loaders and delegation instead of assuming the source-level name establishes identity.
+## Inspect the caller's actual class file
 
-</details>
+Run `javap -c -p InitializationOrder` against the output directory used for execution. Look for the constant instruction and the later new/invokespecial construction path. Replace CONSTANT with a method-computed value, recompile, and compare the caller's field access. Bytecode offsets, local slots and operand-stack behavior are developed in the preceding frame chapter.
 
-<details>
-<summary>Why can a changed public constant remain old in one client?</summary>
+A public compile-time constant can be copied into a separately compiled client. Replacing only the library class may leave that client using its old literal until recompiled. A runtime accessor has a different compatibility/lifetime contract. Symbolic method references can similarly fail at runtime if a deployed library differs from the one used for compilation.
 
-A constant variable can be embedded in the caller's bytecode. Replacing the library alone does not replace that caller literal. Recompile relevant clients or design a runtime accessor when a dynamically changing value is intended.
+<span id="loader-identity-and-delegation"></span>
+<span id="loader-retention-and-plugin-boundaries"></span>
+## Class identity and loader boundaries
 
-</details>
+A runtime type is identified by binary name and defining loader. Two plugin loaders can define incompatible types called plugin.Item even when the names/bytes match. An initiating loader may delegate to another defining loader. Common parent delegation is a policy, not a universal mandate for every custom loader.
 
-<details>
-<summary>Why might later initialization attempts throw a different error?</summary>
+Modern runtimes distinguish bootstrap, platform and application loaders. Class.getClassLoader may represent bootstrap loading with null. Live loaders/thread-context-loader references and registries can retain classes plus their static graphs after a plugin is logically retired. Diagnose artifact and loader identities rather than comparing source names alone.
 
-The first failure can mark the class erroneous in its loading context. Later active use does not rerun the initializer normally and can report NoClassDefFoundError. Preserve the original initialization cause when investigating.
+<span id="common-mistakes"></span>
+<span id="exercises-and-interview-questions"></span>
+<span id="coding-exercise"></span>
+## Exercise and complete reference solution
 
-</details>
+Predict the constant, explicit load, nonconstant active use and first/later failure outputs before running `CoreInitializationLab`. It is the complete reference solution. Explain why retrying new is not an ordinary method retry after class initialization failed. For a bytecode exercise, inspect the actual caller before and after changing the constant expression; recompiling the library alone cannot update a literal already in an old client.
 
-### Coding exercise
-
-Inspect the example with javap -c. Replace CONSTANT with a value returned by a method and explain how initialization behavior changes.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Does obtaining a Class object always initialize its type?</summary>
-
-No. Class literals and explicit loading without initialization are distinct from active-use triggers. The lab separates those paths from reading a nonconstant static field.
-
-</details>
-
-<details>
-<summary>Why does retrying new after a failed static initializer not behave like a method retry?</summary>
-
-Initialization failure records an erroneous class state for that loading context. Later active use does not simply restart its static body. A new loader/definition context is a different operation, not a normal retry of the same initialized type.
-
-</details>
-
-<details>
-<summary>What can javap explain that a source diff alone misses?</summary>
-
-Erased descriptors, generated bridges, constant inlining, invocation instructions, exception tables and class-file version. Inspect the compiled artifact actually running rather than assuming it matches source on disk.
-
-</details>
-
-<span id="references" aria-hidden="true"></span>
-
+<span id="references"></span>
+<span id="loaders-symbolic-resolution-and-bytecode"></span>
+<span id="constant-pool-and-symbolic-references"></span>
 ## Class-loading and bytecode references
 
-- [ClassLoader naming, identity and delegation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ClassLoader.java)
-- [HotSpot class-initialization state machine](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/oops/instanceKlass.cpp)
-- [Bytecode inspection with javap](https://dev.java/learn/jvm/core-tools/javap/)
-- [JVM bytecode definitions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/interpreter/bytecodes.hpp)
+- [JLS class loading, linking and initialization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html)
+- [JVM loading, linking and type identity](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html)
+- [ClassLoader delegation contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html)
+- [Selected HotSpot initialization state machine](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/oops/instanceKlass.cpp)

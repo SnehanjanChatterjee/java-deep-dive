@@ -1,0 +1,59 @@
+---
+title: "Parallel streams and partitioned reduction"
+module: "functional"
+group: "Parallel streams"
+summary: "Split work without changing the result meaning"
+order: 590
+version: "Java 8+"
+prerequisites: ["functional/collectors"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Split work without changing the result meaning
+
+Parallel execution allows independent source partitions to be processed by different tasks. It does not change a stream into a thread-safe container. Begin with a lawful sequential reduction, then prove that splitting and combining preserves its meaning.
+
+For [1,2,3,4], two illustrative partitions can produce totals 3 and 7, then combine to 10. A framework is free to split differently. Correctness must hold for all valid regroupings, including empty partial results, not just this drawing.
+
+<Diagram client:visible definition={"flowchart TD\n S[Source: 1 2 3 4] --> A[Fresh state: count 2 total 3]\n S --> B[Fresh state: count 2 total 7]\n A --> C[Combine: count 4 total 10]\n B --> C\n C --> R[Publish result]"} caption="This is an illustrative split. Separate mutable states and a valid combiner permit parallel reduction without shared ordinary-field updates." />
+
+## Trace independent mutable containers
+
+<JavaExample file="StreamCollectorLab.java" output={"count=4, total=10\n{even=2, odd=2}"} />
+
+The supplier constructs a fresh Summary. accept updates only its current partial container. combine merges partial count/total into one container. The collector does not declare CONCURRENT; ordinary long fields are not safe for simultaneous accumulation into one shared object. The stream framework can still use this collector in parallel by isolating partial containers.
+
+The previous purchase collector adds exact arithmetic and immutable finishing. Its partition law is the same: combine aggregate information rather than averaging averages or reusing a mutable singleton from the supplier. CONCURRENT is permission for applicable shared accumulation, not a label that simply means “used by a parallel stream.”
+
+## Preserve encounter-order semantics deliberately
+
+An ordered source can be processed out of callback order while retaining its required result order. forEach on a parallel stream does not promise encounter-order effects; forEachOrdered does, at an additional coordination cost. findFirst respects defined encounter order; findAny allows any eligible result. unordered relaxes an order requirement rather than randomly shuffling.
+
+Stateful operations such as sorted/distinct and ordered limit can require buffering or coordination. Spliterator splitting quality and properties constrain useful partitioning. A cheap operation over a small source can cost more to split, schedule and merge than to run sequentially.
+
+## Understand execution resources
+
+Parallel streams commonly use ForkJoin machinery; pool sharing, contention and blocking matter. Blocking I/O can occupy workers needed elsewhere. Nested parallelism is not an automatic optimization. The concurrency module later develops task pools and work stealing. Here the essential model is independent partial work plus combination, rather than a universal faster mode.
+
+A timed wait does not establish cancellation of remote effects or complete resource cleanup. A stream pipeline is also not a substitute for an explicit bounded task protocol when admission, deadlines and lifetime are the main problem.
+
+## Worked failure diagnoses
+
+**A shared ArrayList loses elements.** Multiple callbacks mutate the same ordinary list. Use collect with independent accumulation or an explicit suitable concurrency protocol. Synchronizing the list can coordinate individual writes but introduces contention and does not repair an unlawful reduction formula.
+
+**reduce(1, Integer::sum) is wrong.** One is not addition's identity. An explicit split [1,2] and [3,4] gives partial sums 4 and 8, then 12; sequential evaluation gives 11. Zero gives 10 in either case. Do not turn one observed framework partition count into an API promise.
+
+**Sequential success, parallel failure.** Inspect supplier independence, combiner identity/associativity, finisher type and characteristics. A false IDENTITY_FINISH or incorrect merge cannot be repaired by adding synchronized.
+
+## Decide whether parallelism helps
+
+State a hypothesis about source size, per-element work, splitting, order, allocation and merge cost. Measure a representative workload with a sound benchmark. A faster small local run does not establish a general speedup. The diagnostic benchmark chapter explains measurement after the execution model is understood.
+
+## References
+
+- [Stream parallelism and ordering](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/package-summary.html)
+- [Collector partition and concurrency contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Collector.html)
+- [Spliterator traversal/splitting contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Spliterator.html)

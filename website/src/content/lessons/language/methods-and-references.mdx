@@ -1,183 +1,96 @@
 ---
-title: "Methods, overloads and pass-by-value"
-module: "language"
-group: "Methods and values"
-summary: "Trace parameter values, object mutation and method selection."
-order: 30
+title: "References, aliases and pass-by-value"
+module: "objects"
+group: "References and identity"
+summary: "Trace aliases, object mutation and local reassignment to understand Java’s pass-by-value rule."
+order: 180
 version: "Java 8+"
-prerequisites: ["language/types-and-conversions"]
+prerequisites: ["objects/classes-and-instances", "language/methods-and-recursion"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
 import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+<span id="method-parameters-and-object-aliases" aria-hidden="true"></span>
 
-## Method parameters and object aliases
+<span id="the-parameter-receives-a-copied-value" aria-hidden="true"></span>
+<span id="how-overload-resolution-proceeds" aria-hidden="true"></span>
+<span id="overloading-and-overriding-interact" aria-hidden="true"></span>
+<span id="varargs-and-api-design" aria-hidden="true"></span>
+<span id="interview-prediction-exercise" aria-hidden="true"></span>
+<span id="trace-the-call-in-two-stages" aria-hidden="true"></span>
+<span id="ambiguity-is-a-compile-time-result" aria-hidden="true"></span>
+<span id="parameter-ownership-and-exceptions" aria-hidden="true"></span>
+<span id="coding-exercise-solution-strategy" aria-hidden="true"></span>
+<span id="how-can-a-method-replace-the-object-used-by-the-caller" aria-hidden="true"></span>
+<span id="additional-interview-questions" aria-hidden="true"></span>
+<span id="coding-exercise" aria-hidden="true"></span>
 
-A Java method receives argument values. For an object argument, that value is a reference. The parameter is a new variable containing a copied reference, so it may reach the same mutable object as the caller. Mutating that object and reassigning the local parameter are different operations.
+## Copying a reference does not copy an object
 
-Overloading chooses among method signatures at compile time using declared argument types and conversion rules. Overriding chooses an implementation at runtime for an instance method. Neither mechanism changes Java's parameter-passing semantics. Varargs is an array-based calling convenience, not a separate collection type.
+Java passes every argument by value. For a primitive, the copied value is the number or boolean itself. For an object, the copied value is a **reference**. The caller variable and parameter are different variables, but they can identify the same mutable object. That shared reachability is called aliasing.
 
 <span id="worked-example" aria-hidden="true"></span>
-
-## Trace mutation and local reassignment
-
-rename changes the shared User object's name. replace makes its parameter refer to a different User, leaving the caller's variable unchanged. The final output therefore remains Mira. A final local reference could still point to the mutable User.
-
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Overload phases and virtual dispatch
-
-<Diagram client:visible definition={"flowchart LR\n C[Caller reference] --> O[Shared User object]\n P[Copied parameter reference] --> O\n P -. reassignment changes only parameter .-> N[New User object]"} caption={"The caller and parameter initially refer to the same object. Reassigning the parameter does not rebind the caller variable."} />
-
-### The parameter receives a copied value
-
-For a primitive argument, the copied value is the primitive itself. For a reference argument, the copied value is a reference to the same object. Assigning the parameter changes the method's local variable. Mutating the referenced object can be visible through the caller's alias.
-
-<Diagram client:visible definition={"flowchart LR\n C[Caller variable] --> O[User object]\n P[Copied parameter reference] --> O\n P -. reassignment .-> N[New User object]\n C --> O"} caption={"At method entry both references identify one User. Reassigning the parameter does not redirect the caller's variable."} />
-
-The existing `rename` method writes through the shared reference. The `replace` method only redirects its own parameter. An array follows exactly the same rule: `items[0] = 9` changes its component, while `items = new int[3]` does not replace the caller's array. To replace a caller-owned value, return a new value and let the caller assign it, or use an explicitly designed mutable holder. A method that appears to swap two caller reference variables only swaps its local copies.
-
-### How overload resolution proceeds
-
-Overloading chooses a method **at compile time**, using argument expression types and applicable conversion rules. For ordinary calls, consider fixed-arity methods without boxing/unboxing first, then fixed-arity methods that permit boxing/unboxing, and finally variable-arity invocation. Choose the most specific applicable method within the first successful phase. This is more precise than a blanket “widening beats boxing beats varargs” slogan.
-
-```java
-static String pick(final long value) { return "long"; }
-static String pick(final Integer value) { return "Integer"; }
-static String pick(final int... values) { return "varargs"; }
-```
-
-`pick(1)` chooses `long`: widening works in the first phase. `pick(Integer.valueOf(1))` chooses `Integer`: reference identity conversion works without unboxing. `pick()` chooses varargs and receives an empty array. `pick((int[]) null)` selects the array form of the varargs declaration; iterating it would throw. `pick(null)` is ambiguous between unrelated reference parameter types `Integer` and `int[]`; casting null resolves which contract is requested.
-
-Two overloads accepting `String` and `Integer` make `choose(null)` ambiguous. With `Object` and `String`, String is more specific and wins. Runtime object class does not rescue an ambiguous source call.
-
-### Overloading and overriding interact
-
-Suppose Parent has `show(Object)` and Child overrides it while also declaring `show(String)`. With `Parent p = new Child(); p.show("x");`, the compiler selects Parent's visible `show(Object)` signature. Runtime dispatch then executes Child's override of that signature. It does not reconsider Child's additional overload. Return type alone cannot distinguish overloads. An override can narrow a reference return type and checked exceptions, but cannot reduce access.
-
-### Varargs and API design
-
-A varargs declaration is represented as an array parameter and must be last. Avoid overload sets that combine several unrelated varargs types. Generic varargs can create heap pollution because the array is reified while its generic component is erased; the generics chapter explains the restrictions. Varargs arrays are mutable: retaining an incoming array can let later caller mutations change object state. Copy when snapshot ownership is intended.
-
-Recursion creates successive method invocations with independent locals; excessively deep recursion can produce `StackOverflowError`. Iteration often makes bounded stack use easier to reason about. Neither approach changes Java's argument-passing model.
-
-### Interview prediction exercise
-
-Given `Object value = "text"`, overloads `format(Object)` and `format(String)` select `format(Object)`. If the selected method is virtual and overridden, dispatch can change its implementation, but never its already selected signature. State both steps in the answer.
-
-## A complete overload and dispatch investigation
-
-<JavaExample file="CoreDispatchLab.java" output={"child-object\nchild-string\nlong\nInteger\nvarargs"} />
-
-### Trace the call in two stages
-
-`receiver` is declared Parent, so its visible describe signature accepts Object. The argument's runtime String class does not cause an overload search in Child. After choosing that signature, virtual dispatch uses the actual Child receiver and executes Child.describe(Object). Casting the receiver to Child exposes its String overload at the next source call, producing child-string.
-
-The final calls demonstrate the applicability phases. The int literal widens to long without boxing, so a later boxing or variable-arity candidate is not selected instead. An existing Integer matches the Integer parameter by reference conversion. An empty argument list needs the varargs form. The method bodies only report the chosen path; the selection occurs before their execution.
-
-### Ambiguity is a compile-time result
-
-With unrelated String and Integer overloads, a null argument supplies no most-specific winner. A cast such as `(String) null` narrows the intended overload, but does not make the resulting receiver/argument safe to dereference. Return type alone cannot distinguish two overload declarations with the same parameter signature. Adding an overload can therefore break recompilation of callers while old binaries still link to their original descriptors.
-
-A varargs method can also be invoked in fixed-arity form by passing its array type. `choose((int[]) null)` passes a null array; `choose()` supplies an empty array. Those states require different body handling. Never collapse them into the same “zero arguments” explanation.
-
-### Parameter ownership and exceptions
-
-For an array or object parameter, reassignment is local while mutation through the shared reference can be visible. A final parameter prevents local reassignment; it does not prevent writing array entries or mutating fields. Returning a replacement object is the normal way to make replacement explicit in the caller.
-
-Argument expressions complete before entering the method. If constructing the second argument throws, the method body never runs, but side effects already performed by the first argument remain. Java does not roll those effects back. This matters when overloaded factory/validation methods accept expensive or state-changing expressions.
-
-### Coding exercise solution strategy
-
-Draw separate columns for declared receiver type, declared argument type, chosen signature and runtime implementation. Fill the signature column before considering virtual dispatch. Then trace parameter values/aliases only for the chosen body. This order prevents the common error of mixing overload resolution with the pass-by-value model.
-
+<span id="trace-mutation-and-local-reassignment" aria-hidden="true"></span>
 <span id="java-implementation" aria-hidden="true"></span>
-
-## Method-call implementation examples
-
-The following program is a complete executable example. Compile with `javac ParameterValues.java` and run with `java ParameterValues`.
+<span id="method-call-implementation-examples" aria-hidden="true"></span>
 
 <JavaExample file="ParameterValues.java" output={"Mira"} />
 
+User has one mutable name field. Its constructor assigns its name parameter to the new object's field using this.name. Main creates one User named Ava. Rename receives a copied reference and writes Mira into the shared object. Replace receives another copied reference and reassigns **its own local parameter** to a new User named Leo. Main's variable still identifies the original object, whose name is Mira.
+
+<ConceptAnimation client:visible model="references" />
+
+The animation is an illustrative reference graph, not JVM memory measurement. Pause before a write and predict whether a variable arrow or an object's field will change.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+<span id="overload-phases-and-virtual-dispatch" aria-hidden="true"></span>
+<span id="a-complete-overload-and-dispatch-investigation" aria-hidden="true"></span>
+
+## Keep the variable and the referent separate
+
+<Diagram client:visible definition={"flowchart LR\n C[Caller variable] --> O[Original User]\n P[Parameter variable] --> O\n P -. after local reassignment .-> N[New User]"} caption="At entry both variables identify one object. Rebinding a parameter changes only that variable." />
+
+A final parameter prevents local reassignment; it does not prevent mutation through the reference. Likewise, final main's User variable does not make User immutable. An array follows the same rule: assigning `items[0] = 9` changes a shared component; assigning `items = new int[3]` changes only a parameter variable.
+
+To replace what a caller uses, return a replacement and assign the returned value in the caller. A mutable holder can expose a replaceable field, but that is still object mutation through a copied reference. Swapping two parameter variables never swaps the caller's variables.
+
+## Calls do not roll back prior effects
+
+Java evaluates arguments left to right before entering the method. If evaluating the second argument throws, the method body does not run, but side effects from the first argument remain. Exceptions do not roll those effects back. Similarly, writing a field and later throwing leaves the field changed unless the program explicitly implements another policy.
+
+Overload selection and runtime dispatch are different questions from argument passing. Their worked examples belong with overloading and inheritance. Neither changes the copied-value rule.
+
 <span id="common-mistakes" aria-hidden="true"></span>
-
-## Method-selection pitfalls
-
-Do not describe object arguments as pass-by-reference. Assigning a new object to a parameter does not rebind the caller's variable. Arrays follow the same reference-value rule. Avoid confusing a final reference with an immutable object.
-
-<KnowledgeCheck client:visible question={"A method assigns a new object to its parameter. What happens to the caller's variable?"} options={["It is rebound to the new object", "It still refers to the original object", "The original object becomes immutable"]} correct={1} explanations={["The parameter is a separate variable containing a copied reference. Reassigning it does not rebind the caller.", "Correct: the caller keeps its original reference. Mutation through an alias is a separate operation.", "Parameter assignment does not change the mutability of either object."]} />
-
+<span id="method-selection-pitfalls" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+<span id="method-call-interview-practice" aria-hidden="true"></span>
+<span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Method-call interview practice
+## Practice: return a replacement
 
-### How can a method replace the object used by the caller?
-
-<details>
-<summary>Explanation</summary>
-
-Return the replacement, then have the caller assign that returned reference. Alternatively, a mutable holder can expose a value that is changed, but this is still mutation through a copied reference, not a change to Java's calling convention. Prefer explicit return values when replacement is the intent.
-
-</details>
-
-### Additional interview questions
+Change replace so main actually uses the new User. Predict the final printed name.
 
 <details>
-<summary>Can a method swap two caller variables by reassigning its reference parameters?</summary>
+<summary>Solution</summary>
 
-No. It swaps only its local parameter copies. It can mutate objects both references identify, but redirecting one local reference does not redirect the caller's variable. Return a replacement result or define an explicit mutable holder contract.
+```java
+static User replacement() {
+    return new User("Leo");
+}
+```
 
-</details>
-
-<details>
-<summary>Given overloads `show(Object)` and `show(String)`, which is selected for `Object x = "text"; show(x)`?</summary>
-
-show(Object). Overload selection uses x's compile-time type. Runtime dispatch can select an override of that chosen signature on a receiver, but does not reconsider overloads using the argument's runtime class.
-
-</details>
-
-<details>
-<summary>Why can `choose(null)` become ambiguous after an overload is added?</summary>
-
-Null converts to unrelated reference types such as String and Integer, and neither parameter type is more specific than the other. The compiler cannot choose. Existing compiled callers can still reference the old descriptor, so source and binary compatibility differ.
-
-</details>
-
-### Coding exercise
-
-Change replace to return a User and assign it in main. Add an overloaded method taking Object and User, and predict the chosen overload for each declared variable type.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Why does casting the argument differ from casting the receiver?</summary>
-
-Casting an argument changes the compile-time type used to choose among visible overloads. Casting the receiver changes the member set visible at that source call. Neither cast reconstructs the object; both can fail runtime compatibility checks where applicable.
-
-</details>
-
-<details>
-<summary>Can a subclass override a static method?</summary>
-
-A same-signature static method hides rather than overrides. Static selection is tied to compile-time qualifying type, unlike virtual instance dispatch. Calling a static member through an instance obscures that distinction and should be avoided.
-
-</details>
-
-<details>
-<summary>What should an overload-heavy API test?</summary>
-
-Test null-call ambiguity at compile time, primitive versus wrapper inputs, no-varargs versus explicit-array calls and overload addition effects. Runtime unit tests cannot execute a source call that the compiler correctly rejects.
+Declare main's variable without final, keep rename(user), then execute `user = replacement();`. The print becomes Leo because **main** reassigns its variable to the returned reference. The previous object was not transformed into Leo; the caller changed which object it uses. Whether the original is collectible depends on all remaining references, not this one variable alone.
 
 </details>
 
 <span id="references" aria-hidden="true"></span>
+<span id="method-call-references" aria-hidden="true"></span>
 
-## Method-call references
+## Reference-passing references
 
-- [Method parameters and argument passing](https://dev.java/learn/language/oop/classes-objects/calling-methods-constructors/)
-- [Overriding, hiding and overload distinctions](https://dev.java/learn/language/oop/inheritance/overriding/)
-- [Compiler overload-resolution implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/jdk.compiler/share/classes/com/sun/tools/javac/comp/Resolve.java)
+- [Dev.java: passing primitive and reference arguments](https://dev.java/learn/language/oop/classes-objects/calling-methods-constructors/)
+- [JLS: method invocation evaluation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.4)

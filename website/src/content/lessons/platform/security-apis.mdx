@@ -1,0 +1,58 @@
+---
+title: "Integrity, signatures and trusted identity"
+module: "platform"
+group: "Security APIs"
+summary: "Integrity, signatures and trusted identity with focused examples, failure traces and solved practice."
+order: 1230
+version: "Java 8+"
+prerequisites: ["platform/serialization-and-security", "libraries/io-nio-networking"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Name the guarantee before choosing an API
+
+An unkeyed digest summarizes bytes. It detects changes only when the expected digest comes from a trusted source; replacing both data and digest defeats a naive integrity check. A MAC authenticates with a shared secret. A signature lets a private-key holder sign and a public-key holder verify. Encryption addresses confidentiality; authenticated encryption additionally checks integrity and has its own next chapter.
+
+These guarantees are different from input validity and authorization. An integer can parse successfully while violating its range, and a valid identifier can still refer to a resource the caller may not access.
+
+<JavaExample file="SignatureLesson.java" output={"true\nfalse"} />
+
+## Follow initialization, bytes and verification
+
+The example generates one ephemeral RSA key pair. The private key initializes the signer; update supplies UTF-8 message bytes; sign returns a signature. The public key initializes a verifier. Updating it with the original bytes and verifying the signature yields true. Reinitializing and updating with changed bytes yields false.
+
+The program prints neither keys nor random signature bytes. Its reproducible output describes verification behavior, rather than a fixed signature encoding. Signature objects have operation state; initialize the intended operation and feed the intended bytes in order. Use explicit algorithm names and standard providers rather than inventing a message-transformation scheme.
+
+## Verification needs an already trusted key relationship
+
+A successful verification proves a mathematical relationship to the supplied public key. It does not by itself establish who owns that key, whether it is authorized for this message or whether the operation may be replayed. A protocol must establish key trust, message context, freshness and the intended operation separately.
+
+TLS illustrates the same identity distinction: certificate-chain validation and hostname verification establish different necessary aspects of the expected peer. Disabling either to remove an error loses the intended identity guarantee. A truststore defines trusted peer material; an identity keystore holds identity keys/certificates. Merely parsing a certificate does not establish trust.
+
+## Validate and authorize independently
+
+<JavaExample file="ValidatedIdentifier.java" output={"42\nrejected"} />
+
+RequirePositive accepts 42 and rejects zero as outside the identifier domain. No authenticated caller context appears in that function, so it cannot decide authorization. At an application boundary, bound input, parse it, validate domain state, authenticate the relevant caller/message and authorize the requested operation. Each step answers a different question.
+
+Security-sensitive randomness uses SecureRandom, not a general simulation generator. Password storage requires an appropriate salted password-hashing/KDF design, rather than a fast general-purpose digest. The Security Manager is permanently disabled from Java 24; it is not an available modern in-process sandbox. Operational isolation has its own explicit process/resource boundary.
+
+## Practice: replace the public key
+
+An attacker replaces both a message and the verification key with their own pair. Can a valid signature alone expose this substitution?
+
+<details>
+<summary>Answer</summary>
+
+No. Verification checks against the key supplied to it. The application needs a trusted binding for the expected identity/key and a policy for permitted operations and message context. Similarly, a valid positive identifier is not proof of access to that resource. Preserve cryptographic and authorization failures rather than turning them into a success-like fallback.
+
+</details>
+
+## Security API references
+
+- [Signature lifecycle and algorithms](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/security/Signature.html)
+- [Java Cryptography Architecture guarantees and providers](https://docs.oracle.com/en/java/javase/25/security/java-cryptography-architecture-jca-reference-guide.html)
+- [JSSE trust managers and endpoint identity](https://docs.oracle.com/en/java/javase/25/security/java-secure-socket-extension-jsse-reference-guide.html)
+- [JEP 486: Security Manager permanently disabled](https://openjdk.org/jeps/486)

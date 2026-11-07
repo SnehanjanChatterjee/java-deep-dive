@@ -1,0 +1,48 @@
+---
+title: "Read/write locking and snapshot ownership"
+module: "concurrency"
+group: "Advanced synchronization"
+summary: "Allow multiple genuine readers while excluding writers, and retain ownership after unlocking through a copy."
+order: 990
+version: "Java 8+"
+prerequisites: ["concurrency/locks-interruption", "concurrency/deadlock-liveness"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Readers need consistency but need not exclude each other
+
+A catalog is updated occasionally and copied frequently. Two threads copying it do not change its state, so they may share read ownership. An update needs exclusive write ownership so no reader copies a partially changed representation. ReentrantReadWriteLock represents those two modes under one coordination protocol.
+
+This can help sufficiently substantial read-dominated work. It can also add overhead or delay writers. First verify that the read path actually does not mutate the protected invariant; an access-order cache get can relink recency and therefore is not read-only.
+
+## Implement a copied catalog snapshot
+
+<JavaExample file="ReadWriteCatalog.java" output={"{java=Language}\n{java=Language, jvm=Runtime}"} />
+
+Put validates key/value, acquires the write lock, mutates the TreeMap and unlocks in finally. Snapshot acquires the read lock, copies the map while writers are excluded, then returns an unmodifiable copy. Concurrent snapshot calls can hold read locks together. A writer waits until readers release; another reader cannot enter during active write ownership.
+
+The earlier snapshot contains only java even after the catalog gains jvm. That is because it owns a separate map, not because a read lock remains attached to the returned value. Returning the mutable internal map would let callers bypass the whole protocol after unlock. UnmodifiableMap alone would also be insufficient if it wrapped the same mutable backing map; copying is essential here.
+
+<Diagram client:visible definition={"flowchart TD\n R1[Reader one] --> R[Shared read ownership]\n R2[Reader two] --> R\n R --> C[Copy stable map while writer excluded]\n W[Writer] --> E[Exclusive write ownership]\n C --> S[Return independently owned snapshot]"} caption="Read locks coordinate the copy interval. The returned snapshot remains stable because it has separate storage." />
+
+## Reentrancy, downgrading and upgrade hazards
+
+An owning writer can acquire the read lock before releasing the write lock, downgrading while retaining protected observation. That supports a transition from mutation to a read-only phase without an unprotected gap.
+
+Holding a read lock and waiting for write ownership is an upgrade hazard. A competing reader may do the same, leaving both retaining reads that prevent a writer. Release/reacquire with a fresh predicate check or design another atomic transition. Never assume read ownership reserves the state until an eventual write acquisition.
+
+Fair construction changes documented lock acquisition policy under contention; it is not operating-system fairness, a latency SLA or protection from unrelated lock cycles. Each method still needs the correct interruptible/timed acquisition policy and finally release.
+
+## Exercise and complete reference solution
+
+Implement a sorted catalog returning stable snapshots without exposing internal mutable storage. `ReadWriteCatalog` is the complete solution. Explain why both mutation and snapshot copying follow the same read/write protocol and why a copied snapshot no longer needs its lock.
+
+If the catalog contained mutable values, copying references would not freeze their contents. The current String values are immutable. A deeper mutable model would need immutable values, deep snapshots or another ownership policy. Before selecting this lock for performance, measure the actual critical-section size and read/write distribution.
+
+## Primary references
+
+- [ReentrantReadWriteLock contracts and downgrading](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/locks/ReentrantReadWriteLock.html)
+- [OpenJDK read/write lock implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/ReentrantReadWriteLock.java)

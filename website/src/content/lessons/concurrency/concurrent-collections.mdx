@@ -1,201 +1,94 @@
 ---
-title: "Choosing concurrent collections"
+title: "Choosing concurrent collections by operation"
 module: "concurrency"
 group: "Concurrent data structures"
-summary: "Select containers by atomicity, ordering, capacity, iteration and ownership."
-order: 480
-version: "Java 8+ · source analysis OpenJDK 25"
-prerequisites: ["concurrency/memory-model", "collections/hashmap"]
+summary: "Match an actual shared operation to atomicity, iteration, ordering and capacity contracts."
+order: 900
+version: "Java 8+"
+prerequisites: ["concurrency/future-cancellation", "collections/choosing-collections"]
 advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts"></span>
-## Start with the operation's complete invariant
+<span id="mechanics-and-tradeoffs"></span>
+<span id="linked-queue"></span>
+<span id="skip-list-map"></span>
+<span id="start-with-the-operations-complete-invariant"></span>
+<span id="concurrentlinkedqueue-nonblocking-fifo"></span>
+<span id="logical-removal-and-lagging-pointers"></span>
+<span id="progress-size-and-publication"></span>
+<span id="concurrentskiplistmap-sorted-concurrent-navigation"></span>
+<span id="base-list-and-probabilistic-index-levels"></span>
+<span id="views-and-individual-entry-snapshots"></span>
+<span id="inspect-one-complete-guarded-queue-implementation"></span>
+## Name the operation before choosing the container
 
-A concurrent collection supplies particular atomic operations, publication effects and traversal rules. It does not automatically make a sequence of calls atomic, freeze stored objects or establish one consistent snapshot across several containers. Start with what must appear indivisible, whether ordering matters, and what happens when a consumer has no work or a producer exceeds capacity.
+A frequency table needs an atomic per-key increment. A work pipeline needs storage plus a policy when it is empty or full. A listener registry may need stable membership during callbacks. All involve sharing, but the word concurrent does not make their required behavior identical.
 
-The following choices answer different questions. Read the linked implementation chapters after identifying the required contract; this guide compares them rather than treating one container as universally preferable.
+Write the complete operation: which state must agree, what ordering matters, whether an absent item means wait or return, and who ends the work. A sequence of thread-safe calls does not automatically become one atomic operation.
 
-| Required behavior | Candidate | Contract and tradeoff to verify |
+## Choose a contract for a concrete problem
+
+| Problem | Candidate | Why the contract matters |
 | --- | --- | --- |
-| Exact-key lookup with atomic per-key updates | <a href={lessonUrl('learn/concurrency/concurrenthashmap/')}>ConcurrentHashMap</a> | Unordered, nulls prohibited; supported per-key atomicity is not a multi-key transaction |
-| Bounded producer-consumer storage with waiting | <a href={lessonUrl('learn/concurrency/blocking-queues/')}>BlockingQueue implementations</a> | Choose a real capacity, FIFO/priority policy, timeout and termination protocol |
-| Nonblocking FIFO access without built-in capacity | <a href="#linked-queue">ConcurrentLinkedQueue</a> | Immediate poll/offer API, unbounded storage, weakly consistent traversal; no automatic backpressure |
-| Concurrent sorted keys, neighbors and ranges | <a href="#skip-list-map">ConcurrentSkipListMap</a> | Expected average logarithmic key operations, comparison-based equivalence, weakly consistent views |
-| Stable membership during read-mostly traversal | <a href={lessonUrl('learn/concurrency/copy-on-write/')}>CopyOnWriteArrayList</a> | Captured array snapshot, expensive mutations, mutable elements still shared |
-| One exact conditional counter/state transition | <a href={lessonUrl('learn/concurrency/atomics-cas/')}>AtomicInteger / AtomicReference</a> | CAS/update contract must express the whole invariant; retries must not repeat external effects |
-| High-update statistics without an exact live snapshot | <a href={lessonUrl('learn/concurrency/atomics-cas/')}>LongAdder</a> | Striped updates reduce contention; sum during updates is not an atomic admission decision |
-| A compound invariant across arbitrary calls | A consistently shared lock / suitable immutable-state publication | All participants must follow the protocol; wrapping one primitive call is insufficient |
+| Shared independent key counts | ConcurrentHashMap merge/compute | One supported per-key update is atomic; several keys are not a transaction |
+| Bounded FIFO producer-consumer pipeline | ArrayBlockingQueue | Put/take can wait; timed offer can refuse admission |
+| Immediate nonblocking FIFO endpoints | ConcurrentLinkedQueue | Poll reports emptiness; there is no built-in capacity/waiting policy |
+| Shared ordered keys and neighbors | ConcurrentSkipListMap | Comparison-based navigation; range views remain backed and concurrent |
+| Read-mostly stable listener membership | CopyOnWriteArrayList | Iterator captures an array; mutations copy references |
+| Invariant spanning arbitrary objects/calls | One common lock or combined immutable state | All participating accesses must use the same larger protocol |
 
-Do not confuse a concurrent FIFO with a bounded blocking FIFO, or sorted traversal with a snapshot. Likewise, an application's latency requirement is not answered by one asymptotic complexity label: equality/comparison cost, contention, allocation and downstream delays all contribute.
+Each container has a focused chapter and complete usage example. AtomicInteger/AtomicReference and LongAdder address different scalar-state questions in the later atomics chapter; a statistics sum is not a hard admission decision.
 
 <span id="worked-example"></span>
-## Trace a bounded producer-consumer queue
-
-The worked queue example uses a fixed-size circular array. put waits while full and take waits while empty. Both check their predicates in loops under the same monitor. Consuming clears the slot and signals waiters. Head and tail wrap modulo capacity; size distinguishes full from empty when the indexes coincide.
-
-At capacity two, insert first and second. Taking first clears its slot and frees capacity. Inserting third can reuse that physical slot while logical order remains second, third. A producer must not treat one wakeup as proof that a slot still belongs to it: another producer may acquire the monitor and use that capacity first.
-
-<Diagram client:visible definition={"flowchart TD\n P[Producer requests insertion] --> C{Storage full?}\n C -->|yes| W[Wait, release monitor, then reacquire]\n W --> C\n C -->|no| A[Store and update circular indexes under one monitor]\n A --> T[Consumer removes, clears slot and signals capacity]"} caption="A fixed storage bound and guarded predicates express a different contract from an unbounded nonblocking queue." />
-
-A capacity bound limits queued references, not every producer, waiting request or downstream resource. The dedicated BlockingQueue chapter adds explicit close-and-drain semantics. The simpler monitor example used here omits fairness, timed operations and closure; those limitations are part of choosing the right abstraction.
-
-<span id="mechanics-and-tradeoffs"></span>
-## Compare atomicity and iterator contracts
-
-ConcurrentHashMap offers atomic operations such as putIfAbsent, conditional replace, compute and merge. A get followed by put still exposes an interference interval. A non-null retrieval reporting a key update has the documented publication relationship for that update, not a whole-table snapshot guarantee. Its modern table/bin coordination and cooperative transfer differ from the fixed Segment-array descriptions of older releases.
-
-A synchronized wrapper can be correct under its documented mutex, but compound operations and traversal require that entire protocol. Synchronizing only writes while reading ordinary mutable storage without coordination is not equivalent. Concurrent containers and coarse locking offer different tradeoffs; neither automatically protects unrelated fields.
-
-| Container family | Iterator meaning | Concurrent changes |
-| --- | --- | --- |
-| Ordinary ArrayList / HashMap | Best-effort fail-fast | Detection is not a thread-safety mechanism |
-| CopyOnWriteArrayList | Captured array membership | Later structural mutations are not reflected |
-| ConcurrentHashMap / ConcurrentLinkedQueue / ConcurrentSkipListMap | Weakly consistent | Traversal can proceed with updates; no general point-in-time aggregate snapshot |
-| Synchronized wrapper | Documented shared-lock protocol | Caller must coordinate the complete traversal where required |
-
-Within BlockingQueue, choose the method's ordinary failure policy too: add/remove/element throw, offer/poll/peek report a special result, put/take wait, and timed offer/poll bound waiting. ArrayBlockingQueue supplies fixed storage; LinkedBlockingQueue needs an explicit useful capacity; SynchronousQueue performs a handoff without buffering; PriorityBlockingQueue orders priority but is logically unbounded. Those policies are not interchangeable forms of backpressure.
-
-A copy-on-write snapshot still contains references to the same objects. Mutable element fields can change independently of membership; their visibility and consistency require an element-level policy. Retained iterators can also retain old arrays and removed elements. Weakly consistent and snapshot iteration can both avoid ConcurrentModificationException while answering different application questions, so the vague label fail-safe is inadequate.
-
-<span id="linked-queue"></span>
-## ConcurrentLinkedQueue: nonblocking FIFO
-
-ConcurrentLinkedQueue is an unbounded, thread-safe FIFO based on linked nodes. Null elements are prohibited; poll can therefore use null for ordinary emptiness. It has no put/take waiting contract and no capacity constructor that turns it into bounded storage. A consumer finding no item must follow an application scheduling/notification policy rather than busy-poll indefinitely by accident.
-
-### Logical removal and lagging pointers
-
-OpenJDK 25 uses a nonblocking algorithm in the Michael–Scott queue family, adapted to garbage collection and additional removal operations. Offer links a new node using a CAS transition. Poll can claim an item by CAS-changing that node's item to null; logically removing an item and physically unlinking its old node are distinct steps. Head and tail can lag while helping/cleanup maintains reachability through the supported traversal rules.
-
-This representation explains why seeing an old node does not prove its item is still a live queue element. It also explains why a non-null item is part of membership state. The production code handles interference and traversal repair; merely adding CAS to a singly linked list does not reproduce that algorithm.
-
-### Progress, size and publication
-
-Lock-free progress means the algorithm is designed to permit system-wide progress despite interference; it does not guarantee that each particular caller finishes within a bounded number of its own steps. Wait-free is stronger. Allocation, scheduling and user callbacks also affect actual latency. Do not equate nonblocking with an unconditional fixed-time completion promise.
-
-Endpoint operations are designed to avoid a shared blocking lock, but retries and traversal repair still matter under contention. size requires traversal and can be inaccurate as a control decision while the queue changes. Contains/remove-by-value and aggregate operations also should not be assumed constant-time. `if (queue.size() < limit) queue.offer(item)` neither enforces a hard bound nor avoids the traversal cost.
-
-Actions before inserting an object are published under the queue's documented access/removal relationship to another thread. Later unsynchronized changes to that same object remain a separate sharing problem. Iterators are weakly consistent and bulk operations are not guaranteed atomic. A poll-until-null loop drains what it observes; null does not establish permanent shutdown while producers can still insert.
-
-<span id="skip-list-map"></span>
-## ConcurrentSkipListMap: sorted concurrent navigation
-
-ConcurrentSkipListMap supplies concurrent sorted keys with NavigableMap-style neighbor and range operations. Null keys and values are prohibited, including when a comparator could otherwise order null. Key equivalence comes from comparison result zero; choose comparison consistent with equals when the ordinary Map contract is required. Mutable ordering fields can invalidate search assumptions just as in an ordinary sorted container.
-
-Use it when the problem needs floor/ceiling keys, ordered range traversal or removal of the first eligible entry. ConcurrentHashMap instead targets hash-based exact-key operations without sorted neighbors. Neither sorted order nor concurrent access establishes an atomic multi-key transaction.
-
-### Base list and probabilistic index levels
-
-The implementation has an ordered linked base level and sparser index levels that let searches move right and down toward a key. Index placement is probabilistic. Core key operations have expected average O(log n) search cost under the skip-list model, assuming bounded comparison cost. This is not the same structural worst-case-height guarantee as a balanced search tree, nor a nanosecond bound under arbitrary contention.
-
-Updates coordinate through atomic link/value transitions. Removal can logically mark an entry before physical unlinking; other traversals can assist cleanup. Index maintenance guides search rather than defining a separate copy of the map's membership. The full source supplies the marker/helping cases that a drawing of layered links alone would omit.
-
-<Diagram client:visible definition={"flowchart TD\n H[Start at an index level] --> R{Next indexed key precedes query?}\n R -->|yes| M[Move right]\n M --> R\n R -->|no| D[Descend toward ordered base level]\n D --> B[Find matching key or neighbor]\n B --> V[Return one operation result, not a whole-map snapshot]"} caption="A skip-list index accelerates ordered search. Concurrent traversal still has its own consistency contract." />
-
-### Views and individual entry snapshots
-
-Views and iterators are weakly consistent. A range view is backed by the map and can reflect concurrent changes; it is not an immutable historical slice. The Map.Entry objects returned by this class represent individual mapping snapshots and do not support setValue. Their snapshot status does not make a collection of separately obtained entries one coherent global snapshot, and a mutable value object is still shared.
-
-Use pollFirstEntry when the required operation is atomic retrieval/removal of the first entry, instead of assuming firstEntry followed by a separate remove cannot race. Conversely, polling one entry does not reserve an entire range for the caller. Ascending traversal is generally more efficient than descending traversal in this implementation; select an order for its semantics first and measure a relevant workload before drawing a performance conclusion.
-
 <span id="java-implementation"></span>
-## Inspect one complete guarded queue implementation
+<span id="trace-a-bounded-producer-consumer-queue"></span>
+## Trace storage and application ownership separately
 
-Compile with `javac BoundedQueueDemo.java` and run with `java BoundedQueueDemo`.
+At FIFO capacity two, inserting first and second fills storage. Removing first frees a slot; third can reuse that physical position while logical order remains second, third. Bounded queued storage does not bound running producers, waiting requests or downstream connections. A larger request may hold memory before insertion and after removal.
+
+The guarded queue below is a complete small implementation of that storage invariant:
 
 <JavaExample file="BoundedQueueDemo.java" output={"first\nsecond\nthird"} />
 
-put waits before writing when size equals slots.length. take waits before reading when size is zero. Both mutate head/tail, slot contents and size under the same monitor, change size exactly once per successful operation, then notify. Taking clears the old slot so the backing array does not retain an object outside the logical queue.
+Slots, head, tail and size share one monitor. Put waits while full, take while empty, and both recheck after reacquisition. Size distinguishes empty from full when indexes coincide. Take clears the old slot so unused capacity does not retain an object. Its main is a sequential wraparound trace; the BlockingQueue chapter then runs an actual producer and consumer and adds explicit closure.
 
-The full-queue and empty-queue predicates belong in while loops because wait releases ownership; the predicate must be checked again after reacquisition. Interrupted waits propagate rather than fabricating a successful result. This single-file teaching example illustrates bounded storage and monitor ownership, not the ConcurrentLinkedQueue or skip-list algorithms. Their production source links below are the appropriate references for those substantially different representations.
+This code is a teaching queue, not an implementation of ConcurrentLinkedQueue or a skip list. The different algorithms are developed in their own chapters after the public contracts.
 
-For atomics, a retry loop must recompute from a fresh state after a failed CAS. Keep its computation free of external side effects that could repeat. ABA describes a location returning A→B→A, hiding intervening history from a value-only expectation. A stamp policy can make relevant history observable, but only if every participant follows it. Garbage-collected nodes remove some reuse hazards; they do not eliminate every logical ABA problem in arbitrary application state.
+<span id="compare-atomicity-and-iterator-contracts"></span>
+## Compare iteration guarantees
 
-AtomicLong supports exact individual updates/observations. LongAdder distributes updates across cells for statistics, but a concurrent sum is not one linearizable snapshot. Its reset and sumThenReset policies need care under live updates. Do not weaken an exact budget invariant into a statistics-oriented observation merely to reduce contention.
+| Container family | Traversal model | What it means |
+| --- | --- | --- |
+| Ordinary ArrayList/HashMap | Best-effort fail-fast | Detection is not a thread-safety protocol |
+| CopyOnWriteArrayList | Captured array membership | Later structural updates do not change that iterator |
+| ConcurrentHashMap/linked queue/skip list | Weakly consistent | Traversal tolerates updates without one global point-in-time snapshot |
+| Synchronized wrapper | Documented mutex protocol | Caller must coordinate complete traversal where required |
 
-<span id="common-mistakes"></span>
+The loose phrase fail-safe hides important differences. A snapshot array still points to the same mutable elements. A weakly consistent view can reflect some updates without representing one historical map.
+
 ## Do not compose guarantees that were never promised
 
-A concurrent map holding ArrayList values does not make concurrent list.add safe. An unbounded concurrent queue does not enforce backpressure. A snapshot iterator does not freeze its elements. A synchronized method call does not automatically include the next method call in its critical section. A sorted concurrent map does not make all of its bulk operations one snapshot.
+A concurrent map holding ArrayList values does not make concurrent list.add safe. A get followed by put can lose an update despite each call being thread-safe. An unbounded queue does not enforce backpressure. A sorted concurrent map does not reserve an entire range atomically. Synchronizing only writes while making uncoordinated ordinary reads does not provide a complete protocol.
 
-Null policies, equality/ordering, iteration, admission and lifecycle all belong in the selection decision. If the real invariant spans several keys and another counter, one larger lock or an atomically replaced immutable combined state may be clearer than combining several independently atomic containers.
+Null policy, equality/comparison cost, callback duration, contention and retained storage also matter. A complexity label alone does not decide latency. A consistently shared coarse lock can be correct when the full invariant needs exclusion; concurrent primitives are useful when their individual contracts fit.
 
+<span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
-## Selection exercises with explained answers
+<span id="selection-exercises-with-explained-answers"></span>
+<span id="coding-exercise-and-implementation-path"></span>
+## Exercise with explained choices
 
-<details>
-<summary>Which queue should wait when a bounded work backlog is full?</summary>
+A consumer must wait when no work exists and producers must not queue beyond 100 items. Choose a bounded BlockingQueue and an explicit termination policy. Replacing it with ConcurrentLinkedQueue plus `if (size() < 100)` is insufficient: the check and insertion can race, and size itself can require traversal while changing.
 
-Choose a suitable bounded BlockingQueue and define put/timed-offer behavior. ConcurrentLinkedQueue has no built-in capacity or blocking insertion contract. Checking its size before offer races with other producers and incurs a traversal.
-
-</details>
-
-<details>
-<summary>Does a null ConcurrentLinkedQueue poll mean the service is finished?</summary>
-
-It means that retrieval found no item under its operation's contract. A producer can add work afterward. Permanent completion needs a separate lifecycle protocol, such as coordinated producer completion or the close-and-drain design in the dedicated queue chapter.
-
-</details>
-
-<details>
-<summary>When does ConcurrentSkipListMap fit better than ConcurrentHashMap?</summary>
-
-When sorted neighbors, first/last entries or key ranges are required. Its expected logarithmic comparison-based operations provide different semantics from an unordered hash map. If only independent exact-key lookup is needed, maintaining sorted navigation may buy functionality the problem does not require.
-
-</details>
-
-<details>
-<summary>Why is a skip-list entry snapshot not a range snapshot?</summary>
-
-Each returned entry captures one mapping when produced. Other entries can be produced during different concurrent states. Iterating a backed range does not establish one atomic instant for every key/value pair.
-
-</details>
-
-<details>
-<summary>Why must a blocking-queue condition be checked after waking?</summary>
-
-A wakeup can be spurious or the changed capacity/data can be consumed by another contender before this thread reacquires the lock. The protected state predicate, not the notification itself, authorizes progress.
-
-</details>
-
-<details>
-<summary>Why is a get-then-put increment unsafe on ConcurrentHashMap?</summary>
-
-Two individually safe calls do not combine the read and update. Competing callers can read the same old count and overwrite each other. Use merge/compute for a suitable per-key update, or a correctly coordinated value object.
-
-</details>
-
-<details>
-<summary>When is LongAdder the wrong counter?</summary>
-
-When an exact linearizable observation or validate-and-update operation is required, such as a hard admission limit or unique sequence allocation. Its concurrent sum is intended for a different statistics contract.
-
-</details>
-
-<details>
-<summary>Does copy-on-write capture mutable element fields?</summary>
-
-No. It captures the array's references. An element's fields can still change, and those changes need the element's own publication/coordination policy. The dedicated copy-on-write chapter demonstrates both structural replacement and shared StringBuilder mutation.
-
-</details>
-
-### Coding exercise and implementation path
-
-Extend the monitor queue with a nonblocking offer: while owning the monitor, return false immediately if full; otherwise store, advance tail, increment size and signal. Never wait in that method, and do not check capacity outside the monitor. Test invalid capacity, null input, FIFO wrapping, full refusal without mutation, interrupted put/take and cleared slot reuse.
-
-For a complete closeable variant, follow the <a href={lessonUrl('learn/concurrency/blocking-queues/')}>BlockingQueue implementation chapter</a>. For lock-free FIFO and skip-list algorithms, read the specific production methods rather than claiming this monitor exercise implements them: ConcurrentLinkedQueue offer/poll and traversal repair; ConcurrentSkipListMap doPut/doRemove, index navigation and helping.
+For a frequency map, use an atomic merge rather than get/put. For stable callbacks over an infrequently changed registry, consider a copy-on-write snapshot while giving mutable listener objects their own policy. The following focused chapters supply the complete examples and implementation reasoning for these selections.
 
 <span id="references"></span>
 ## Collection source references
 
-- [OpenJDK 25 ConcurrentLinkedQueue contract and linked algorithm](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentLinkedQueue.java)
-- [OpenJDK 25 ConcurrentSkipListMap contract and index/base-list algorithm](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentSkipListMap.java)
-- [ConcurrentHashMap per-key guarantees](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentHashMap.java)
-- [CopyOnWriteArrayList snapshot iterator](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CopyOnWriteArrayList.java)
-- [AtomicStampedReference](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/AtomicStampedReference.java)
-- [LongAdder striping and sum semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/LongAdder.java)
-- [BlockingQueue method families and publication](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/BlockingQueue.java)
+- [Concurrent collection families and memory effects](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/package-summary.html)
+- [BlockingQueue](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/BlockingQueue.html)
+- [Collections synchronized wrappers](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html#synchronizedMap(java.util.Map))

@@ -1,7 +1,9 @@
 import java.util.Arrays;
+import java.util.Objects;
 
 /** A bounded teaching dynamic array with null support and reference clearing. @author Snehanjan Chatterjee */
 public final class SimpleArrayList<T> {
+    public interface MatchRule<E> { boolean matches(E value); }
     private static final int MAX_CAPACITY = 1 << 20;
     private Object[] elements = new Object[2];
     private int size;
@@ -47,6 +49,21 @@ public final class SimpleArrayList<T> {
     public void clear() {
         Arrays.fill(elements, 0, size, null);
         size = 0;
+    }
+
+    /** Removes matches after evaluating every decision, preserving the container if the predicate throws. */
+    public int removeAllMatching(final MatchRule<? super T> rule) {
+        Objects.requireNonNull(rule, "rule");
+        final int oldSize = size;
+        final boolean[] keep = new boolean[oldSize];
+        for (int read = 0; read < oldSize; read++) { keep[read] = !rule.matches(get(read)); }
+        int write = 0;
+        for (int read = 0; read < oldSize; read++) {
+            if (keep[read]) { elements[write++] = elements[read]; }
+        }
+        Arrays.fill(elements, write, oldSize, null);
+        size = write;
+        return oldSize - write;
     }
 
     /** Rejects invalid element indexes before reading or mutating. */

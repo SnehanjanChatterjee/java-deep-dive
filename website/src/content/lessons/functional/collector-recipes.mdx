@@ -1,0 +1,56 @@
+---
+title: "Collect lists, maps and grouped results"
+module: "functional"
+group: "Collectors"
+summary: "Build a result container without managing every insertion"
+order: 570
+version: "Java 8+; later factories labelled individually"
+prerequisites: ["functional/reductions"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Build a result container without managing every insertion
+
+A reduction can produce one total. A collector can build a list, join text or group input into maps. collect accepts a description of the accumulation process; ordinary factories cover many tasks without requiring a custom collector.
+
+<JavaExample file="CollectorRecipes.java" output={"{3=[jvm], 4=[java, java]}\njava, jvm, java\n{java=2, jvm=1}\n{3=1, 4=2}"} />
+
+Read the first result by shape: input elements are String, classification returns Integer length, and each map value is List&lt;String&gt;. groupingBy obtains a group key for each input and passes the input to that group's downstream collector. TreeMap::new supplies deterministic key order; it does not sort the words within each group. The downstream toList retains the group's encounter sequence.
+
+## Select a result shape
+
+joining(", ") reduces Strings to one String with separators. counting produces a Long count. partitioningBy creates boolean groups under its documented contract. mapping transforms each value before a downstream reduction. filtering, available from Java 9, can filter inside a group without removing the group key itself as an upstream filter might.
+
+When only counts are needed, groupingBy(length, TreeMap::new, counting()) avoids retaining every word in a list. Its type is Map&lt;Integer,Long&gt;. A group map's key order comes from its factory/contract, not from the fact that a stream began with an ordered source.
+
+## Handle duplicate map keys deliberately
+
+toMap(keyMapper, valueMapper) rejects duplicate logical keys. In the example, the word java appears twice. The value mapper supplies one per occurrence and Integer::sum combines counts, yielding java=2. A “keep first” workaround would lose required count information. A timestamp-based latest-value rule can instead be valid when the domain calls for it.
+
+The map supplier chooses TreeMap here. A sorted map uses comparison-zero key equivalence; a hash map uses equality/hashing. Pick a relation consistent with the intended value model. Duplicate policy is part of the API, not an implementation nuisance.
+
+## Complete word-frequency exercise
+
+<JavaExample file="StreamAggregation.java" output={"{java=2, jvm=1}"} />
+
+The source is a list of lines. Lowercasing uses Locale.ROOT because these tokens are machine terms rather than user-facing localized text. split produces arrays; Arrays.stream adapts each array; flatMap emits the words; groupingBy uses Function.identity so each word is its own key; downstream counting counts occurrences. TreeMap sorts output keys.
+
+This supplied input is already simple space-separated text. Real tokenization requires declared punctuation, whitespace and case rules. The exercise solution counts tokens under this small declared grammar; it does not claim to solve arbitrary natural-language segmentation.
+
+## Publish the intended mutability
+
+Collectors.toList promises neither a particular implementation nor general mutability/thread safety. Stream.toList (16+) returns an unmodifiable list and can retain nulls. toUnmodifiableList (10+) rejects null elements. List.copyOf (10+) creates an unmodifiable reference snapshot and also rejects nulls. No one of these makes mutable elements deeply immutable.
+
+A grouping result can contain mutable nested containers. Making only the outer map unmodifiable still leaves those nested values mutable. If the API needs a detached immutable aggregate, finish into the domain value described in the custom collector chapter.
+
+## Worked exercise: map each group to lengths
+
+For words ["java","jvm","java"], group by first character, then use mapping(String::length, toList()) downstream. The one group j contains [4,3,4]. Replacing toList with counting changes the result to j=3 without retaining individual lengths. The classifier decides membership; the downstream collector decides what information the group stores.
+
+## References
+
+- [Collector factories and downstream composition](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Collectors.html)
+- [Mutable reduction](https://dev.java/learn/api/streams/reducing/)

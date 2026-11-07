@@ -1,0 +1,61 @@
+---
+title: "Foreign memory: bounds, layouts and lifetimes"
+module: "platform"
+group: "Native memory and interoperability"
+summary: "Foreign memory: bounds, layouts and lifetimes with focused examples, failure traces and solved practice."
+order: 1200
+version: "Java 22+"
+prerequisites: ["platform/method-handles", "reliability/exceptions-and-resources"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Give native storage an explicit owner
+
+The Foreign Function and Memory API separates a memory region from its lifetime and representation. A MemorySegment is a bounded view; an Arena controls the lifetime of native allocations; a ValueLayout describes how a value is represented and aligned. The stable API used here requires Java 22+, without preview flags.
+
+<JavaExample file="modern/ForeignMemoryDemo.java" output={"42\nclosed"} />
+
+Arena.ofConfined creates an explicitly closeable arena owned by the current thread. Allocate reserves storage for one int layout. Set writes 42 at byte offset zero, and get reads it while the arena remains open. Try-with-resources closes the arena. The retained segment reference still exists, but access is rejected because the storage lifetime ended. Reachability is not ownership permission.
+
+## Separate byte offsets from Java array indexes
+
+<JavaExample file="modern/ForeignLayoutLesson.java" output={"0:4\n7\nclosed"} />
+
+The point layout has two named Java-int members. X is at byte offset zero and y at four. The code derives those offsets through layout paths rather than scattering constants. It writes three and four, then reads their sum seven. The same segment becomes invalid when its arena closes.
+
+Struct members follow one another; a layout does not guess every external ABI's padding. A byte followed by an aligned int may need an explicit padding layout. Layouts also describe byte order and alignment. A slice is a view sharing storage and scope, not an independent allocation that extends the arena lifetime.
+
+<Diagram client:visible definition={"stateDiagram-v2\n [*] --> Open: arena created\n Open --> Open: access within layout and bounds\n Open --> Closed: close\n Closed --> Rejected: retained segment access\n Open --> Rejected: invalid offset or wrong thread"} caption="A segment reference is usable only while its access, bounds, alignment and lifetime conditions hold." />
+
+## Diagnose confinement separately from races
+
+Confined arenas restrict access and closing to their owner thread. Shared arenas allow access from multiple threads, but do not make a read-modify-write operation atomic or remove the need for synchronization. Global arenas have unbounded lifetime; automatic arenas depend on reachability-based cleanup. Choose a lifetime model deliberately rather than keeping all memory permanently global to avoid closing errors.
+
+Bounds, alignment, wrong-thread and closed-scope failures describe different violated contracts. Check them before involving a native library. A valid Java segment does not prove arbitrary native code uses the pointer safely.
+
+## A foreign function adds an ABI contract
+
+Linker connects a symbol and FunctionDescriptor to an invocable MethodHandle. A downcall must match the actual native return/argument layouts, calling convention and ownership. Native code can retain a pointer after the Java call returns; its arena must outlive the actual native use. An upcall similarly needs a callback lifetime and a defined exception policy.
+
+Native access permission is a separate JDK/module launch policy for restricted operations. Inspect the selected JDK's documented --enable-native-access requirements for actual native linking rather than adding flags to explain a simple arena-allocation example. JNI and FFM are interoperability mechanisms, not substitutes for ordinary Java collections.
+
+## Practice: retain a slice beyond close
+
+Does slicing a live point segment keep its x field accessible after the original arena closes? Does a shared arena make `read + 1; write` an atomic increment?
+
+<details>
+<summary>Answers</summary>
+
+No to both. The slice shares the original scope, so closing invalidates it as well. Sharing changes thread-access permission; a compound update still needs a coordination policy. For a native API that stores a pointer, prove the owner and release protocol before handing over memory. A successful single call does not establish that retained pointers or callbacks remain valid.
+
+</details>
+
+## Foreign-memory references
+
+- [Arena lifetime and confinement](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/Arena.html)
+- [MemoryLayout representation and paths](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/MemoryLayout.html)
+- [MemorySegment bounds and slicing](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/MemorySegment.html)
+- [Linker ABI and native-access contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/Linker.html)

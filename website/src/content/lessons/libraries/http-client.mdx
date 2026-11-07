@@ -1,11 +1,11 @@
 ---
 title: "HTTP client, timeouts and response ownership"
 module: "libraries"
-group: "Networking"
+group: "HTTP and networking"
 summary: "Handle response status, body lifetime, size bounds, timeouts and cancellation as separate contracts."
-order: 320
-version: "Java 25 examples \u00b7 HTTP client Java 11+"
-prerequisites: ["libraries/io-nio-networking"]
+order: 690
+version: "Java 21+ examples; HTTP API Java 11+"
+prerequisites: ["libraries/text-encodings"]
 advanced: true
 ---
 
@@ -18,7 +18,7 @@ HttpClient sends HTTP requests and receives responses; it is part of the standar
 
 A received 404 or 500 is an ordinary HTTP response, not automatically an IOException. A connection failure, unsuccessful application status, cancelled wait and malformed body are different outcomes. Design the failure policy before writing retries or mapping every problem to an empty result.
 
-The examples here target Java 25. HttpClient implements AutoCloseable on modern JDKs; older Java 11 code has different client-lifecycle APIs. Do not copy try-with-resources around the client into an older target without checking the selected release.
+These complete examples require Java 21+, where HttpClient implements AutoCloseable. The HTTP API itself starts at Java 11; Java 11 code has different client-lifecycle APIs. Do not copy try-with-resources around the client into an older target without checking the selected release.
 
 ## A reproducible status investigation
 
@@ -105,11 +105,13 @@ When its connection/configuration ownership matches the application's scope. Con
 
 </details>
 
-## Coding exercise and solution
+## Completed size and encoding exercise
 
-Extend the loopback lab with a response larger than the accepted limit. Select a streaming handler, read at most limit+1, reject oversize and always close the body. Add a separate endpoint returning invalid UTF-8 if strict decoding is required. Assert status, size failure and decoding failure separately; one broad exception assertion would not prove the intended boundary.
+<JavaExample file="modern/HttpBoundaryLab.java" output={"hello\nsize rejected\nencoding rejected"} />
 
-A delayed-body test should use explicit coordination in the server/test rather than arbitrary timing guesses. Establish when headers/body progress occur, then test the actual cancellation/deadline policy. Do not infer a whole-operation deadline from a fast local test that never exercises the slow path.
+The loopback server exposes a small accepted body, a ten-byte body exceeding the eight-byte limit and malformed UTF-8. fetch accepts status 200, reads at most limit+1 bytes, rejects oversize, then decodes the complete body with REPORT. It closes the InputStream on success and every failure. The catch distinguishes the intended size failure from unrelated I/O setup/transport failures rather than printing success for any exception.
+
+This completes byte-size and decoding policy, not a full streaming deadline. A delayed-body test needs explicit coordination for when headers/body progress occur and a concrete cancellation design. A timed future wait alone would only bound that wait; it cannot establish that body consumption and remote effects stopped. That advanced lifecycle requires the task/cancellation concepts in the concurrency module.
 
 ## References
 

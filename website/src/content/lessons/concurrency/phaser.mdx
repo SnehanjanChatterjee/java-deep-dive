@@ -1,0 +1,59 @@
+---
+title: "Phaser: registration, arrival and departure"
+module: "concurrency"
+group: "Coordination utilities"
+summary: "Track changing phase participation explicitly and distinguish arrival, waiting and deregistration."
+order: 810
+version: "Java 8+"
+prerequisites: ["concurrency/cyclic-barrier"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## The participant set can change
+
+A barrier works well when every round has the same known participants. A parent operation can instead discover work dynamically: it creates children, waits for their current phase, and continues while some children have left. Phaser represents registered parties and the parties that have not yet arrived in the current phase.
+
+Registration is a promise to arrive. Missing that arrival can stall a phase. Deregistration reports arrival for the current phase and removes future participation. These are logical participants, not an automatically maintained list of Thread objects.
+
+## Register before a child can complete
+
+<JavaExample file="PhaserLesson.java" output={"registered before=3\ntotal=42\nregistered after=1\nterminated=true"} />
+
+The Phaser begins with one registered parent. The parent registers each child **before** starting it. Otherwise the last currently known participant could advance a phase before the new child was represented. Keeping the parent registered also prevents the task group from terminating while children are being assembled.
+
+The initial three means parent plus two children. Each child writes its own result slot and calls arriveAndDeregister in finally. Main calls arriveAndAwaitAdvance: it reports its own arrival and waits until the remaining children arrive. Their deregistrations let the phase advance while leaving only the parent registered. Joining then accounts for actual worker termination.
+
+The parent reads the completed slots, observes one remaining registered party, then deregisters itself. With the default termination policy, no parties remaining terminates the Phaser. That terminal state is distinct from forcibly stopping a thread.
+
+## Separate arrival from waiting
+
+| Operation | Records this party's arrival? | Waits for phase advance? | Remains in later phases? |
+| --- | --- | --- | --- |
+| arrive | Yes | No | Yes |
+| arriveAndAwaitAdvance | Yes | Yes | Yes |
+| arriveAndDeregister | Yes | No | No |
+| awaitAdvance | No | Yes, if the phase has not advanced | Does not change registration |
+
+Do not call two arrival operations for the same logical party in one phase. AwaitAdvance takes an observed phase number; another thread may already have advanced by the time the caller waits. Use the returned phase/termination state instead of assuming a universal monotonically unbounded count.
+
+The simple arriveAndAwaitAdvance wait is not an InterruptedException-producing API. When interruption/deadlines are required, arrange arrival deliberately and use awaitAdvanceInterruptibly with the observed phase and desired waiting policy. The owner must still decide how abandoned participation is repaired.
+
+## Termination and failure ownership
+
+ForceTermination releases relevant phase waits with terminal state. It does not interrupt application threads, release their permits or roll back partial results. A failed child still needs a failure channel. As with a latch, finally signaling participation prevents a hang but does not convert failure into a valid result.
+
+OnAdvance can customize phase termination/action policy; keep that policy short and consistent with registered arrivals. Tiered phasers can reduce contention for large participant sets, but this optimization follows a correct registration/arrival protocol.
+
+## Exercise and complete solution
+
+Model a parent with two dynamically registered children, then remove both children and finish the parent. `PhaserLesson` supplies the complete solution. Identify the state if one child forgets arriveAndDeregister: main can remain waiting because that promised arrival is missing. Prematurely deregistering before writing its result instead permits main to continue without that promised work.
+
+For repeated phases, participants that remain call an arrival operation once per phase; those leaving deregister at their final phase. Draw the registration and arrival counts for each phase before adding new threads.
+
+## Primary references
+
+- [Phaser registration, synchronization and termination](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Phaser.html)
+- [OpenJDK Phaser state transitions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Phaser.java)

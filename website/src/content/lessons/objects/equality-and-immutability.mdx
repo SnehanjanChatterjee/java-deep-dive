@@ -1,176 +1,85 @@
 ---
-title: "Equality, ordering and immutable design"
+title: "Equality, hashing and ordering contracts"
 module: "objects"
-group: "Value contracts"
-summary: "Build stable value contracts and prevent accidental state exposure."
-order: 60
+group: "References and identity"
+summary: "Compare identity, logical equality, hashes and ordering with explicit object contracts."
+order: 200
 version: "Java 8+"
-prerequisites: ["objects/inheritance-and-composition"]
+prerequisites: ["objects/inheritance-and-composition", "language/methods-and-references"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
-import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+<span id="value-equality-and-ownership" aria-hidden="true"></span>
 
-## Value equality and ownership
+<span id="a-snapshot-requires-copies-at-both-boundaries" aria-hidden="true"></span>
+<span id="interview-follow-ups" aria-hidden="true"></span>
+<span id="define-what-counts-as-the-same-value" aria-hidden="true"></span>
+<span id="defensive-copying-must-include-the-element-policy" aria-hidden="true"></span>
+<span id="defensive-copying-and-value-equality" aria-hidden="true"></span>
+<span id="introductory-example" aria-hidden="true"></span>
+<span id="can-two-unequal-objects-have-the-same-hash-code" aria-hidden="true"></span>
+<span id="additional-interview-questions" aria-hidden="true"></span>
+<span id="coding-exercise" aria-hidden="true"></span>
 
-Identity asks whether two references denote the same object. equals defines logical equality. Equal objects must have equal hash codes, while unequal objects may share a hash. Hash-based collections rely on this contract; ordering-based collections rely on comparison instead. A comparison result of zero may define duplicate keys in a TreeMap even when equals disagrees.
+## Decide what the same value means
 
-An immutable object preserves its observable state after construction. Final fields are useful, but a final collection reference can still point to a mutable collection. Defensive copies must be made at the relevant ownership boundaries, and nested mutable elements may require deeper design.
+Identity asks whether two references identify one object. Object's default equals uses identity, but a value class can define logical equality. Two independently created names can represent the same name even though they are different objects. Choose the meaningful state before implementing the relation.
 
 <span id="worked-example" aria-hidden="true"></span>
+<span id="trace-set-membership-under-value-equality" aria-hidden="true"></span>
+<span id="java-implementation" aria-hidden="true"></span>
+<span id="implement-defensive-copy-value-semantics" aria-hidden="true"></span>
 
-## Trace set membership under value equality
+<JavaExample file="EqualityBasics.java" output={"false\ntrue\ntrue"} />
 
-The Name type is a small value object whose equality and hash code use the same field. Two independently created names therefore occupy one logical HashSet entry. The field refers to immutable String, so no external mutation can change its logical identity.
+Name is final, so no subtype can introduce a competing equality policy. Equals first accepts the same reference, then checks the other object's type and compares the immutable String field. Instanceof is false for null, making the later cast safe on that path. `equals(Name)` would be an overload rather than an override of equals(Object); @Override prevents that mistake.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+<span id="hashing-mutable-keys-and-immutable-snapshots" aria-hidden="true"></span>
 
-## Hashing, mutable keys and immutable snapshots
+<span id="equality-is-a-complete-contract" aria-hidden="true"></span>
+<span id="hash-table-mutation-trace" aria-hidden="true"></span>
+<span id="equality-is-not-natural-ordering" aria-hidden="true"></span>
+<span id="test-the-relation-as-a-set-of-laws" aria-hidden="true"></span>
 
-<Diagram client:visible definition={"flowchart TD\n E[Equal logical keys] --> H[Equal hash codes required]\n H --> B[Same selected bucket]\n B --> C[Confirm identity or equality]\n U[Unequal keys] -. may collide .-> B"} caption={"Equal keys must have equal hashes. A shared bucket does not by itself establish equality."} />
+## Preserve the equality laws and matching hash
 
-### Equality is a complete contract
+Equals must be reflexive, symmetric, transitive and consistent while relevant state stays unchanged, and it must return false for null. Equal objects must have equal hash codes. Unequal objects may collide; a constant hash can satisfy the contract while producing poor hash-table performance. Hash stability is required while equality-relevant state remains unchanged.
 
-`equals` must be reflexive, symmetric, transitive, consistent while relevant state is unchanged, and false for null. `hashCode` must remain stable while equality-relevant state stays unchanged; equal objects must have equal hashes. Unequal objects may collide. A constant hash can satisfy the equality contract while producing poor hash-table performance.
+The example hashes the same String that defines equality. A derived cache or diagnostic timestamp need not participate if it is not part of the domain value. Entities with stable IDs can intentionally use a different policy from values whose full components matter. State that policy rather than mechanically including every field.
 
-The existing final `Name` class uses `instanceof` safely because no subclass can introduce a different equality policy. Adding an `equals(Name)` overload would not override `equals(Object)`; use `@Override`. An identity check is a useful fast path, while type and null checks establish which values can be compared. Always override hashing whenever equality is changed.
+<span id="why-inheritance-can-break-symmetry" aria-hidden="true"></span>
 
-### Why inheritance can break symmetry
+## Inheritance can make equality contradictory
 
-Imagine Point compares only coordinates. ColorPoint compares coordinates and color. If Point accepts any Point subtype but ColorPoint rejects plain Point, `point.equals(colored)` may be true while the reverse is false. Attempting to ignore color when compared to Point can instead break transitivity across two differently colored points. Composition or a final value type often gives a clearer equivalence relation. There is no universal instruction to use `getClass` or `instanceof` for every hierarchy; state the domain equality policy first.
+Suppose Point compares coordinates while ColorPoint adds color. If Point accepts colored points but ColorPoint rejects plain points, symmetry fails. Ignoring color when compared to a plain Point can instead break transitivity between two differently colored points. Final value types or composition avoid many such ambiguities. GetClass and instanceof express different admissible comparison sets; neither replaces deciding the intended equivalence relation.
 
-### Hash-table mutation trace
+<span id="ordering-equality-can-be-a-different-relation" aria-hidden="true"></span>
 
-Insert a key whose hash uses its `name`, then change that name. The entry remains in its original bucket with its stored insertion hash. A lookup recomputes the key's new hash and searches a different bucket or fails the stored-hash comparison. The mapping can become unreachable through ordinary lookup even though iteration still sees it. Resizing does not repair a broken key contract. Prefer stable immutable keys; mutating a **value** is a separate concern.
+## Ordering defines another relation
 
-### A snapshot requires copies at both boundaries
+A comparison result of zero can mean equal ordering position without equals returning true. BigDecimal("1.0") and BigDecimal("1.00") compare numerically as zero but differ in scale-sensitive equality. Sorted sets/maps use comparison zero for membership; hash-based containers use hashes and equals. Their detailed APIs and bucket mechanics are taught in collections.
 
-The complete `ImmutableSchedule.java` below validates ownership at construction and avoids exposing its internal list and Date objects. String elements would need only a structural list copy because Strings are immutable; Date elements require element copies too. An unmodifiable view alone would keep observing mutations to an externally owned list.
+Mutating a key's equality state after insertion can break lookup: the stored insertion hash and newly computed hash can disagree. Resizing does not repair a violated key contract. Prefer stable keys. Immutability and defensive copies have their own next chapter; equality alone does not establish ownership.
 
-The complete `ImmutableSchedule.java` source appears in the Java implementation section below.
-
-`copyDates` rejects a null list and null elements, creates new Date instances, and returns an unmodifiable list. Construction uses it to detach from the caller. The accessor calls it again because returning internal Date objects would expose mutation. `equals` compares the stored state; `hashCode` uses the same state. Copying costs O(n) time and space. Returning an immutable modern time type such as Instant could simplify the ownership model.
-
-<Diagram client:visible definition={"flowchart TD\n A[Caller list and Date] --> B[Constructor copies list and elements]\n B --> C[Private snapshot]\n C --> D[Accessor copies elements]\n D --> E[Caller changes returned Date]\n E -. no internal reference .-> C"} caption={"Deep snapshot ownership prevents constructor inputs and accessor results from mutating the stored value."} />
-
-### Ordering equality can be a different relation
-
-A TreeSet or TreeMap treats comparator result zero as equality for membership. If that relation disagrees with `equals`, behavior can surprise code expecting the general Set/Map contracts. `new BigDecimal("1.0")` and `new BigDecimal("1.00")` compare numerically as zero but are not equal because scale participates in equality. State whether the application needs representation equality or numeric equivalence.
-
-### Interview follow-ups
-
-A shallow clone copies references. A final array field still exposes mutable components unless protected. A cached hash is safe only when the represented value and publication policy make it stable. To test a value object, use independently constructed equal values, a differing field, null, an unrelated type, hash-based membership, and input/accessor mutation attempts. These cases test the contract rather than a particular private field arrangement.
-
-## Designing and testing a complete value boundary
-
-### Define what counts as the same value
-
-Choose the equality-relevant state before writing equals. Identity entities and immutable values often need different policies: a user record with a stable ID need not compare every mutable display attribute, whereas an immutable coordinate usually compares its components. The hash must use the same equivalence relation; it is not required to include every physical field.
-
-Subclass equality is difficult because adding a new significant field can break symmetry/transitivity against the base type. Final value types and composition avoid many of those ambiguities. `getClass()` and `instanceof` express different admissible comparison sets; neither is a universal substitute for deciding the domain relation.
-
-### Defensive copying must include the element policy
-
-The schedule example copies both the container and each Date on input and output. A List.copyOf snapshot protects list structure but not mutable Date elements. Returning an immutable time type such as Instant simplifies that model, while retaining a mutable collection behind an unmodifiable wrapper still exposes subsequent changes through other aliases.
-
-Avoid invoking overridable normalization logic during construction. A value can also be invalidated by retaining a caller-provided mutable comparator, array or buffer. “All fields are final” is therefore a useful starting condition, not a complete deep-immutability proof.
-
-### Equality is not natural ordering
-
-A comparator zero means equivalence for a sorted collection; equals means equivalence for many general collection contracts. If those relations disagree, both structures can execute their documented algorithms yet produce different membership counts. A secondary tie-breaker is appropriate only when the domain truly considers those otherwise tied values distinct. Do not add an arbitrary identity hash tie-breaker merely to make a TreeSet retain everything.
-
-### Test the relation as a set of laws
-
-Construct separate equal instances a and b and a third equal c. Check symmetry and transitivity explicitly, including relevant subclass/unrelated/null cases. Change one equality-relevant component and check inequality. Verify equal hashes and hash-based membership. Then mutate constructor inputs and accessor results to test ownership boundaries. A test that only compares an object with itself misses most contract failures.
-
-For floating-point components and arrays, use a deliberate policy. Arrays.equals/deepEquals and the appropriate numeric comparison helpers have different semantics from ordinary object identity or primitive equality. Generated record methods follow the component contracts, which can surprise a value type containing an array.
-
-<span id="java-implementation" aria-hidden="true"></span>
-
-## Implement defensive-copy value semantics
-
-### Defensive copying and value equality
-
-<JavaExample file="ImmutableSchedule.java" output={"1000\n1000\ntrue"} />
-
-### Introductory example
-
-The following program is a complete executable example. Compile with `javac ValueContracts.java` and run with `java ValueContracts`.
-
-<JavaExample file="ValueContracts.java" output={"1"} />
-
+<span id="designing-and-testing-a-complete-value-boundary" aria-hidden="true"></span>
 <span id="common-mistakes" aria-hidden="true"></span>
-
-## Equality and mutability pitfalls
-
-Do not override equals without hashCode, mutate a key's identity fields inside a map, or use a comparator inconsistent with domain equality accidentally. An unmodifiable wrapper does not stop changes made through another reference to the wrapped collection.
-
-<KnowledgeCheck client:visible question={"Which hash-code relationship is required for two objects that are equal?"} options={["Their hash codes must be different", "Their hash codes must be equal", "Their object identities must match"]} correct={1} explanations={["Different hash codes for equal objects violate the contract used by hash collections.", "Equal objects must have equal hash codes; unequal objects may also share a hash.", "Logical equality can hold for independently constructed objects."]} />
-
+<span id="equality-and-mutability-pitfalls" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+<span id="value-contract-interview-practice" aria-hidden="true"></span>
+<span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Value-contract interview practice
+## Practice: add a second significant component
 
-### Can two unequal objects have the same hash code?
-
-<details>
-<summary>Explanation</summary>
-
-Yes. Hash codes have a finite integer range, so collisions are unavoidable. The collection narrows candidate entries using the hash and then compares logical equality. A constant hash can satisfy the equality contract while producing poor performance.
-
-</details>
-
-### Additional interview questions
+Name gains a final familyName. What must change, and which checks detect an incomplete implementation?
 
 <details>
-<summary>Can two unequal keys have the same hashCode?</summary>
+<summary>Answer</summary>
 
-Yes. Equal objects must have equal hashes, but the reverse is not required. Hashing narrows candidate locations; equals distinguishes logical keys. A constant hash can be contract-correct yet make a hash table perform poorly.
-
-</details>
-
-<details>
-<summary>Why copy a mutable component both on input and output?</summary>
-
-An input copy prevents later caller changes from mutating internal state. An output copy prevents an accessor from handing internal mutable objects back to callers. An unmodifiable list only prevents container mutations through that view; its Date elements would still be mutable.
-
-</details>
-
-<details>
-<summary>Can a HashSet and TreeSet contain different counts for the same values?</summary>
-
-Yes if equality and ordering disagree. BigDecimal 1.0 and 1.00 are unequal under equals but compare as zero. HashSet and TreeSet use those different relations. A domain model should deliberately align its intended membership policy.
-
-</details>
-
-### Coding exercise
-
-Extend Name with a second identity field and update both contracts. Build an immutable object containing a list and demonstrate why copying its structure is insufficient when its elements remain mutable.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Can a cached hash be correct for a mutable object?</summary>
-
-Only if mutations cannot change the represented equivalence relation, or the cache has a correct invalidation protocol. A changing key whose cached hash no longer matches equals is particularly dangerous. Immutable values make the argument easier.
-
-</details>
-
-<details>
-<summary>Should every private field be included in equals?</summary>
-
-No. Include the state defining logical value equivalence. A derived cache or diagnostic timestamp may not participate. The policy must be consistent and documented, and hashCode must follow the same choice.
-
-</details>
-
-<details>
-<summary>Why is a copy constructor not automatically a deep copy?</summary>
-
-Its behavior is ordinary code. It can copy references exactly as a shallow clone does. Examine mutable components and shared graph ownership rather than inferring a guarantee from the constructor name.
+Validate and store both components; compare both in equals and hash both in hashCode, for example with Objects.hash(value, familyName). Construct a, b and c with identical components to check symmetry/transitivity and equal hashes. Change only familyName to check inequality. Also compare with null and an unrelated type. An object comparing equal to itself alone exercises almost none of the new value policy. Hash collisions between unequal values are permitted and are not a test failure.
 
 </details>
 
@@ -178,6 +87,5 @@ Its behavior is ordinary code. It can copy references exactly as a shallow clone
 
 ## Value-contract references
 
-- [Object equality and hash contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Object.java)
-- [Defensive-copy and view utilities](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Collections.java)
-- [BigDecimal equality and ordering](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/math/BigDecimal.java)
+- [Object equals and hashCode contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html)
+- [BigDecimal equality versus numerical comparison](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/BigDecimal.html)

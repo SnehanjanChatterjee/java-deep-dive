@@ -1,10 +1,10 @@
 ---
-title: "ThreadLocal, worker reuse and context ownership"
-module: "modern-concurrency"
-group: "Context and task lifetimes"
-summary: "Bind task context deliberately and restore it across nesting, failure and worker reuse."
-order: 530
-version: "Java 8+ · internals OpenJDK 25"
+title: "ThreadLocal, worker reuse and task context"
+module: "concurrency"
+group: "Thread context"
+summary: "Begin with ordinary parameters, then bound a per-thread association across nesting and worker reuse."
+order: 960
+version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation"]
 advanced: true
 ---
@@ -13,111 +13,69 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Thread state versus task state
-
-ThreadLocal associates a value with a thread rather than with a method invocation or submitted task. Two threads accessing the same ThreadLocal key can have different values. Calling get can initialize a per-thread value through the key’s initialization policy; set and remove affect the current thread’s association.
-
-A thread pool reuses threads across tasks. A value installed by task A can therefore still exist when task B runs on that worker. Task context needs an explicit lifetime even if the ThreadLocal key is private and static. Private access restricts readers but does not automatically remove old values.
-
 <span id="worked-example"></span>
-## Trace nesting on a reused worker
-
-A single-worker executor guarantees the demonstration tasks reuse one worker. The first task binds outer, temporarily binds inner, then restores outer. When that task exits its outer boundary, a later task reads null. The output separates nesting restoration from cleanup before worker reuse.
-
-Unconditionally calling remove in every nested finally would erase the outer binding. Conversely, never removing would leak the outer value into later tasks. The wrapper must know whether it is establishing an outermost binding or temporarily shadowing an existing one. This example rejects null values, allowing null to consistently mean no previous application binding.
-
 <span id="mechanics-and-tradeoffs"></span>
-## Context lifetime and retention
-
-### Representation and reachability
-
-A ThreadLocal key provides access to a thread-associated map entry. In OpenJDK, entries weakly reference keys, while their values are ordinary strong references. A long-lived worker can therefore retain task state through a still-live key, or retain a stale entry’s value until cleanup processes that entry after its key becomes unreachable. Weak keys alone are not a complete leak-prevention policy.
-
-remove explicitly clears the current thread’s association and can permit the value to be reclaimed when no other owner retains it. It is not an instruction to clear every thread’s value or every other key. A ThreadLocal value that itself contains a large graph can make a small forgotten association an expensive retaining path.
-
-### Scope and failure restoration
-
-A scoped wrapper reads the previous binding, sets the new value, invokes the action and restores in finally. If no previous value existed under this example’s non-null binding contract, it removes instead of storing null. If a previous value existed, it restores that value. The invariant is that after withContext returns or throws, the calling thread sees the same application binding it had on entry.
-
-This is a convention implemented by ordinary Java code, not automatic language dynamic scoping. Every path that installs the context must follow it. A callback that hands work to another executor does not automatically transfer the binding’s lifetime or cleanup ownership.
-
-### Capture and propagation
-
-If propagation across a task boundary is necessary, capture the intended immutable context value at submission time and install it around execution with restoration afterward. Reading the submitting thread’s ThreadLocal later from a worker does not retrieve the original thread’s association. Avoid retaining an entire request graph when only a small correlation value is needed.
-
-InheritableThreadLocal copies through thread creation rules, not every executor submission. A worker often exists before a task is submitted, so inheritance does not implement per-task propagation. A mutable inherited value can also be shared unless the policy copies it; inheritance is not automatic deep isolation.
-
-### Virtual threads and scoped values
-
-Virtual-thread-per-task execution changes thread reuse, but creating an expensive per-thread cache for each of many virtual threads can multiply memory use. Cheap threads do not imply cheap application values. ThreadLocal remains useful for some independently mutable per-thread state, while Java 25 ScopedValue expresses bounded context bindings with controlled structured inheritance.
-
-Neither mechanism replaces explicit parameters when those parameters are the clearest contract. Use a context carrier to reduce accidental plumbing only when its ownership/access rules remain easier to reason about. Do not let hidden ambient state decide security-sensitive behavior without a clear validated boundary.
-
-<Diagram client:visible definition={"sequenceDiagram\n participant W as Reused worker\n participant O as Outer action\n participant I as Inner action\n W->>O: bind outer\n O->>I: save outer and bind inner\n I-->>O: finally restore outer\n O-->>W: finally remove outermost binding\n Note over W: Next task sees no prior context"} caption={"Bind task context deliberately and restore it across nesting, failure and worker reuse."} />
-
 <span id="java-implementation"></span>
-## Implement scoped restoration
+<span id="threadlocal-interview-questions"></span>
+## A request value belongs to an operation
+
+A report needs a request identifier in a faraway formatter. The clearest starting mechanism is an ordinary parameter: each call explicitly forwards the context it needs.
+
+<JavaExample file="ContextParametersLesson.java" output={"request-42: report"} />
+
+Both report and format declare the context. That makes the dependency visible in the method contract. A context carrier becomes useful when a long intermediate chain merely forwards data, but its lifetime and authority still need a precise design.
+
+<span id="thread-state-versus-task-state"></span>
+## Thread state and task state have different lifetimes
+
+ThreadLocal associates a value with the **current thread** for a particular key. Different threads using the same key can see different associations. Set and remove affect this thread, not every worker. Get can initialize a per-thread value under the key's initialization policy, so it is not always a side-effect-free presence probe.
+
+A pool can reuse one worker for task A then task B. If A installs request context and forgets to remove it, B can see stale state. A private static key restricts access but does not make its value expire at task return.
+
+<span id="trace-nesting-on-a-reused-worker"></span>
+<span id="scope-and-failure-restoration"></span>
+<span id="virtual-threads-and-scoped-values"></span>
+<span id="implement-scoped-restoration"></span>
+## Implement scoped restoration on a reused worker
 
 <JavaExample file="ThreadContextLesson.java" output={"outer\ninner\nouter\nnull"} />
 
-withContext validates its arguments before changing state. It captures the current association, installs the new value, executes the Runnable, then restores or removes in finally. The public current method exposes only the current thread’s association. No collection is shared between workers by this wrapper itself.
+The one-worker service makes reuse deliberate. WithContext captures the previous value, installs a non-null new value, invokes the action, then restores in finally. When there was no previous value it removes the association. When an outer binding existed, it restores that value rather than erasing the caller's context.
 
-The main method waits for the first submitted task to complete before submitting/observing the second result. A one-worker pool makes the no-leak observation meaningful; using a pool of many workers could accidentally choose a fresh worker and hide a leaked value. Finally shuts down the explicitly owned executor.
+The first task observes outer, then inner, then outer again. A later task on the same worker sees null, proving the outer boundary removed request state before reuse. A larger pool could accidentally select a fresh worker and hide a leaked binding. Main retrieves the first task's completion before observing the next task.
 
-The wrapper forbids null application bindings. If an API must distinguish a present-null binding from no binding, a plain get-null check is insufficient; design an explicit sentinel/state representation. The example also does not automatically capture context for asynchronous child work.
+<Diagram client:visible definition={"sequenceDiagram\n participant W as Reused worker\n participant O as Outer action\n participant I as Inner action\n W->>O: install outer\n O->>I: save outer, install inner\n I-->>O: finally restore outer\n O-->>W: finally remove outermost context\n Note over W: Next task observes no prior request"} caption="The wrapper restores the association that existed on entry, including exceptional exit and worker reuse." />
+
+<span id="context-lifetime-and-retention"></span>
+<span id="capture-and-propagation"></span>
+<span id="context-propagation-mistakes"></span>
+## Context capture is a separate operation
+
+The wrapper's invariant is about the calling thread. Creating a lambda while a context exists does not automatically make an executor capture that dynamic association. If propagation is required, capture the intended immutable value at submission time, then install it around execution with restoration afterward.
+
+Reading a ThreadLocal later from a worker cannot retrieve another thread's association. InheritableThreadLocal copies through thread-creation rules, not every submission; pooled workers may already exist. Mutable inherited values can also be shared unless copied by policy. Prefer a small immutable correlation value over retaining an entire request graph.
+
+<span id="representation-and-reachability"></span>
+## Representation and retained values
+
+In OpenJDK, a thread-associated map weakly references keys while values remain strongly referenced. A live key can retain its value, and a stale entry's value can remain until cleanup processes it after key reclamation. Weak keys are therefore not a complete cleanup policy.
+
+Remove clears only the current association and permits reclamation only if no other owner retains the value. A small forgotten binding can retain a large object graph. Virtual-thread-per-task execution changes reuse, but expensive per-thread caches can multiply across large numbers of threads. Cheap executions do not make their application values free.
 
 <span id="common-mistakes"></span>
-## Context propagation mistakes
-
-Do not use ThreadLocal as global mutable state, rely on weak keys for immediate value reclamation, or treat inheritance as executor-task propagation. Do not remove an outer binding from an inner scope. A get call can initialize a value, so it is not always a side-effect-free probe for presence.
-
 <span id="exercises-and-interview-questions"></span>
-## ThreadLocal interview questions
+<span id="coding-exercise-and-solution"></span>
+## Exercise and complete restoration solution
 
-<details>
-<summary>Why does a single-worker test expose leaks better?</summary>
-
-It ensures a later task reads the exact worker association left by the previous task. A large pool might run the observation on another thread and falsely suggest cleanup worked.
-
-</details>
-
-<details>
-<summary>What must happen if the action throws?</summary>
-
-The wrapper finally restores the previous binding before propagating the original failure. Cleanup should not silently convert failure into success or leave task state attached to the worker.
-
-</details>
-
-<details>
-<summary>Why not call remove unconditionally in nested scope?</summary>
-
-A valid outer value may have existed before the inner scope. Removing would destroy that caller context rather than restoring the entry state.
-
-</details>
-
-<details>
-<summary>Does InheritableThreadLocal solve async propagation?</summary>
-
-No. Thread creation and task submission are different events. Reused executor workers do not re-inherit the submitting caller context on each task.
-
-</details>
-
-<details>
-<summary>When does scoped value fit better?</summary>
-
-When sharing bounded, preferably immutable call context through a dynamic operation, with deliberate inheritance through structured task scopes. Per-thread mutable caches have a different model.
-
-</details>
-
-### Coding exercise and solution
-
-Add an inner action that throws IllegalStateException. Catch that failure in the outer action and assert current is still outer; after the complete task, assert the reused worker sees null. Then implement an explicit capture wrapper: snapshot a non-null String before submission and call withContext inside the submitted Runnable. The solution must restore the worker’s previous state even when the wrapped task fails.
+Make an inner action throw, catch that failure inside the outer action, and observe outer again; after the task, the reused worker should see no prior binding. Unconditionally remove in the inner finally would incorrectly erase outer.
 
 <JavaExample file="ThreadContextLessonTest.java" />
+
+These supporting assertions exercise the complete wrapper. Its non-null policy lets null mean no previous application binding. A contract supporting present-null versus absent needs a sentinel or explicit state representation. Neither ThreadLocal nor a scoped carrier replaces explicit parameters when those are clearer. The scoped-value chapter later supplies a language-library-managed bounded binding for the appropriate use case.
 
 <span id="references"></span>
 ## Primary context contracts
 
-- [ThreadLocal map and remove semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ThreadLocal.java)
-- [InheritableThreadLocal creation policy](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/InheritableThreadLocal.java)
-- [ScopedValue bounded context](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ScopedValue.java)
+- [ThreadLocal initialization and remove](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ThreadLocal.html)
+- [InheritableThreadLocal creation-time behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/InheritableThreadLocal.html)
+- [OpenJDK ThreadLocal map implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ThreadLocal.java)

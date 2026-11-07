@@ -2,96 +2,68 @@
 title: "Scheduled executors and periodic task lifetimes"
 module: "concurrency"
 group: "Tasks and executors"
-summary: "Distinguish fixed rate, fixed delay, eligibility, failure suppression and cancellation ownership."
-order: 460
-version: "Java 8+ · source analysis OpenJDK 25"
-prerequisites: ["concurrency/thread-pool-internals", "concurrency/future-cancellation"]
+summary: "Begin with one delayed result, then trace fixed-rate, fixed-delay and terminal outcomes."
+order: 880
+version: "Java 8+"
+prerequisites: ["concurrency/future-cancellation", "concurrency/thread-pool-internals"]
 advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
-## A scheduled time makes work eligible
+<span id="a-scheduled-time-makes-work-eligible"></span>
+## A delay makes a task eligible
 
-ScheduledExecutorService adds delayed and periodic execution to task submission. A relative delay determines when work becomes eligible, not a promise that it begins at that exact wall-clock instant. An occupied worker, process scheduling, GC pauses or a slow earlier task can delay actual execution.
+A maintenance action must run later. ScheduledExecutorService adds relative delays and periodic sequences to the familiar submit/result model. A delay does not promise an exact start time: occupied workers, process scheduling, GC or a slow earlier job can postpone actual execution.
 
-A one-shot schedule has one result. A periodic schedule represents a continuing sequence whose successful executions do not normally complete its Future. The owner must define how cancellation, exceptional completion and executor shutdown end that sequence. Ignoring the handle can hide a failed periodic job just as ignoring a submitted Future can hide an ordinary task failure.
+## Schedule one result before repeating work
 
+<JavaExample file="ScheduledOnceLesson.java" output={"42"} />
+
+The Callable returns 42. A zero delay means it is eligible without an intentional waiting delay, not that it finishes before schedule returns. Main retrieves actual completion through the ScheduledFuture and owns scheduler shutdown. A one-shot result has the same success/failure/cancellation responsibilities already studied.
+
+A repeating schedule is different: its successful ticks do not each complete its returned Future. That handle describes the continuing sequence, ending through cancellation or exceptional failure.
+
+<span id="interview-questions-and-solutions"></span>
 ## Fixed rate and fixed delay answer different questions
 
-| Policy | Next eligibility is based on | If work is slower than the requested interval |
+| Method | Next eligibility derives from | Slow task behavior |
 | --- | --- | --- |
-| scheduleAtFixedRate | Initial schedule plus successive period multiples | Later executions start late; one sequence does not overlap itself |
-| scheduleWithFixedDelay | Completion of the previous execution plus delay | Each completion is followed by the declared delay |
-| Repeated independent schedule calls | Each separately submitted delay | Overlap is possible unless another protocol prevents it |
+| scheduleAtFixedRate | Initial eligibility plus successive period multiples | Later starts can be late; the sequence does not overlap itself |
+| scheduleWithFixedDelay | Previous completion plus the delay | Every completion is followed by the delay |
+| Independent schedule calls | Each separately submitted request | Overlap can occur without another protocol |
 
-For a nominal period of one second and a task taking 1.5 seconds, fixed rate does not create another simultaneous execution of the same periodic sequence just to meet the missed second. Fixed delay waits its delay after completion. Do not turn this reasoning example into a precise production timing guarantee; the scheduler can add further delays.
+For an illustrative one-second period and a task lasting 1.5 seconds, fixed rate does not run another simultaneous copy of that sequence to meet the missed second. Fixed delay instead measures its next delay from completion. These numbers explain policy, not observed performance results.
 
-<Diagram client:visible definition={"sequenceDiagram\n participant S as Scheduled sequence\n participant W as Worker\n S->>W: Execution becomes eligible\n W->>W: Run task to completion\n W-->>S: Completion or failure\n Note over S: Fixed delay measures from completion\n Note over S: Fixed rate keeps nominal period progression\n S->>W: Next eligible execution, without self-overlap"} caption="Eligibility and actual execution differ. Fixed-rate and fixed-delay sequences do not overlap their own successive executions." />
+<Diagram client:visible definition={"sequenceDiagram\n participant S as Scheduled sequence\n participant W as Worker\n S->>W: task becomes eligible\n W->>W: execute until completion\n W-->>S: success or failure\n Note over S: fixed delay starts from completion\n Note over S: fixed rate preserves nominal period progression\n S->>W: next eligible run, without self-overlap"} caption="Eligibility, actual execution and successful completion are distinct events. A single periodic sequence does not overlap its successive executions." />
 
+<span id="failure-is-part-of-the-periodic-api-contract"></span>
 ## Complete cancellation and failure example
 
 <JavaExample file="ScheduledWorkLab.java" output={"cancelled=true\nfailed runs=1"} />
 
-The first method waits until three invocations have reached their signal, then cancels the periodic handle. A countDown occurs inside the callback and does not itself prove that invocation has returned. It does not assert that exactly three callbacks ran: a further callback can race before cancellation is selected. It reports the cancellation result state instead of publishing an invented timing measurement. cancel(false) does not interrupt an already running invocation.
+The first method waits until three invocations signal a milestone, then cancels the periodic handle. It does not assert exactly three callbacks ran: another invocation can race before cancellation. A countdown inside a callback also does not prove that callback already returned. Cancel(false) does not interrupt an invocation already running.
 
-The second method increments a counter and throws on its first execution. The periodic Future becomes exceptional, get reports ExecutionException and later executions of that sequence are suppressed by contract. The method validates the cause and reports one run. It does not catch the exception and continue scheduling as if the task had succeeded.
+The second method throws on its first invocation. The periodic Future becomes exceptional, get exposes the cause and later invocations of that sequence are suppressed by contract. If an application wants selected failures to permit a later retry, handle and report those specific failures inside the callback. Blanket catch-and-ignore hides a broken operation.
 
-Both methods own their executor lifetime and have bounded demonstration guards. Finally requests shutdown and waits for termination. These five-second bounds expose a broken example; they are not recommended service-level deadlines for arbitrary applications.
+<span id="scheduledthreadpoolexecutor-storage-and-cancellation"></span>
+<span id="state-sharing-between-executions"></span>
+## Storage, cancellation and shared state
 
-## Failure is part of the periodic API contract
+ScheduledThreadPoolExecutor uses delayed work ordering and capacity controlled mainly by corePoolSize. Its delayed queue is unbounded; maximumPoolSize does not supply ordinary bounded admission. Many distinct delayed jobs can retain substantial state.
 
-An exception escaping a periodic invocation stops subsequent invocations of that scheduled sequence. If the application intends some failure categories to be retried on later periods, it must handle those specific failures inside the task and report them under an explicit policy. Blanket catch-and-ignore would preserve apparent activity while hiding a permanently broken operation.
+A cancelled delayed task can remain queued until its delay expires by default. RemoveOnCancelPolicy requests prompt removal. It changes retention, not proof of completed invocation cleanup. Shutdown policies for delayed and periodic work are configurable; account for pending handles deliberately.
 
-A successful periodic invocation does not make Future.get return a per-tick value. Get normally keeps waiting until cancellation or failure ends the sequence. Separate monitoring/results are needed if callers require one observation per tick. A Future being done means an outcome exists, not necessarily that the background job succeeded.
+Successive runs of one fixed-rate/fixed-delay sequence do not overlap and have a documented happens-before relationship, even if different workers run them. Other jobs and external readers still need a sharing protocol. A single worker serializes scheduled work, but one blocking callback can delay every other job.
 
-## ScheduledThreadPoolExecutor storage and cancellation
+## Exercise and complete solution
 
-ScheduledThreadPoolExecutor uses delayed work ordering with worker capacity controlled principally by corePoolSize. Its delayed queue is unbounded, so setting maximumPoolSize does not turn it into an ordinary bounded-admission ThreadPoolExecutor. Scheduling unlimited distinct tasks can still retain memory even if the workers are few.
+Create one periodic task that is cancelled after a reached milestone and another that fails on its first invocation. `ScheduledWorkLab` supplies the complete solution and owns bounded shutdown waiting. Explain why the cancellation example reports the handle's state instead of an exact callback count, and why get on a healthy periodic sequence normally keeps waiting.
 
-By default a cancelled delayed task can remain queued until its delay expires. setRemoveOnCancelPolicy(true) requests prompt removal of cancelled tasks, which can matter for many long-delay tasks. This is a retention policy, not proof that a running invocation has rolled back or finished cleanup.
-
-Shutdown behavior for delayed and periodic work is configurable. Read the selected policies when ownership moves between components; do not assume every pending task continues or every accepted one is immediately cancelled. Explicitly account for result handles and resources when shutting down.
-
-## State sharing between executions
-
-ScheduledThreadPoolExecutor guarantees that successive executions of one fixed-rate or fixed-delay sequence do not overlap, and provides the documented happens-before relationship from earlier to later executions. They may use different worker threads. This supports one sequence's task state under that contract; other threads concurrently reading/mutating that state still need a sharing policy.
-
-Independently scheduled jobs can overlap. A read-modify-write shared by several jobs does not become atomic merely because the jobs were scheduled on a service with a familiar name. A one-thread scheduler serializes its executions but a blocking job can delay every other scheduled job on it.
-
-## Interview questions and solutions
-
-<details>
-<summary>Why did a repeating job run once and then disappear?</summary>
-
-Inspect the returned ScheduledFuture and its exceptional cause. An uncaught task exception suppresses later executions of that sequence. Adding more workers does not repair this outcome. Decide which failures should terminate the job and which can be handled and reported inside it.
-
-</details>
-
-<details>
-<summary>Does fixed rate guarantee one start per wall-clock second?</summary>
-
-No. It establishes a nominal period progression and eligibility. Actual execution can be delayed, and one sequence does not overlap itself to compensate for slow execution. Calendar scheduling in a time zone is a different requirement from relative periodic intervals.
-
-</details>
-
-<details>
-<summary>Why can periodic Future.get wait forever during healthy operation?</summary>
-
-Successful ticks do not end the sequence. The handle represents continuing scheduled work, not one result per tick. Use cancellation, failure monitoring or a separate observation channel according to the lifecycle contract.
-
-</details>
-
-<details>
-<summary>What does the reference coding exercise establish?</summary>
-
-ScheduledWorkLab demonstrates at least three tick signals followed by selected cancellation, and a separate failing sequence with exactly one attempted invocation. It deliberately avoids assertions about nanoseconds, exact callback order across independent jobs or rollback after cancellation.
-
-</details>
+Calendar scheduling in a time zone is a different requirement from relative periods; use date/time rules deliberately rather than treating one fixed-rate interval as a daily wall-clock promise.
 
 ## Primary scheduling references
 
-- [ScheduledExecutorService periodic contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ScheduledExecutorService.java)
-- [ScheduledThreadPoolExecutor delayed queue and execution policies](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ScheduledThreadPoolExecutor.java)
-- [Future cancellation and completion](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Future.java)
+- [ScheduledExecutorService](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ScheduledExecutorService.html)
+- [ScheduledThreadPoolExecutor policies and memory ordering](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ScheduledThreadPoolExecutor.html)

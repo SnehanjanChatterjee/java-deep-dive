@@ -1,0 +1,65 @@
+---
+title: "Erasure, bridges and heap pollution"
+module: "generics"
+group: "Runtime representation"
+summary: "Inspect erased signatures and bridge methods, then trace how raw types can move failures to runtime."
+order: 330
+version: "Java 8+"
+prerequisites: ["generics/bounds-wildcards-erasure", "objects/array-ownership"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Keep a static type contract without a class per argument
+
+Ordinary Java generics are implemented using erasure. A type variable erases to its first bound, or Object if unbounded. `GenericBox<String>` and `GenericBox<Integer>` share one runtime class. Compiler-inserted casts preserve the expected typed reads; erasure does not mean boxing, casts and allocation have no cost.
+
+<JavaExample file="CoreErasureLab.java" output={"JAVA\n1\ntrue"} />
+
+`Mapper<T>` erases to an Object-to-Object method. StringMapper supplies String-to-String behavior. The compiler generates a synthetic **bridge** with the erased descriptor, adapting/casting the argument and delegating to the concrete implementation. The source's method inspection counts that bridge. Detailed reflection API use is optional here; javap can expose the same compiled fact:
+
+```bash
+mkdir -p out
+javac -d out CoreErasureLab.java
+javap -classpath out -c -p -v 'CoreErasureLab$StringMapper'
+```
+
+Quote the nested binary name so a shell does not expand its dollar sign. Find ACC_BRIDGE, ACC_SYNTHETIC, the erased descriptor and the call to the String method. A raw caller can fail at a generated bridge cast before the handwritten body executes.
+
+## Restrictions follow from the available representation
+
+An erased T does not supply a constructor or reified component class: `new T()`, `new T[10]` and `List<int>` are not permitted. Supply a factory or an appropriate container/specialization. A static field cannot have its enclosing class's T type. Overloads differing only by `List<String>` versus `List<Integer>` clash after erasure. Changing a first public bound can affect erased binary descriptors, not only source constraints.
+
+Object cannot be tested with `instanceof List<String>` to validate its elements. `List<?>` is reifiable and legal in that context. Since Java 16, some parameterized tests are permitted when the operand's static type already establishes the necessary generic relationship, such as testing `List<Integer>` against `ArrayList<Integer>`. That is not runtime validation of an arbitrary object's elements. Reflection can retain **declaration** generic signatures, but arbitrary list instances do not expose a universally runtime-verified element argument.
+
+## Raw types move failures away from the unsafe write
+
+A raw List omits its type argument and permits legacy operations that bypass generic checking. An unchecked conversion can then expose an Integer as if it were a String, failing at a later typed read. Warnings identify missing evidence; suppressing them globally is not a proof. Localize an unavoidable unchecked cast and explain the invariant controlling every write and preventing escape.
+
+A teaching container backed by Object[] can justify a read cast when every write follows its T API. Raw aliases or an escaping array invalidate that argument. Arrays themselves are reified, so `new List<String>[10]` cannot safely enforce its promised generic component at runtime.
+
+## Generic varargs combine two representation models
+
+A varargs parameter is an array, but a generic element parameterization is erased. Aliasing that array as Object[] can allow an incompatible parameterization and pollute the heap. @SafeVarargs asserts an implementation has been reviewed for safe operations and exposure; it adds no runtime element checking. Do not apply it merely to quiet warnings.
+
+<JavaExample file="CoreArrayOwnershipLab.java" output={"9\nfalse\ntrue\n1\ncomponent rejected"} />
+
+The first outputs revisit shallow array ownership. The fourth is 1 because Arrays.asList(new int[]`{1,2,3}`) treats one int[] object as its single generic T argument; it does not box each primitive component into an Integer list. The last output revisits String[]'s runtime store check, illustrating why generic and array type enforcement differ.
+
+## Practice: distinguish a raw type from a wildcard
+
+Are List and `List<?>` interchangeable ways to say any list? Can @SafeVarargs repair an implementation writing incompatible Lists into its argument array?
+
+<details>
+<summary>Answer</summary>
+
+No. `List<?>` keeps an unknown but checked element relationship and prevents arbitrary insertion; raw List bypasses parts of generic checking for legacy compatibility. SafeVarargs cannot repair unsafe code. Remove the unsafe write or escaping alias, then review the whole implementation before asserting safety. An unchecked-warning suppression should be as narrow as the independently justified invariant.
+
+</details>
+
+## Erasure references
+
+- [Dev.java: erasure and bridges](https://dev.java/learn/language/fp/generics/type-erasure/)
+- [Dev.java: generic restrictions](https://dev.java/learn/language/fp/generics/restrictions/)
+- [JLS: reifiable types and heap pollution](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html)

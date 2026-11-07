@@ -1,0 +1,48 @@
+---
+title: "Enums, nested classes and enclosing instances"
+module: "objects"
+group: "Nested and domain types"
+summary: "Choose fixed named alternatives and distinguish static nesting from an enclosing-instance relationship."
+order: 220
+version: "Java 8+"
+prerequisites: ["objects/interfaces", "language/methods-and-references"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Name a fixed set of domain values
+
+An enum defines a fixed set of named instances. State.NEW and State.SENT represent alternatives, rather than unrelated integer codes. Enum constants can have fields and behavior, implement interfaces and supply constant-specific behavior. They cannot extend an arbitrary class. Identity comparison with == is appropriate for enum constants.
+
+<JavaExample file="NestedEnumLesson.java" output={"true\nparcel\nWest"} />
+
+CanSend returns true only for NEW. This model does not itself perform a send or guarantee a lifecycle transition; it expresses the current state's capability. A richer state machine must define allowed transitions and side effects explicitly. Avoid ordinal as a persistent external code: inserting/reordering constants changes it. Use an explicit stable value where a protocol needs one.
+
+## A nested class can have two different ownership models
+
+A static nested Label groups a helper with its owning type's namespace but has no implicit enclosing delivery instance. Main can construct one directly with new Label. Receipt is a non-static inner class. `delivery.new Receipt()` associates that receipt with this particular delivery; `NestedEnumLesson.this.destination` reads the enclosing object's field.
+
+Retaining a Receipt can therefore retain its enclosing delivery. Choose static nesting when that association is unnecessary. A local class is declared within a block and is useful only within its lexical scope. An anonymous class creates an unnamed implementation at an expression, such as a one-off ReaderFactory in later exception examples.
+
+## Keep this and captured state explicit
+
+An anonymous class has its own this. A lambda uses this from its enclosing context and is target-typed to a functional interface; lambdas receive dedicated teaching later. Local/anonymous code can capture final or effectively final local variables. That restriction does not make objects referenced by those variables immutable.
+
+Enum identity and serialization receive language/runtime support, making enums useful for fixed singleton-like choices. They do not solve mutable shared state, initialization side effects or whether global access is a suitable design.
+
+## Practice: remove the unnecessary outer reference
+
+If Receipt needs only a copied destination String and no other delivery behavior, how could it become static?
+
+<details>
+<summary>Answer</summary>
+
+Make it a static nested class with a constructor taking destination and a private final String field. Construct `new Receipt(destination)` rather than `delivery.new Receipt()`. The association becomes an explicit value rather than an implicit enclosing-instance reference. Because String is immutable, sharing that String does not expose delivery mutation. This is a design choice; an inner type is appropriate when its operations truly belong to one enclosing instance.
+
+</details>
+
+## Nested-type references
+
+- [JLS: enum classes](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.9)
+- [Dev.java: nested classes](https://dev.java/learn/language/oop/classes-objects/nested-classes/)

@@ -1,125 +1,69 @@
 ---
-title: "NIO buffers, channels and message framing"
+title: "Buffers, channels and partial transfers"
 module: "libraries"
-group: "Files and encodings"
-summary: "Trace partial reads, buffer state and strict bounded framing through a complete parser."
-order: 310
+group: "Buffers and channels"
+summary: "Put bytes into storage, then take them out"
+order: 670
 version: "Java 8+"
-prerequisites: ["libraries/io-nio-networking"]
-advanced: true
+prerequisites: ["libraries/text-encodings"]
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
-## A buffer is stateful storage
+## Put bytes into storage, then take them out
 
-A ByteBuffer holds bytes plus capacity, limit, position and an optional mark. The invariant is 0 ≤ position ≤ limit ≤ capacity. Capacity is fixed for a particular buffer. Relative get/put use and advance position; absolute operations use an explicit index without advancing it, while still enforcing the relevant bounds.
+A ByteBuffer combines byte storage with position, limit, capacity and an optional mark. A channel transfers bytes through a buffer. NIO is a family of APIs, not a promise that every operation is nonblocking.
 
-A channel transfers bytes through a buffer. Neither a channel read nor a write promises to transfer an entire application message in one call. A protocol therefore needs framing and an ownership policy for incomplete data. NIO is an I/O API family, not a guarantee that every use is nonblocking.
+The invariant is `0 <= position <= limit <= capacity`. Capacity is fixed for that buffer. Position identifies the next relative read/write index; limit bounds the current usable range. Relative get/put advance position. Absolute operations use an explicit index without advancing it, while enforcing their relevant bounds.
 
-## Flip, clear, compact and rewind
+## Trace a buffer before copying a file
 
-After writing data into a buffer, flip sets limit to the amount written and resets position to zero for reading. Clear restores position zero and limit capacity for another write; it does not erase bytes. Rewind resets position for rereading while retaining the limit. Compact preserves unread bytes by moving them to the beginning and prepares to append after them.
-
-| Operation on capacity 8 | Position | Limit | Relevant meaning |
+| Operation on capacity 8 | Position | Limit | Meaning |
 | --- | --- | --- | --- |
-| allocate | 0 | 8 | Write range is empty-to-capacity |
+| allocate | 0 | 8 | Whole buffer available for writing |
 | putInt(42) | 4 | 8 | Four bytes have been written |
-| flip | 0 | 4 | Only those four bytes are readable |
-| get two bytes | 2 | 4 | Two unread bytes remain |
-| compact | 2 | 8 | Unread bytes preserved; append after them |
+| flip | 0 | 4 | Readable range is those four bytes |
+| get two bytes | 2 | 4 | Two written bytes remain unread |
+| compact | 2 | 8 | Preserve unread bytes; append after them |
 
-Writing again after flip without preparing the intended mode can overwrite or overflow. Reading after put without flip starts at the current position, not automatically at the beginning of the written payload.
+flip sets limit to the old position and resets position to zero. clear resets position to zero and limit to capacity, without erasing bytes. compact moves unread bytes to the start, puts position after them and restores the write limit. rewind resets position while keeping the limit. flip/clear/compact/rewind discard the mark as their contracts specify.
 
-<Diagram client:visible definition={"flowchart TD\n W[Write bytes at current position] --> F[Flip: readable limit becomes written length]\n F --> R[Consume available protocol data]\n R --> C{Unread incomplete bytes remain?}\n C -->|yes| P[Compact preserves them for appending]\n C -->|no| X[Clear prepares full write range]\n P --> W\n X --> W"} caption="Buffer transitions are chosen according to whether unread input must survive. Clear and compact are not interchangeable." />
+## Run the simplest buffer round-trip
 
-## Complete bounded text-frame parser
+<JavaExample file="FilesAndBuffers.java" output={"Mira\n42"} />
 
-The sample protocol uses a four-byte big-endian length followed by that many UTF-8 payload bytes. It accepts at most 1,024 payload bytes per frame. The program feeds a euro sign split across chunks so correctness does not depend on a real network read boundary.
+The file half repeats the UTF-8 ownership pattern already learned. The buffer half allocates four bytes, writes int 42, flips, then reads that int. Without flip, a relative get starts at the current position rather than automatically rereading index zero.
 
-<JavaExample file="CoreFramedText.java" output={"0\n1\n8364\n0"} />
-
-### Preserve the whole incomplete frame
-
-Extract marks the prefix position. If four bytes are unavailable, the loop leaves the input untouched. If the length is available but its body is incomplete, reset returns to before the prefix. This design therefore retains the whole frame for the next attempt instead of maintaining separate “header already consumed” state.
-
-The first call sees length 3 but only one UTF-8 byte, so it emits zero frames and restores position. Compact copies those unread bytes and prepares to append. The second chunk completes the code point. After flip, the parser emits one value whose first code point is 8364 and leaves no remaining input bytes.
-
-### Validate before interpreting payload
-
-Negative or oversized lengths fail before payload allocation/decoding. The prefix byte order is explicitly required. A bounded slice limits the decoder to the declared body length without copying the payload first. The UTF-8 decoder reports malformed/unmappable input rather than silently substituting replacement characters.
-
-The parent position advances deliberately after successful decoding. The slice's own position is separate, but its bytes/lifetime remain shared with the parent. Retaining a view does not create an independent byte snapshot.
-
-### State the failure boundary
-
-If a later frame fails after earlier frames were consumed, extract does not promise batch rollback. A connection/session owner must choose whether malformed protocol input closes the stream or is handled by another explicit recovery protocol. Repeatedly retrying the same invalid bytes is not useful error handling.
-
-The demonstration's 32-byte buffer is enough for its short sample. A real accumulator must hold an entire accepted frame or grow within the declared bound after validating its length. Compact cannot create capacity. A full buffer containing an incomplete oversized frame needs a bounded rejection/growth policy, not an infinite read loop with no writable space.
-
-## Channels and local progress
-
-A blocking copy loop flips after a read, writes until no bytes remain, then clears before another read. A partial write is normal and requires another write attempt. The existing ChannelCopyLab implements that complete blocking-channel pattern.
+## Complete a blocking channel copy
 
 <JavaExample file="ChannelCopyLab.java" output={"copied 5 bytes\nhello"} />
 
-For nonblocking channels, zero progress can mean not ready. Repeating immediately in a tight loop wastes CPU. A selector/event-loop design registers relevant readiness, keeps per-connection parser state and controls queued output. Readiness is not a guarantee that every planned byte transfer will complete before another participant changes state.
+The outer loop reads bytes into an eight-byte buffer. flip makes the bytes just read available for output. The inner loop writes until no bytes remain; one write may consume only part. clear prepares the next read. At EOF, the source reports -1 rather than a shorter final “message.”
 
-Byte order, message length limits and charset are protocol contracts. Selecting a direct buffer does not establish those contracts or make application data thread-safe. Direct/native storage can have different allocation/lifecycle costs and should be chosen for a demonstrated workload.
+The copy method owns neither supplied channel. Its caller opens/closes both and cleans temporary files in finally. Copying n bytes uses O(n) transfer work and O(buffer capacity) working storage. File existence checks are not required to establish the operation's success in advance.
 
-## Tests for framing, not just one successful string
+## Understand zero progress before using nonblocking channels
 
-<JavaExample file="CoreFramedTextTest.java" />
+A general channel can return zero without EOF. The blocking file-channel copy is intentionally different from a nonblocking socket loop. Repeating zero-progress calls tightly can waste CPU. A selector/event loop waits for appropriate readiness, retains per-connection state and controls pending output. Readiness is not a promise that a complete application message will arrive in one call.
 
-The tests split a body, retain a partial header, parse multiple frames, handle an empty body, reject negative/oversized lengths, reject malformed UTF-8 and reject wrong byte order/null input. An input containing several complete frames is not the same as several channel reads; test both segmentation and frame multiplicity.
+InputStream also allows partial reads: -1 means EOF, while a zero-length request can return zero. OutputStream and channel method contracts differ; do not transfer one interface's all-bytes assumption to another.
 
-## Interview questions with worked answers
+## Byte order, direct storage and views
 
-<details>
-<summary>Why use mark/reset before the header?</summary>
+putInt translates an int into four bytes in the configured byte order. Both ends of a protocol must agree. ByteBuffer starts big-endian by default. An absolute index is measured in bytes, not “number of ints.” A bounded view shares bytes while maintaining its own position/limit; a view is not a detached snapshot.
 
-This parser's invariant is that an incomplete frame remains wholly unread. Reset restores that boundary when the body is incomplete. A different parser can consume the header, but must then retain validated length/state explicitly across later reads.
+Direct buffers can reduce some native I/O copying but have allocation/lifecycle costs and are not universally faster. They do not make data thread-safe. Mapped buffers likewise bring filesystem/native lifetime considerations. Select them for a demonstrated workload instead of assuming a low-level representation is an automatic optimization.
 
-</details>
+## Completed exercise: preserve an unread suffix
 
-<details>
-<summary>Does a buffer slice copy the bytes?</summary>
+Suppose four bytes are readable and only two are consumed. Calling clear loses the state identifying the unread two; later writes can overwrite them. compact moves those two bytes to indexes zero/one and sets position two. Append the next bytes there, then flip again before consuming. No additional capacity is created by compact.
 
-No. It provides a bounded view sharing storage, with its own position/limit. Mutation through a permitted alias can affect the same bytes. The parent/arena/resource lifetime still matters.
-
-</details>
-
-<details>
-<summary>What is the difference between BufferUnderflowException and EOF?</summary>
-
-Underflow means a requested relative read exceeds the buffer's current readable range. EOF is a channel/stream outcome about the input source. A buffer can be temporarily incomplete before the source reaches EOF.
-
-</details>
-
-<details>
-<summary>Why can using clear lose part of a message?</summary>
-
-Clear discards the state describing unread bytes and prepares the full write range. Later writes can overwrite the incomplete header/body. Compact preserves the unread prefix when appending is the intended next action.
-
-</details>
-
-<details>
-<summary>Why cannot every read chunk be converted to a String independently?</summary>
-
-A chunk can split a multi-byte encoding sequence. Use incremental decoding with retained decoder state, or preserve bytes until a complete framed payload is available as this example does.
-
-</details>
-
-## Coding extension and solution
-
-Extend the parser to report incomplete data at end-of-input. After the source reports EOF, parse all complete frames; any remaining bytes indicate a truncated header/body under this protocol. Do not silently accept them as a final shorter frame. Keep EOF ownership outside extract so the same parser can be used while more input is still expected.
-
-For output, encode the String to UTF-8 bytes first, check the byte length against the protocol limit, then prefix that byte length. String.length counts UTF-16 units and is not the UTF-8 payload byte count. The euro sign example demonstrates why those quantities differ.
+Calling getInt immediately after putInt without flip reads from the current position, not from the bytes just written. The existing introductory FilesAndBuffers program demonstrates the simplest putInt/flip/getInt round-trip; the complete channel copy above applies the same state transition repeatedly.
 
 ## References
 
-- [Buffer state and operation contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/Buffer.java)
-- [ByteBuffer views and byte order — OpenJDK buffer source template](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/X-Buffer.java.template)
-- [Channel partial-write contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/channels/WritableByteChannel.java)
-- [CharsetDecoder error policies — OpenJDK charset coder source template](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/charset/Charset-X-Coder.java.template)
+- [Buffer positions, marks and transitions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/Buffer.html)
+- [ByteBuffer views, compact and byte order](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html)
+- [WritableByteChannel partial transfer contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/channels/WritableByteChannel.html)

@@ -1,0 +1,48 @@
+---
+title: "Classes, objects and instance state"
+module: "objects"
+group: "Classes and objects"
+summary: "Create separate objects and see how receiver-specific fields and methods hold their state."
+order: 140
+version: "Java 8+"
+prerequisites: ["language/methods-and-recursion"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Give related state and behavior one boundary
+
+A class defines a type: the fields that hold each object's state and the methods that operate on it. An object is one instance of that class. Two ScoreCard objects have the same kinds of fields but can contain different scores, just as two paper cards can have the same layout and different marks.
+
+<JavaExample file="ScoreCard.java" output={"2\n0\nfalse"} />
+
+`new ScoreCard()` creates and initializes a new object, returning a reference to it. Declaring `ScoreCard first;` alone creates a variable, not a ScoreCard. The variable must receive a reference before use. `first` and `second` refer to different objects, so their identity comparison is false.
+
+## Read the declaration as state plus operations
+
+`private int points;` declares an instance field. Every ScoreCard gets its own points, automatically initialized to zero. Private means callers use the published methods rather than directly writing the field. Unlike a field, a local variable inside main must be assigned before it is read.
+
+`awardPoint()` is an instance method. In `first.awardPoint()`, first supplies the receiving object. The unqualified field name points inside the method means the field on that receiver. Two calls increase only the first card's value. `second.points()` returns zero because no award was made to the second object.
+
+The field points and the method points() have different roles: one stores state, the other publishes a read operation. Parentheses mark an invocation. A method can return a primitive, return an object reference or perform an action and return void. A class with no declared constructor receives a compiler-provided default constructor; the next chapter replaces it with explicit initialization rules.
+
+## Class members do not need an object receiver
+
+Main is static: it belongs to ScoreCard as a class. A static method has no implicit current ScoreCard, so it cannot read points without identifying an object. The expression `first.points()` provides that receiver. Instance methods instead have an implicit current object, called this.
+
+## Practice: draw two objects and one alias
+
+After `ScoreCard alias = first; alias.awardPoint();`, what does first.points() return? What does second.points() return?
+
+<details>
+<summary>Answer</summary>
+
+They return 3 and 0. Assignment copies the reference; it does not copy the object. Alias identifies the existing first card, so its method changes that object's field. There are still two ScoreCard objects, not three. The references chapter develops this graph and distinguishes mutation from reassignment in method calls.
+
+</details>
+
+## Class references
+
+- [Dev.java: declaring classes and fields](https://dev.java/learn/language/oop/classes-objects/creating-classes/)
+- [Dev.java: creating and using objects](https://dev.java/learn/language/oop/classes-objects/creating-objects/)

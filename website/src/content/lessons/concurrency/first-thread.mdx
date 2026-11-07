@@ -1,0 +1,74 @@
+---
+title: "Your first Runnable, Thread and join"
+module: "concurrency"
+group: "Threads and tasks"
+summary: "Create one worker, distinguish start from run, and derive legal execution schedules."
+order: 710
+version: "Java 8+"
+prerequisites: ["concurrency/processes-and-threads", "functional/lambdas-and-optional"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+
+## Give an execution some work
+
+A `Runnable` is an object describing an action with no arguments and no returned result. Its `run()` method is the action. A `Thread` is an execution that can run that action. Keeping work separate from execution lets the same task be called directly, run on a new thread, or later submitted to an executor.
+
+The lambda below creates one Runnable. It prints the name of the thread **currently executing** the action. Creating the lambda does not invoke it.
+
+## Run the complete first-thread program
+
+<JavaExample file="ThreadBasicsDemo.java" output={"task on main\ntask on lesson-worker\nworker finished=true"} />
+
+Compile with `javac ThreadBasicsDemo.java`, then run `java ThreadBasicsDemo`. Follow the statements in order:
+
+1. `task` holds the action. `Thread.currentThread()` is evaluated when the action runs, not when the lambda is created.
+2. `task.run()` is an ordinary method call. Main executes the action and prints `task on main` before the call returns.
+3. `new Thread(task, "lesson-worker")` constructs an unstarted Thread object and attaches the action and diagnostic name. The task has not run a second time yet.
+4. `worker.start()` schedules a new execution. That execution invokes the action. Main can continue independently after start returns.
+5. `worker.join()` waits until this worker terminates. It does not run the worker's task on main.
+6. After a successful join, `isAlive()` is false and the final print follows the worker's print.
+
+The output is deterministic here because the direct call finishes before start and the last print follows join. A Thread can be started at most once. Calling start again, including after termination, throws `IllegalThreadStateException`. Reuse a task description through a new execution rather than trying to restart a terminated Thread object.
+
+<ConceptAnimation client:visible model="thread" />
+
+## Work out which output orders are legal
+
+Now imagine main prints `main continues` immediately after start and **before** join. The worker's print and that new main print can appear in either order. Neither source placement in separate methods nor the worker's name establishes an order between them. The final print still follows the worker's termination.
+
+| Relationship | Required order |
+| --- | --- |
+| Direct task call and later start in main | Direct call finishes first |
+| Two statements executed by the same worker | Worker preserves their program-order behavior |
+| Main's print after start versus worker's first print | Either may be observed first |
+| Worker completion and main after successful join | Worker completes first |
+
+`Thread.sleep` can delay the current thread but cannot establish that another thread has started or finished. A demonstration can use sleep to represent waiting; a correctness assertion must use a real completion or coordination contract.
+
+## A returned method and a finished worker are different
+
+Returning from start means the start request returned, not that the worker completed. If a worker throws an uncaught exception, it can terminate without producing a successful application result. Join establishes termination, not task success. Result-bearing tasks and explicit failure observation are introduced after these basic execution rules.
+
+`join` declares `InterruptedException`: the waiting caller can itself receive a cancellation request. This small main propagates it. The lifecycle lesson teaches how an owner coordinates cancellation and cleanup rather than treating every exception as a result.
+
+## Exercise and complete solution
+
+Create two named workers sharing one Runnable. Let the action print `task completed`, start both workers, then join both before printing `all finished`. Which messages must precede the final line?
+
+<details>
+<summary>Complete runnable solution</summary>
+
+<JavaExample file="TwoWorkersLesson.java" output={"task completed\ntask completed\nall finished"} />
+
+Both task messages precede `all finished`. Their identical text means swapping the workers' print order does not change the displayed lines. Printing their names instead would expose either legal order. Each join waits for a distinct execution; joining the first does not prevent the second from already running. No sleeps or shared mutable result list are needed. This finite example propagates interruption of an owner wait; later lessons develop cancellation ownership.
+
+</details>
+
+## Primary references
+
+- [Defining a Runnable and starting a thread](https://docs.oracle.com/javase/tutorial/essential/concurrency/runthread.html)
+- [Thread.start, run and join](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html)

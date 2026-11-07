@@ -1,0 +1,55 @@
+---
+title: "Method handles, exact invocation and adaptation"
+module: "platform"
+group: "Dynamic invocation"
+summary: "Method handles, exact invocation and adaptation with focused examples, failure traces and solved practice."
+order: 1160
+version: "Java 8+"
+prerequisites: ["platform/reflection-basics", "language/types-and-conversions"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Obtain an executable operation with an explicit type
+
+A Method represents reflective member metadata. A MethodHandle is a typed executable reference, which can also be adapted or composed. Its MethodType specifies the return type and parameter types. Lookup performs access checks when creating the handle; passing the resulting handle can transfer the capability to invoke its target.
+
+<JavaExample file="MethodHandleLesson.java" output={"6\n8\nwrong signature"} />
+
+FindStatic requests twice on this class with signature `(int)int`. This lookup can access its own private method. The first call supplies an int argument and explicitly requests an int return, matching the handle exactly and returning six. Main declares Throwable because the invocation APIs can propagate the target's failures; a production boundary should handle its intended contract deliberately.
+
+## The call site's return type matters
+
+InvokeExact matches argument **and result** types, rather than asking whether a runtime value could fit some wider type. The `(int)` cast on its call contributes to that descriptor. An uncast call used as an Object expression requests Object, which does not exactly match int. This is signature-polymorphic invocation, not ordinary overload selection among Java methods named twice.
+
+The attempted exact call with 4L has a long argument, so WrongMethodTypeException occurs before twice can perform its multiplication. A target's own ArithmeticException would be a different failure after successful invocation shape checking.
+
+## Adapt intentionally instead of relying on hidden conversions
+
+AsType constructs an adapted handle accepting short and returning long. Its invocation widens short 4 to the target's int input, then widens the int result 8 to long. The new handle still requires its own exact `(short)long` shape at invokeExact. Adaptable invoke can apply permitted conversions, but is not a universal way to accept arbitrary objects.
+
+FindVirtual differs from findStatic: the requested method type describes the member's parameters/result, while the obtained handle also needs the receiver as an invocation argument. BindTo can bind an appropriate receiver and remove that parameter. Keep receiver, arguments and result visible when writing down the invocation type.
+
+## Keep access and performance claims precise
+
+A lookup has a defined access context. Handles do not automatically bypass module readability or package openness. Do not pass a privileged private-member handle to code that should not possess that capability. A handle is immutable, while its target can still mutate state or require coordination.
+
+Lookup frequency, adaptation and call-site stability affect optimization. Measure an actual invocation pattern before claiming handles always outperform reflection or direct calls. A cached handle can avoid repeated lookup without proving every remaining cost disappears.
+
+## Practice: diagnose two failures
+
+An exact invocation uses long where the handle expects int. A correctly shaped call instead supplies Integer.MAX_VALUE to twice. Are these the same error?
+
+<details>
+<summary>Answer</summary>
+
+No. The first fails the invocation type relationship with WrongMethodTypeException. The second reaches Math.multiplyExact and fails with ArithmeticException because the int result would overflow. Changing a cast can fix an invocation descriptor, but cannot make an overflowing mathematical result fit the declared numeric domain.
+
+</details>
+
+## Method-handle references
+
+- [MethodHandle invocation and adaptation](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/invoke/MethodHandle.html)
+- [MethodHandles.Lookup access capabilities](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/invoke/MethodHandles.Lookup.html)
+- [MethodType descriptors](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/invoke/MethodType.html)

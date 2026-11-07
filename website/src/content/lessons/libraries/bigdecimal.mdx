@@ -1,9 +1,9 @@
 ---
 title: "BigDecimal"
 module: "libraries"
-group: "Numbers and time"
+group: "Decimal arithmetic"
 summary: "Control decimal representation, scale, precision, rounding and exact conversions."
-order: 280
+order: 620
 version: "Java 8+"
 prerequisites: ["libraries/numbers-and-time"]
 advanced: true
@@ -22,7 +22,9 @@ Before calculating, define units, accepted scale, rounding boundary and equality
 
 <span id="worked-example" aria-hidden="true"></span>
 
-## Trace representation equality and rounding
+## Compare division, equality and exact conversion
+
+<JavaExample file="BigDecimalExample.java" />
 
 The example constructs decimal operands from strings and divides one by three with a scale of two and HALF_UP rounding. The result is 0.33. Omitting a rounding policy for this nonterminating decimal division can throw ArithmeticException even though the divisor is nonzero.
 
@@ -70,9 +72,7 @@ Representation-sensitive equals/hashCode is intentional. If an API requires nume
 
 <span id="java-implementation" aria-hidden="true"></span>
 
-## BigDecimal arithmetic in Java
-
-<JavaExample file="BigDecimalExample.java" />
+## Apply the arithmetic contract
 
 For an exact minor-unit conversion, shift the decimal point according to the domain scale and use an exact integer conversion that rejects fractions/overflow. Do not silently truncate with intValue or assume every currency uses two decimal places. Perform intermediate arithmetic under the required precision and round at the declared boundary; repeated arbitrary rounding can change totals.
 

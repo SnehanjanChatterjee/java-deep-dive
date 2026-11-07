@@ -1,0 +1,78 @@
+---
+title: "Service discovery, packaging and provider selection"
+module: "platform"
+group: "Service discovery"
+summary: "Service discovery, packaging and provider selection with focused examples, failure traces and solved practice."
+order: 1170
+version: "Java 8+"
+prerequisites: ["platform/annotations", "platform/reflection-and-services", "platform/method-handles"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import { url as lessonUrl } from '../../../lib/paths';
+
+## Discover providers without importing their classes
+
+An interface decouples a caller from one implementation, but someone still needs to choose and construct that implementation. ServiceLoader uses provider metadata to discover available implementations. The consumer depends on the service contract; packaging supplies the providers. Discovery is different from proxy interception or ordinary constructor injection.
+
+The project has four Java files plus one service descriptor. Save/download them under the paths shown, preserving their directories. The consumer imports Formatter but neither UpperFormatter nor LowerFormatter.
+
+<JavaExample file="projects/service-discovery/src/course/spi/Formatter.java" />
+<JavaExample file="projects/service-discovery/src/course/provider/UpperFormatter.java" />
+<JavaExample file="projects/service-discovery/src/course/provider/LowerFormatter.java" />
+<JavaExample file="projects/service-discovery/src/course/app/Discover.java" output={"JAVA"} />
+
+## Package the provider metadata alongside classes
+
+Create the UTF-8 resource `resources/META-INF/services/course.spi.Formatter` with these exact provider binary names:
+
+```text
+course.provider.UpperFormatter
+course.provider.LowerFormatter
+```
+
+<a href={lessonUrl('examples/projects/service-discovery/resources/META-INF/services/course.spi.Formatter')} download>Download the service descriptor</a>. The filename is the service interface's fully qualified binary name, not the chosen provider's name. Classpath providers here are public classes with public no-argument constructors.
+
+Run these commands from the project's service-discovery directory:
+
+```bash
+mkdir -p out/META-INF/services
+javac -d out src/course/spi/Formatter.java src/course/provider/UpperFormatter.java src/course/provider/LowerFormatter.java src/course/app/Discover.java
+cp resources/META-INF/services/course.spi.Formatter out/META-INF/services/
+java -cp out course.app.Discover
+```
+
+The output is JAVA. Compiling classes alone is insufficient: javac does not automatically copy arbitrary resource files into out. A JAR must preserve the same META-INF/services resource path. Build tools can copy resources, but the descriptor still needs to exist in the resulting artifact.
+
+## Select by contract rather than discovery order
+
+Select scans providers for the advertised upper capability. It rejects no match and more than one match; reversing descriptor lines does not change its chosen behavior. Iteration instantiates providers lazily, so discovery/configuration/construction failures can occur while traversing. Do not catch ServiceConfigurationError and pretend the list was empty. The selection scans all providers to detect duplicates, so even a later invalid provider remains an explicit configuration failure.
+
+The chosen loader/context determines visible provider classes and resources. These providers have no closeable resources; a resource-owning extension needs an additional lifecycle contract. ServiceLoader itself is not a complete plugin isolation or resource-ownership system.
+
+## Named modules use descriptors too
+
+An explicit module consumer declares `uses service.Interface`. An explicit module provider declares `provides service.Interface with provider.Implementation`. The provider implementation package need not be exported just to supply the service. Explicit named modules additionally support the specified public static provider-method form. Automatic modules are named too, but still use the provider-constructor rules; the classpath example above also requires a public provider constructor.
+
+## Practice: remove or corrupt the descriptor
+
+What differs between deleting the service resource and changing a provider line to an unknown class?
+
+<details>
+<summary>Answer</summary>
+
+Without metadata and with no other configured providers, iteration is empty and this consumer reports its no-provider selection failure. Invalid metadata instead produces ServiceConfigurationError during discovery. Restoring the resource repairs packaging; it is not a reflection accessibility problem. If two providers both advertise upper, select deliberately rejects ambiguity instead of trusting iteration order. A richer API can define priorities or capabilities, but that must be an explicit rule.
+
+</details>
+
+## Synthesis: distinguish four extension mechanisms
+
+<JavaExample file="MetadataLab.java" output={"true\nHello Mira\nHello Mira\nHello Mira\nHello Mira"} />
+
+This final example reads a runtime method annotation, invokes reflectively, wraps a proxy, invokes a handle and discovers a provider. Its temporary descriptor points to a nested provider class already visible to the parent loader; the resource loader is closed and temporary files are removed. The mechanisms reach the same greeting for different reasons. It is a comparison exercise after learning them individually, rather than a substitute for real provider packaging.
+
+## Service references
+
+- [ServiceLoader classpath/module metadata, laziness and errors](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ServiceLoader.html)
+- [JLS: uses and provides directives](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.7)

@@ -1,0 +1,57 @@
+---
+title: "Sealed alternatives and pattern matching"
+module: "objects"
+group: "Nested and domain types"
+summary: "Represent permitted alternatives and use patterns to inspect a value and handle its cases."
+order: 240
+version: "Java 21+"
+prerequisites: ["objects/modern-type-modeling", "objects/inheritance-and-composition"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Model alternatives with different data
+
+A single outcome object containing a boolean and several nullable fields can represent contradictions: successful with an error, failed with a success value, or neither. A sealed family can express a closed set of alternatives, each with only its appropriate data. Constructors then validate each alternative locally.
+
+<JavaExample file="modern/ModernTypesDemo.java" output={"value=42\nerror=missing\nrejected"} />
+
+Result permits Success and Failure. A Success carries a nonnegative int; constructing -1 throws before any describe call. Failure carries a String message; this particular teaching type permits null, so a stricter domain would validate it explicitly. The switch chooses behavior for an already constructed result; it does not perform constructor validation.
+
+## Read sealing independently of pattern syntax
+
+Sealed classes/interfaces restrict direct permitted subtypes. Each direct subtype must be final, sealed or non-sealed; records are implicitly final. Permitted types must belong to the same named module, or the same package in an unnamed module. A non-sealed branch intentionally allows further extension beneath that branch.
+
+Sealing became final in Java 17. The record patterns and pattern switch in this complete example require Java 21 or later, with no preview flags. A plain instanceof type pattern can bind a compatible value to a scoped local; a record pattern additionally deconstructs through the record component API.
+
+## Explain exhaustiveness, dominance and null separately
+
+Describe covers the known permitted alternatives, so it needs no default for non-null Result values. Without an applicable null label, a null selector throws NullPointerException; ordinary default does not automatically make it null-safe. Add `case null -> "no result";` when absence is an allowed input policy.
+
+An earlier broad pattern can dominate a later narrow one, making the latter illegal. A guard such as `case Failure f when f.message() != null && f.message().isEmpty()` covers only some failures; include a remaining unguarded Failure case. Nested record patterns do not fabricate defaults for null nested components.
+
+Exhaustiveness is checked against the compile-time hierarchy. Adding a permitted alternative exposes missing cases during recompilation. An old client can still encounter an evolved hierarchy through separate compilation; a previously exhaustive binary is not a promise of meaningful behavior for every future alternative.
+
+## Compare an older representation honestly
+
+<JavaExample file="OutcomeModel.java" output={"SUCCESS:saved"} />
+
+This Java 8-compatible example uses an enum plus one value class. It demonstrates a fixed status label, but does not structurally distinguish success payloads from failure payloads. It is a starting model to refactor, rather than an equivalent substitute for a sealed sum of alternatives.
+
+## Practice: add a Pending outcome
+
+Pending carries a nonnegative retry delay. What must change beyond adding a record declaration?
+
+<details>
+<summary>Answer</summary>
+
+Permit Pending at the sealed root, validate its delay in its constructor and add an unguarded Pending branch to every exhaustive switch during recompilation. Decide separately whether describe accepts null. Do not encode infrastructure failure as Missing or Pending merely to keep the model small: alternatives should preserve the actual outcome contract. A retry delay value does not itself authorize retrying a side-effecting operation.
+
+</details>
+
+## Pattern references
+
+- [JEP 409: sealed classes](https://openjdk.org/jeps/409)
+- [JEP 440: record patterns](https://openjdk.org/jeps/440)
+- [JEP 441: pattern matching for switch](https://openjdk.org/jeps/441)

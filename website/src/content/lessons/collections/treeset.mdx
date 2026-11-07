@@ -3,9 +3,9 @@ title: "TreeSet"
 module: "collections"
 group: "Sets"
 summary: "Define ordered uniqueness with comparator contracts, tree navigation and backed views."
-order: 190
+order: 470
 version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/choosing-collections","collections/treemap"]
+prerequisites: ["collections/treemap", "collections/ordering", "collections/hashset"]
 advanced: true
 ---
 
@@ -77,13 +77,19 @@ A sorted-set wrapper can delegate to an ordered map with a shared marker, but in
 To retain users by age and stable ID, compare age first and ID second, using comparison helpers rather than subtraction. Write tests for equal age/different ID, same ID policy, extreme ages, neighbor queries, range endpoints and mutation attempts. Whether equal IDs with changed ages should coexist is a domain identity question that the comparator alone cannot resolve coherently without a declared model.
 
 <span id="java-implementation"></span>
-## TreeSet implementation and source walkthrough
+## Implement sorted membership over a search tree
 
-The runnable example is complete. For a custom sorted set, define the element equivalence policy first, then delegate to a correctly implemented ordered map with a shared marker. Reuse the map's search and balancing logic, just as SimpleHashSet reuses hash-table storage. A wrapper around an unbalanced tree inherits its worst-case height and must not promise TreeSet's logarithmic core operations.
+<JavaExample file="SimpleTreeSet.java" output={"false\n[10, 20, 30]\n[10, 30]"} />
 
-To implement comparator-based duplicate detection, search for comparison zero before adding. For removal, return whether a marker was removed, not whether an arbitrary user value was non-null. Explain why a sorted set does not need both a comparator and a separate hash index for ordinary membership.
+The complete single-file wrapper uses the preceding SimpleBinarySearchTree as its explicit storage dependency. One shared non-null marker represents presence. add returns true only when tree.put finds no comparison-zero key; contains uses key existence; remove reports whether a marker was removed. asList traverses sorted keys into an independent container.
 
-The production source is useful for understanding how subset/descending wrappers preserve the shared map and bounds. Copying into a new TreeSet can detach the container, but comparator and element mutation policies still matter.
+Compile both canonical files together. This wrapper implements the set membership subset, not the full NavigableSet API. Its storage is deliberately unbalanced, so lookup/add/remove take O(h) and can degrade to O(n). Production TreeSet instead delegates to a balanced TreeMap and retains its logarithmic core-operation contract. The code makes delegation concrete without falsely claiming that a short wrapper implements balancing itself.
+
+<JavaExample file="SimpleTreeSetTest.java" />
+
+The tests check sorted traversal, duplicate insertion, removal, detached result containers, null rejection and comparison-equivalent BigDecimal values. Null is rejected by this teaching tree's natural-order policy. The production TreeSet can accept a supplied comparator that defines a different supported null policy.
+
+The earlier TreeMap chapter explains rotations, color/height invariants and repair cases. Production subset/descending wrappers add shared backing-map bounds; copying into a new TreeSet detaches the container but not arbitrary mutable elements or the comparator's external state.
 
 <span id="common-mistakes"></span>
 ## Ordering and mutation pitfalls

@@ -1,11 +1,11 @@
 ---
-title: "API design, refactoring and testing"
+title: "API contracts, refactoring and meaningful tests"
 module: "engineering"
-group: "API design and testing"
-summary: "Make contracts explicit and use tests to protect meaningful behavior."
-order: 650
+group: "API design and refactoring"
+summary: "Specify invariants, build a quote-calculation API and test refactoring without changing the contract."
+order: 1250
 version: "Java 8+"
-prerequisites: ["objects/equality-and-immutability", "reliability/exceptions-and-resources"]
+prerequisites: ["engineering/first-project-and-tests", "objects/equality-and-immutability", "reliability/exceptions-and-resources", "functional/lambdas-and-optional"]
 advanced: false
 ---
 
@@ -13,175 +13,86 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+## Design a quote calculation around its observable promise
 
-## Contracts, ownership and variation points
+A shop needs to calculate a quote from line prices, quantities and a varying discount policy. The quote is a calculation result, not a payment instruction. Before introducing classes or design patterns, state the meaning and failure behavior that callers need.
 
-An API contract includes valid inputs, output meaning, mutation/ownership, failure behavior and concurrency assumptions. Good names and small methods help readers see that contract, but a method being short is not sufficient if its dependencies and side effects are hidden. Cohesion groups behavior around a clear responsibility; coupling describes dependencies between those responsibilities.
-
-SOLID principles and design patterns are reasoning aids rather than a requirement to create an interface for every class. Strategy separates a varying behavior; Builder helps assemble complex valid state; Adapter translates contracts. Refactoring changes internal structure while preserving intended observable behavior.
+This example operates in one declared currency/minor-unit domain. Prices are nonnegative long values; quantities are positive ints. A policy returns a discount between zero and subtotal, inclusive. Overflow is a reported arithmetic failure. The returned quote is immutable and does not retain the caller's mutable list. Policies must be side-effect-free, and concurrent caller mutation is outside this small example's contract.
 
 <span id="worked-example" aria-hidden="true"></span>
-
-## Specify subtotal inputs, results and failure
-
-The example computes an inclusive subtotal with an explicit nonnegative input requirement and detects overflow using Math.addExact. Normal, zero and invalid cases are observable. A useful unit test would assert these contracts rather than mocking the arithmetic or duplicating the implementation formula.
-
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Test boundaries and design tradeoffs
-
-<Diagram client:visible definition={"flowchart TD\n C[Observable contract] --> S[Success and boundary tests]\n C --> F[Failure tests]\n S --> R[Refactor internals]\n F --> R\n R --> V[Verify contract is preserved]"} caption={"Useful tests protect observable behavior across refactoring instead of reproducing private implementation steps."} />
-
-### Design around an observable contract
-
-Consider a Checkout quote operation. Its contract says: quantities must be positive, unit prices nonnegative, amounts use one declared currency/scale, the discount policy must not return a negative total, and calculations detect overflow or apply an explicit decimal rounding policy. A quote is a calculation result, not an instruction to charge a card. Naming and return types should preserve that distinction.
-
-A coherent design can contain an immutable input value, a pricing service and a DiscountPolicy strategy only if discounts genuinely vary. Inject Clock if rules depend on time. Return an immutable quote snapshot. Keep storage/network access behind the boundary that owns it, rather than making an otherwise pure calculation depend on global mutable singletons.
-
-### SOLID applied to that case
-
-Single responsibility groups pricing rules that change together; it does not demand one statement per class. Open/closed reasoning can isolate a varying discount policy, but excessive abstraction before any real variation adds cost. Liskov substitution requires every policy to honor nonnegative/valid-result guarantees. Interface segregation avoids forcing a pure calculator to implement persistence operations. Dependency inversion makes the policy boundary explicit without requiring a dependency-injection framework.
-
-Builder is useful when constructing a valid object involves many optional inputs and cross-field validation. Adapter translates an external contract into a local one. Decorator adds behavior around the same capability. These names explain a design after the requirements are clear; they should not replace the requirements.
-
-### Test the public behavior first
-
-The supplied ContractExample is deliberately small enough to derive all essential categories. Its inputs are nonnegative ints and its output is their exact int sum. Negative inputs fail with IllegalArgumentException. Arithmetic overflow fails with ArithmeticException rather than wrapping. The test source below is the actual corresponding JUnit 4 class, matching the Java 8-compatible exercise project.
-
-<JavaExample file="ContractExampleTest.java" />
-
-A test for `subtotal(0,4)` protects the zero boundary. A negative-input test should independently cover each argument. The overflow case protects a behavior that ordinary positive examples miss. Test names should state the contract, and assertions should not duplicate private helper calls from the implementation. The modern JUnit Jupiter API has analogous assertions and richer parameterized facilities, but imports/runtime requirements differ; do not mix test frameworks in one file accidentally.
-
-### Use test doubles at a genuine boundary
-
-A fake repository can model stored values deterministically; a stub clock/policy can return controlled inputs; a mock can verify an interaction when that interaction itself is the contract. Mocking every internal method makes a refactor break tests even when behavior stays correct. Do not mock BigDecimal merely to make arithmetic assertions pass. A pure pricing function often needs no mock at all.
-
-Unit tests exercise a bounded behavior. Integration tests verify real collaboration, such as an actual file encoding round-trip. Contract tests check that independent implementations agree with an interface promise. End-to-end tests provide a smaller set of whole-flow checks. Choose the level that exposes the failure instead of testing the same formula redundantly at every level.
-
-### Failure atomicity and ownership
-
-Validate before mutating shared state. If an operation fails halfway through, define whether earlier effects remain, are rolled back, or are reported as partial completion. Returning an unmodifiable view can expose later mutations; return a snapshot when the API promises a fixed result. Define null handling at boundaries rather than scattering Optional and null checks without a consistent model.
-
-Concurrency tests need explicit coordination and bounded waiting. A latch can establish the state being tested; sleep only hopes it happened. Time tests should inject Clock. Randomized/property tests should retain enough input/seed information to reproduce a failure. Coverage identifies unexecuted branches but does not prove meaningful assertions or all possible states; mutation testing asks whether deliberate small defects are caught.
-
-### Refactoring exercise with explained outcome
-
-Change ContractExample's internal validation helper without changing tests. Then temporarily replace addExact with `left + right`: the overflow test must fail. Temporarily remove validation for the second argument: its negative test must fail. These are discriminating assertions. A test that only checks “some result returned” would miss both defects.
-
-### Interview follow-up
-
-Explain an actual boundary you would introduce and what change it isolates. A strong answer connects requirements, contract, invariants, tests and tradeoffs. “Use SOLID” without a concrete responsibility or substitutability guarantee does not explain the design.
-
-## A complete quote-calculation case study
+## Calculate the quote before naming the pattern
 
 <JavaExample file="CoreCheckout.java" output={"2500\npolicy rejected"} />
 
-### Define the domain before the abstraction
+The lines cost 1,250 × 2 and 500 × 1, producing a subtotal of 3,000 minor units. The policy returns a discount of 500, so total is 2,500. A second policy returns subtotal+1; the boundary rejects it rather than returning a negative total or silently clamping it.
 
-The calculation operates in one declared currency/minor-unit domain. Unit prices are nonnegative long values; quantities are positive ints. A quote is not a payment instruction. The supplied discount policy must be side-effect-free and return an amount in 0..subtotal. Overflow is reported explicitly rather than wrapping into a plausible negative/incorrect amount.
+Line validates its own price/quantity when constructed. subtotal uses multiplyExact for each line. quote checks its container and policy, visits non-null lines, adds amounts with addExact, invokes the policy once after accumulation, validates the returned discount and constructs Quote. Null lines or overflow fail before policy invocation. The ordinary interface shape cannot prove the policy is pure or returns a valid amount; the API must declare purity and enforce its numeric invariant.
 
-Line's constructor establishes local validity. Its subtotal uses multiplyExact. The quote operation validates container/policy/line inputs, sums with addExact, invokes the variable discount behavior, verifies its result and creates an immutable aggregate. Quote exposes the result without retaining a caller-owned mutable line list. The only interface represents genuine varying behavior: discount policy.
+## Assign ownership to the types that can enforce it
 
-### Failure behavior is observable API
+Line's final primitive fields preserve local validity. Quote stores only completed aggregate numbers, so later edits to the input list do not change it. DiscountPolicy represents one real variation: how much discount a valid subtotal receives. The calculation does not need a repository, network client, builder and factory merely because those pattern names exist.
 
-A negative price or zero quantity fails at construction. A null line fails before its arithmetic is used. An invalid policy result fails before returning a quote. Arithmetic overflow is a separate failure class from invalid negative input. The method performs no storage/network operations; arbitrary side-effecting policies are outside its contract, so code review must not assume a Function-shaped type proves purity.
+If prices later support several currencies or decimal rounding, revise the value contract deliberately. Mixing raw doubles and nullable currency Strings into the existing calculation would weaken its invariants. An unmodifiable view of the input list would also be a different ownership promise from an immutable aggregate quote.
 
-### Tests that discriminate defects
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+## Let tests discriminate plausible mistakes
 
 <JavaExample file="CoreCheckoutTest.java" />
 
-The success test checks an exact total. The empty/full-discount cases exercise boundaries. Negative/zero/null cases test each declared invalid category. Multiplication and aggregate-addition overflow are tested separately because either implementation step can be broken independently. Replacing an exact helper with wrapping arithmetic should cause a meaningful assertion to fail.
+The success assertion uses an independently chosen exact result. Empty input and full discount establish boundaries. Invalid price/quantity/null input and invalid policy results establish failure categories. Multiplication overflow and aggregate-addition overflow are separate: each can fail even if the other step is implemented correctly.
 
-### Refactor without changing the public promise
+Coverage says whether code executed, not whether assertions would reject an incorrect result. Replacing exact arithmetic with ordinary wrapping addition/multiplication can still execute the same lines. The corresponding overflow assertion must fail for that defect. Mutation testing systematically asks similar questions by introducing small defects and observing whether tests catch them.
 
-Validation can move into helpers or a validated value representation without tests asserting private call order. A fake external policy can supply a deterministic discount when isolation is appropriate; arithmetic itself should not be mocked. If the domain later supports multiple currencies, rounding or taxed allocations, extend the value contract deliberately rather than sprinkling doubles and nullable currency strings through existing callers.
+Test the public behavior instead of private call order. A helper extraction should not require every test to know its name. A useful regression test captures the externally meaningful failure, fails before its correction and remains valid after a sensible refactor.
 
-### Design discussion
-
-The example uses composition through a policy boundary and immutable result data. It does not introduce a factory/builder/repository for every class because those variations are not present. Explain which real change a pattern isolates and which invariant a type protects. This is a stronger interview answer than listing SOLID acronyms without connecting them to behavior.
-
-<span id="java-implementation" aria-hidden="true"></span>
-
-## Run the subtotal contract example
-
-The following program is a complete executable example. Compile with `javac ContractExample.java` and run with `java ContractExample`.
+## Refactor a small contract without changing its tests
 
 <JavaExample file="ContractExample.java" output={"7\n4\nrejected"} />
 
+subtotal still accepts two nonnegative ints and returns their exact int sum. The final implementation delegates each input check to one private requireNonnegative helper. That internal extraction changes no input/result/failure promise.
+
+<JavaExample file="ContractExampleTest.java" />
+
+The same tests check an ordinary result, zero, an accepted maximum value, each negative input independently and overflow. Removing validation for just the right argument would therefore be detected independently of left validation. Replacing addExact with wrapping addition would be detected by the overflow test. The helper's private call order is not itself asserted.
+
+<Diagram client:visible definition={"flowchart LR\n C[Public contract and independent assertions] --> B[Behavior preserved]\n H[Extract private validation helper] --> B\n D[Remove validation or exact arithmetic] --> F[Relevant assertion fails]"} caption="A refactor changes internal structure; a contract defect changes an observable result or failure." />
+
+## Apply design principles to an actual variation
+
+| Principle | Decision in the quote calculation |
+| --- | --- |
+| Single responsibility | Group pricing rules and their input/result invariants coherently |
+| Open/closed | Isolate the discount behavior when policies really vary |
+| Liskov substitution | Every discount implementation must honor the same bounds/purity promise |
+| Interface segregation | A pure pricing policy need not implement persistence methods |
+| Dependency inversion | The calculation receives the policy contract instead of selecting a global implementation |
+
+SOLID is a reasoning aid, not a requirement to add an interface for every class. A Strategy is the varying discount behavior already present. A Builder can help when many optional inputs and cross-field checks make construction difficult. An Adapter translates an external contract into the local one. A Decorator adds behavior around the same capability while preserving its promise. Name the real change a pattern isolates.
+
+## Use doubles and test levels at genuine boundaries
+
+A fake repository can provide deterministic in-memory state. A stub Clock/policy can return controlled inputs. A mock verifies an interaction when that interaction is itself meaningful, such as exactly one controlled dispatch. Mocking every private collaboration makes structure part of the test requirement; mocking BigDecimal arithmetic normally obscures the calculation.
+
+Unit tests exercise a bounded behavior such as quote. Integration tests exercise real collaboration such as file/charset round-tripping. Contract tests check independent implementations of an interface promise. A smaller set of end-to-end checks protects whole flows. Choose the level that exposes the relevant failure rather than repeating the same formula everywhere.
+
+Time-dependent code should accept Clock. Concurrency tests need coordination and bounded waiting; sleep only hopes a state occurred. Randomized/property checks should retain reproducing inputs/seeds. None of these techniques substitutes for a declared contract and meaningful expected behavior.
+
 <span id="common-mistakes" aria-hidden="true"></span>
+## Define failure atomicity where effects exist
 
-## API design and testing pitfalls
+This quote method builds a result without writing storage or charging a payment. If an operation performs effects and fails halfway, specify whether earlier effects remain, roll back or are reported as partial completion. Validating inputs before mutation helps, but does not itself create a distributed transaction. Optional.empty should not silently replace an unexpected failure.
 
-Do not silently convert unexpected failures into empty success-like results, mock the class under test, or equate line coverage with complete correctness. Adding abstractions without a concrete variation or testing need can increase complexity.
-
+<span id="java-implementation" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+## Completed design exercise
 
-## API contract interview practice
+For a new discount policy, define its input/output bounds first, supply it through DiscountPolicy, and use the same quote boundary/tests to reject invalid results. A zero-discount policy is subtotal -> 0; a full-discount policy is subtotal -> subtotal. Both preserve 0 ≤ discount ≤ subtotal. A policy returning −1 or subtotal+1 violates substitutability and is rejected.
 
-### What makes a regression test useful?
+For refactoring, retain ContractExampleTest unchanged while extracting the private helper shown above. The supplied source is the completed reference. Test a future currency/rounding requirement separately after defining that new contract; the current example does not claim to cover payments, persistence or arbitrary concurrent policies.
 
-<details>
-<summary>Explanation</summary>
+## References
 
-It captures the externally meaningful failure and expected behavior at a stable boundary. It should fail before the correction, pass afterward, and remain valid if the implementation is sensibly refactored. Tests that merely assert internal method calls often protect the current structure rather than the requirement.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>What is failure atomicity?</summary>
-
-It describes the externally visible state when an operation fails. Ideally a rejected operation leaves state unchanged, or its partial effects are explicitly defined. Validating inputs before mutation helps, but external side effects may require a larger consistency protocol.
-
-</details>
-
-<details>
-<summary>Why can 100% line coverage miss a broken subtotal?</summary>
-
-A test can execute the addition without asserting overflow behavior or exact values. Coverage measures execution, not assertion strength. An overflow test that fails when addExact is replaced with wrapping addition discriminates the intended contract.
-
-</details>
-
-<details>
-<summary>When should a mock verify calls?</summary>
-
-When the interaction is itself an externally meaningful contract, such as exactly one dispatch to a controlled external boundary. Verifying every private collaboration makes implementation structure the requirement and creates brittle refactoring tests.
-
-</details>
-
-### Coding exercise
-
-Write success, zero, negative-input and overflow tests for subtotal. Refactor the implementation while keeping those tests unchanged, and explain which cases remain outside the chosen contract.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Why validate the policy result after invocation?</summary>
-
-The interface shape alone cannot enforce a discount within bounds. The quote boundary owns that invariant and must reject an invalid implementation instead of returning a negative total or silently clamping an undeclared policy.
-
-</details>
-
-<details>
-<summary>Why test both multiplication and addition overflow?</summary>
-
-A line amount can overflow before aggregation, or individually valid lines can overflow the total. One test does not establish both failure paths.
-
-</details>
-
-<details>
-<summary>What remains outside this example's contract?</summary>
-
-Multiple currencies, arbitrary rounding, persistence, payment authorization and concurrent mutation of caller inputs/policies. Those need explicit additional models/protocols rather than being implied by a small quote calculator.
-
-</details>
-
-<span id="references" aria-hidden="true"></span>
-
-## API design and testing references
-
-- [JUnit 4 assertions used by the exercise project](https://junit.org/junit4/javadoc/4.13.2/org/junit/Assert.html)
-- [JUnit Jupiter assertions and failure semantics](https://docs.junit.org/6.1.3/writing-tests/assertions.html)
-- [Exact arithmetic contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Math.java)
-- [Clock for controllable temporal dependencies](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/Clock.java)
+- [JUnit 4 assertions used by these tests](https://junit.org/junit4/javadoc/4.13.2/org/junit/Assert.html)
+- [Exact arithmetic contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Math.html)
+- [Clock for controlled time dependencies](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Clock.html)
+- [JUnit Jupiter: related concepts with different APIs](https://docs.junit.org/current/writing-tests/assertions.html)

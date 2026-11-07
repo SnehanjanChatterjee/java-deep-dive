@@ -1,0 +1,50 @@
+---
+title: "String values and mutable text construction"
+module: "language"
+group: "Arrays and strings"
+summary: "Compare immutable strings, inspect characters and build text with a mutable buffer."
+order: 80
+version: "Java 8+"
+prerequisites: ["language/arrays"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## A String operation returns text
+
+A String represents immutable text. Once constructed, that String's contents cannot change. Calling trim, replace or substring returns a result; it does not update the variable or mutate the receiver. `String cleaned = original.trim();` stores the returned reference separately.
+
+<JavaExample file="StringBasics.java" output={"8\nJava\ntrue\n1, 2, 3\n1, 2, 3!"} />
+
+Original has two spaces, four letters and two spaces, so its length is eight. Cleaned contains Java. Calling a method uses a dot after the reference, followed by the method name and parentheses. `length()` returns a number; `substring(begin, end)` uses an inclusive beginning and exclusive end. Empty text has length zero. Null has no String object and cannot receive an instance method call.
+
+## Compare contents, not the variable names
+
+`==` asks whether references identify the same object. `equals` asks whether String contents agree. The separately constructed `new String("Java")` has matching contents, so equals returns true. Use `"Java".equals(candidate)` when null should simply compare unequal; choose an explicit rejection policy when null is invalid input.
+
+Literals and compile-time constant concatenations are interned. `intern()` obtains a canonical reference. These identity facts explain some output puzzles, but do not justify using `==` for application text equality. A runtime concatenation need not share the literal's identity.
+
+## Build a result incrementally
+
+The loop appends 1, 2 and 3 to a locally owned StringBuilder. It appends a separator **before** every value after the first, preventing a trailing comma. ToString creates a String result. Appending an exclamation afterward changes the builder but not that already produced snapshot.
+
+Repeatedly concatenating an ever-growing String inside a loop can repeatedly copy the accumulated text. A builder expresses one mutable construction process. A small fixed `+` expression is readable and compilers can optimize it; replacing every concatenation is unnecessary. Builders are not thread-safe. StringBuffer synchronizes individual operations, but that alone does not make a multi-operation protocol atomic.
+
+## Practice: repair a discarded result
+
+Why does `String name = " ada "; name.trim();` leave name padded? Produce the trimmed text without changing its capitalization.
+
+<details>
+<summary>Answer</summary>
+
+Use `name = name.trim();`. The original call's returned value was discarded. Strings did not become mutable: assignment only redirects name to the result. `final String name` would prohibit this reassignment, so use a separate final cleaned variable instead. To join values, apply the separator rule from the example rather than deleting an assumed last comma after the loop; the latter breaks for empty input.
+
+</details>
+
+String indexes count UTF-16 code units. For simple ASCII text these align with familiar characters; arbitrary international text requires the Unicode chapter's more careful model.
+
+## String references
+
+- [String API: immutable text and methods](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html)
+- [StringBuilder API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/StringBuilder.html)

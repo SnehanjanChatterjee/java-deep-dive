@@ -1,0 +1,48 @@
+---
+title: "CyclicBarrier: reusable calculation phases"
+module: "concurrency"
+group: "Coordination utilities"
+summary: "Reuse one fixed participant boundary and explain the barrier action and broken generations."
+order: 800
+version: "Java 8+"
+prerequisites: ["concurrency/countdown-latch"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Workers must finish this round before the next one
+
+Two workers compute separate partial values. Main does not need one final notification only: every round must combine the current partials before either worker overwrites its slot for the next round. A CountDownLatch remains at zero after its first completion. A CyclicBarrier creates reusable generations for a fixed party count.
+
+A worker calls await after producing its partial. It waits until every party arrives. The last arrival executes an optional barrier action before that generation releases the participants.
+
+## Run two complete generations
+
+<JavaExample file="BarrierLesson.java" output={"phase total=3\nphase total=6"} />
+
+In round one, the two slots become one and two. Either worker may arrive first, but the action cannot run until both arrive. It reads their sum three. Only after the action completes do the waits return. In round two, each worker updates its own slot to two or four, giving six.
+
+The barrier action is part of the correctness of this program: it reads the slots before released workers may begin overwriting them. Moving that sum into one worker after await would let the other worker start the next round first. A reusable rendezvous is not a guarantee that all statements after a barrier happen together.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant A as Worker A\n participant B as Worker B\n participant G as Barrier action\n A->>G: write slot 0, await round 1\n B->>G: write slot 1, last arrival\n G->>G: combine 1 and 2\n G-->>A: release round 1\n G-->>B: release round 1\n Note over A,B: Both can begin round 2"} caption="Arrival order is unconstrained. The barrier action completes before either participant continues into its next round." />
+
+## Failure breaks the current generation
+
+A worker interrupted while waiting or a timed wait that expires can break the generation, causing other waiting parties to receive BrokenBarrierException. A barrier action that throws also breaks the generation. Catching that exception and treating the phase as successful would use incomplete/inconsistent partials.
+
+The source records each worker's failure and the owner checks those fields after join. Finally interrupts and joins owned workers if the owner exits early. A task group also needs enough available execution capacity to admit every party. Two blocked pool workers cannot reach a three-party barrier when its third task remains queued.
+
+Reset starts a different generation and breaks existing waits. It does not repair application state or coordinate which logical iteration participants should retry. Cancelling/recreating an entire failed computation is often clearer than letting unrelated retries mix generations.
+
+## Exercise and complete answer
+
+Explain the outputs and extend the two-round loop to three rounds. The source is the complete phase protocol. The third phase writes three and six, so the action combines nine. The party count remains two; it describes participants per phase, not the number of phases.
+
+If one worker leaves permanently after round one, simply skipping its second await leaves the other waiting. Fixed parties are the wrong model for unannounced departure. The next chapter makes participation changes explicit with a Phaser.
+
+## Primary references
+
+- [CyclicBarrier generations, action and failure](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CyclicBarrier.html)
+- [OpenJDK CyclicBarrier](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CyclicBarrier.java)

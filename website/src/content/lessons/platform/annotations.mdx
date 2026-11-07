@@ -1,0 +1,57 @@
+---
+title: "Annotations, retention and processing"
+module: "platform"
+group: "Annotations and reflection"
+summary: "Annotations, retention and processing with focused examples, failure traces and solved practice."
+order: 1140
+version: "Java 8+"
+prerequisites: ["platform/reflection-basics", "objects/nested-and-enums"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Attach metadata for a consumer to interpret
+
+An annotation supplies structured metadata. It does not execute an operation merely by appearing above a class or method. A consumer must read or process it: a compiler checks Override, a processor can generate source during compilation, and runtime code can inspect retained annotations.
+
+<JavaExample file="AnnotationBasicsDemo.java" output={"worker:2\noperation:1\ninherited=false"} />
+
+The @interface declaration defines Label. Value is a required String element; priority defaults to one. Worker explicitly supplies both values, while work uses the shorthand @Label("operation") and inherits the declared default priority. Runtime reads return worker:2 and operation:1. Reading a class annotation and a method annotation are separate queries on separate declarations.
+
+## Choose retention and target deliberately
+
+| Retention | Metadata availability |
+| --- | --- |
+| SOURCE | Source/compiler tooling; not retained in the class file |
+| CLASS | Retained in class files, without ordinary runtime annotation visibility |
+| RUNTIME | Retained for reflective annotation queries |
+
+CLASS is the default retention. @Target limits permitted annotation locations: this Label supports types and methods. Type-use annotations can describe types at other positions, but they still need a tool that interprets their meaning. An annotation named NonNull does not automatically install a runtime null check.
+
+## Separate declared metadata from inheritance
+
+Label is not itself marked @Inherited, so querying SpecializedWorker for the class label produces false. Adding @Inherited permits specific superclass-based class annotation lookup; it does not copy method annotations or annotations from implemented interfaces. GetDeclaredAnnotation asks only about the declaration itself, while getAnnotation can apply the relevant inheritance policy.
+
+An inherited method can still be represented by its original Method declaration carrying its original annotation. That differs from an override automatically inheriting the annotation. A proxy often receives an interface Method, while implementation annotations may be on another declaration; choose which location owns the policy and find it explicitly.
+
+## Compile-time processing is another lifecycle
+
+An annotation processor operates during compilation rounds, where it can validate inputs and generate additional sources/resources. It does not turn every annotated method into an intercepted runtime call. Configure processor discovery explicitly in the build with its processor path/module path or processor selection. Runtime retention is unnecessary when only compile-time processing needs the metadata; conversely, retaining an annotation does not install a processor.
+
+## Practice: repair an absent runtime annotation
+
+A Label is visible in a class-file inspection but getAnnotation returns null. What should you check before changing reflection access?
+
+<details>
+<summary>Answer</summary>
+
+Check retention first: CLASS metadata can exist without being returned by runtime annotation lookup. Then check the annotated declaration and lookup policy: type versus method, interface versus implementation, declared-only versus inherited-aware. Access suppression does not change retention or move an annotation onto a different member. Recompile after changing the annotation definition and apply the intended definition consistently across dependencies.
+
+</details>
+
+## Annotation references
+
+- [Retention policy](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/annotation/RetentionPolicy.html)
+- [Inherited annotation lookup](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/annotation/Inherited.html)
+- [javac annotation-processing options](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javac.html)

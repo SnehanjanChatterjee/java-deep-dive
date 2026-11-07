@@ -1,0 +1,72 @@
+---
+title: "Array creation, indexing and traversal"
+module: "language"
+group: "Arrays and strings"
+summary: "Create, index, traverse and copy fixed-size arrays while reasoning about bounds and empty inputs."
+order: 70
+version: "Java 8+"
+prerequisites: ["language/methods-and-recursion"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Keep several values under one name
+
+An array is an object containing a fixed number of components of one component type. `int[] scores = {4, 7, 4};` creates three components. Their indexes are 0, 1 and 2. `scores.length` is 3; the largest valid index is length minus one. Length is a field, so it has no parentheses.
+
+`new int[2]` creates two zero-initialized components. Reference arrays initialize to null, and boolean arrays to false. An empty array has length zero and no valid index. Reading or writing an index outside the valid range throws ArrayIndexOutOfBoundsException. Access through a null array reference throws NullPointerException: null and an empty array are different states.
+
+<JavaExample file="ArrayBasics.java" output={"4\n0\n15\n0\n4"} />
+
+## Trace a sum and a first-match search
+
+Sum starts total at zero and reads each component once. For scores, the successive totals are 4, 11 and 15. At loop entry, total contains the sum of indexes before index. The condition `index < values.length` prevents reading index 3. The helper uses exact addition so an overflowing int total is rejected instead of wrapped.
+
+FirstIndexOf returns immediately when it finds a match. At index zero, 4 equals the target, so the result is zero even though another 4 exists later. When no match exists, return -1 only after the loop. This sentinel is safe because valid indexes are nonnegative. For an empty array, sum is zero and search returns -1 without accessing any component. Both methods reject null explicitly.
+
+An enhanced for loop is useful when you need values rather than indexes:
+
+```java
+int total = 0;
+for (final int score : scores) {
+    total += score;
+}
+```
+
+It visits components in index order. Assigning the local score would not change the stored component; use indexed assignment when replacement is intended.
+
+## Copying creates a different array
+
+Assigning `int[] alias = scores;` copies the reference, so writes through alias affect scores. `Arrays.copyOf(scores, scores.length)` creates a distinct primitive array and copies its values. After copy[0] becomes 9, scores[0] is still 4. A final array variable cannot be rebound but its components remain writable. Arrays do not grow: creating a larger copy produces a different array, while other aliases still identify the original.
+
+Two-dimensional arrays are arrays of row references, rather than one guaranteed rectangular block. `new int[2][]` creates two initially null row references. `new int[2][3]` also creates each row. Ragged rows may have different lengths. Object-array covariance and shallow nested copies are revisited after references and inheritance.
+
+## Practice: count matches
+
+Implement `count(int[] values, int target)` without stopping at the first match.
+
+<details>
+<summary>Solution and edge cases</summary>
+
+```java
+static int count(final int[] values, final int target) {
+    Objects.requireNonNull(values, "values");
+    int matches = 0;
+    for (final int value : values) {
+        if (value == target) {
+            matches++;
+        }
+    }
+    return matches;
+}
+```
+
+The complete ArrayBasics source supplies the Objects import. For `{4,7,4}` and target 4 the result is 2; an empty array returns 0. Each component is visited once: O(n) time, meaning work grows proportionally with the array length n. O(1) auxiliary storage means the extra working state stays bounded as the array grows. The complexity lesson later compares these cost models in detail. Ordinary array equals compares identity; use Arrays.equals for one-dimensional contents. It does not turn nested mutable row references into a deep copy.
+
+</details>
+
+## Array references
+
+- [Dev.java: creating arrays](https://dev.java/learn/language/constructs/basics/arrays/)
+- [Arrays API: copy and content comparison](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html)

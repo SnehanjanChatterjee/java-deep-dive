@@ -1,0 +1,53 @@
+---
+title: "Submitted task failures and result ownership"
+module: "concurrency"
+group: "Tasks and executors"
+summary: "Observe a task failure through its Future and keep completion signals distinct from successful results."
+order: 840
+version: "Java 8+"
+prerequisites: ["concurrency/executors-futures", "concurrency/semaphore"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A task can fail after submission succeeds
+
+Submitting a score calculation can succeed while the calculation later rejects its input. The submission caller cannot catch that later exception by wrapping only submit. It needs to observe the returned Future, preserving the task's cause rather than substituting a plausible value.
+
+## Follow a failure through get
+
+<JavaExample file="ExecutorFailureLesson.java" output={"invalid score\n42"} />
+
+The first Callable throws IllegalArgumentException. Its Future records exceptional completion. Get reports ExecutionException, whose cause carries the original failure. The example checks the expected cause and prints its message only for this controlled demonstration; unexpected failures propagate. It then submits a healthy task, showing that one submitted failure does not by itself make the service unusable.
+
+The `throw new IllegalStateException` after get is a guard: if the supposedly failing task unexpectedly returns normally, the demonstration fails explicitly. Finally still owns service shutdown. Application code should report failure through its own contract, retaining cause/context rather than merely printing a message.
+
+## Execute and submit expose failures differently
+
+An uncaught exception from a Runnable passed directly to execute can reach the worker's uncaught-exception handler. Submit normally uses a FutureTask wrapper that catches the task's failure and records it for get. Ignoring that handle can make a failed task look quiet. Replacing submit with execute changes the observation channel; it is not a generic repair for missing error handling.
+
+A worker's termination, a latch reaching zero, and a successful computation are different facts. CountDown in finally can signal failure as well as success. A caller must validate results before combining them.
+
+## Combine admission, completion and failure deliberately
+
+<JavaExample file="SynchronizerLab.java" output={"41"} />
+
+Each worker owns an independent result slot. A semaphore bounds the illustrated resource region; release occurs only after acquire succeeds. An outer finally counts termination even when the worker is interrupted. Main awaits the signals, checks the failure holder, then combines the slots.
+
+AtomicReference here is one safely shared failure cell. compareAndSet from null records a first failure without replacing an earlier one; the later atomics chapter develops this conditional-update primitive. That holder is for outcome reporting, while the successful latch await publishes ordinary slot writes. Neither responsibility should be inferred from the other.
+
+The program's finite resource work and interruptible wait permit explicit interruption/join cleanup. These assumptions do not establish a bounded termination promise for arbitrary callbacks. Futures often package success/failure more directly than a separate latch and holder; understanding the separate channels explains what the abstraction is doing.
+
+## Exercise and complete solution
+
+Make a submitted task fail with a meaningful cause, observe the cause, and still release its owned executor. `ExecutorFailureLesson` is the complete solution. A catch that returns zero without a domain rule would fabricate a valid score. A catch that throws only the message would lose the causal chain.
+
+For several tasks, retain each handle and choose a policy: wait for every outcome, or on one failure request cancellation of related work and then account for cleanup. The Future cancellation chapter implements that distinction. Merely leaving a result list half read does not stop the other tasks.
+
+## Primary references
+
+- [Future.get and exceptional completion](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Future.html)
+- [ExecutionException cause](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ExecutionException.html)
+- [ThreadPoolExecutor task hooks and submit-wrapped failures](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html)

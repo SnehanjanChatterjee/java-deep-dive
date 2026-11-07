@@ -1,0 +1,60 @@
+---
+title: "Processes, threads and execution stacks"
+module: "concurrency"
+group: "Threads and tasks"
+summary: "Follow one program from its main thread to independent executions sharing objects."
+order: 700
+version: "Java 8+"
+prerequisites: ["execution/compile-and-run", "language/methods-and-references"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A program can make progress on several activities
+
+Suppose a report generator waits for a file while another part of the program answers a user action. One sequential execution cannot continue past a blocking file call until that call returns. A second thread can continue a different activity during that wait. That overlap is the reason to introduce concurrency; adding threads is useful only when the activities and their ownership are clear.
+
+A **process** is a running application with resources managed by the operating system. Starting `java` starts a JVM process. A **thread** is one execution within that process: it has a current instruction and a stack of method calls. The application normally enters `main` on a thread already created by the runtime. Calling another method extends that thread's call stack; it does not create another thread.
+
+## Trace two stacks referring to one object
+
+Imagine main calls `buildReport`, which calls `readFile`. Its stack records those unfinished calls. A worker can simultaneously have `run`, `refreshView` and `render` on its own stack. Returning from `render` resumes the worker's caller; it does not return into main's `readFile` invocation.
+
+<Diagram client:visible definition={"flowchart TD\n P[JVM process] --> M[Main thread: main → buildReport → readFile]\n P --> W[Worker: run → refreshView → render]\n M --> O[One shared Report object]\n W --> O"} caption="Each execution has its own call stack. Both executions can hold references to the same object; the drawing is a conceptual model rather than a physical heap layout." />
+
+Local variables in these invocations belong to their own execution. A local variable containing an object reference can still point to a shared object. Two local references named `report` do not create two independent reports. Conversely, two threads can work on separate objects without sharing mutable application state at all.
+
+This distinction will explain a counter bug later: each worker's loop index can be private while the counter object is shared. Before writing threaded code, draw which state is independently owned and which object identities cross execution boundaries.
+
+## Concurrency and parallelism describe different things
+
+With one available processor, a scheduler can run some of A, then some of B, then return to A. Their lifetimes overlap even though only one is executing instructions at an instant. That is concurrency through interleaving. With multiple processors, A and B can execute at the same instant; that is parallelism.
+
+| Situation | What a second thread may accomplish | Remaining limit |
+| --- | --- | --- |
+| A waits for a supported I/O operation | B can do independent work | The device/service still has finite capacity |
+| A and B both calculate continuously | Work may use multiple processors | Thread count does not create processors |
+| A and B update the same mutable object | Both can access the object | A coordination policy is required |
+
+A context switch preserves execution state so a thread can resume later. The scheduler does not promise to switch after every source line, in creation order, or fairly enough to justify a correctness argument. Programs must not require a lucky schedule.
+
+## Exercise: identify ownership before starting threads
+
+A program has two worker methods. Each declares `int index`, and both receive the same `ArrayList<String>` reference. Are the indexes shared? Is the list shared? Would constructing another local variable pointing to that list isolate it?
+
+<details>
+<summary>Worked answer</summary>
+
+Each invocation has its own `index`. Both references name the same list object, so list mutation is shared. Assigning another reference copies the reference value, not the list. Separate independently owned lists, an immutable input, or an appropriate shared-state protocol can change the ownership model. Merely changing local variable names cannot.
+
+</details>
+
+The next lesson creates one worker and follows exactly which thread executes each statement. No knowledge of virtual-thread scheduling is required for that first program.
+
+## Primary references
+
+- [Processes and threads](https://docs.oracle.com/javase/tutorial/essential/concurrency/procthread.html)
+- [JVM runtime data areas and frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5)
+- [Thread execution contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html)

@@ -1,117 +1,76 @@
 ---
-title: "Date/time, zones and temporal boundaries"
+title: "Time zones, DST and expiry boundaries"
 module: "libraries"
-group: "Numbers and time"
-summary: "Model instants, local schedules, DST ambiguity and deterministic clocks with explicit policies."
-order: 290
+group: "Time zones and boundaries"
+summary: "Resolve a local label into an instant"
+order: 640
 version: "Java 8+"
-prerequisites: ["libraries/numbers-and-time"]
+prerequisites: ["libraries/date-time-basics"]
 advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
-## Choose the meaning before the type
+## Resolve a local label into an instant
 
-An Instant identifies a point on the UTC timeline. LocalDate is a calendar date without time or zone, suitable for values such as a birthday. LocalTime is a wall-clock time. LocalDateTime combines local date and time but still lacks the information needed to identify an instant. OffsetDateTime adds a fixed offset; ZonedDateTime resolves a regional zone's rules at a particular date/time.
+LocalDateTime contains calendar fields without an offset. OffsetDateTime adds a fixed offset; ZonedDateTime combines local fields with a regional zone's rules and a resolved offset. An offset records one UTC relationship, while a regional zone describes how that relationship changes over time.
 
-These types are immutable and their arithmetic returns new values. Ignoring the result of plusDays does not modify the original date. Thread-safe value objects do not decide which zone, chronology or business boundary the application intends.
+A past recorded event and a recurring future “09:00 in this region” schedule require different models. An Instant can identify the event but lose the recurrence's local intention. A LocalDateTime alone cannot uniquely identify every past occurrence. Preserve the information the domain needs.
 
-A past event timestamp and a recurring future schedule need different models. Storing only an Instant can lose a future “09:00 in this region” intention; storing only a LocalDateTime can lose which past occurrence was recorded. Retain the information the domain requires rather than treating every temporal value as a formatted timestamp String.
+## A local time can have zero, one or two valid offsets
 
-## Zero, one or two offsets for a local time
+A normal local label has one offset. A spring gap skips a range, so a label in it has none. An autumn overlap repeats a range, yielding two possible instants. In Europe/Paris's historical 2024 rules, 31 March 02:30 is nonexistent and 27 October 02:30 occurs twice.
 
-Regional offset transitions make a local label map to zero, one or two valid offsets. A spring gap skips a local range. An autumn overlap repeats one. A normal time has one valid offset. These outcomes must be resolved before claiming a unique instant.
+<Diagram client:visible definition={"flowchart TD\n L[Local date-time plus regional zone] --> O{Valid offset count}\n O -->|zero| G[Gap: reject or apply declared adjustment]\n O -->|one| U[Unique instant]\n O -->|two| A[Overlap: choose an occurrence or reject]\n A --> U"} caption="Successful local parsing is separate from selecting a unique timeline occurrence." />
 
-In Europe/Paris's historical 2024 spring transition, 02:30 on 31 March is in a gap. On 27 October, 02:30 occurs twice. Default convenience resolution can choose/adjust according to its documented rules; that does not mean the choice fits every scheduling or audit domain.
+Convenience atZone normally adjusts a gap forward and chooses an overlap offset according to its documented rules. Those defaults are valid API behavior; an appointment/audit domain may require a different policy.
 
-<Diagram client:visible definition={"flowchart TD\n L[Local date-time plus regional zone] --> O{Number of valid offsets}\n O -->|zero| G[Gap: reject or apply declared adjustment]\n O -->|one| U[Unique resolved instant]\n O -->|two| A[Overlap: choose offset or reject]\n A --> U"} caption="A local label can be nonexistent or ambiguous. Resolution policy belongs to the application's temporal contract." />
-
-## Complete explicit-resolution implementation
+## Complete explicit resolution
 
 <JavaExample file="CoreTimeResolution.java" output={"3600\n12:00\n13:00\ngap rejected"} />
 
-Resolve obtains the valid offsets instead of guessing from a formatted value. It rejects null inputs. An empty offset list is a gap and is rejected. A two-offset overlap uses the requested earlier/later offset or rejects under REJECT. ZonedDateTime.ofStrict then constructs using the chosen offset and zone.
+resolve rejects nulls, obtains zone.getRules().getValidOffsets(local), rejects an empty list, and applies the declared earlier/later/reject overlap policy. ofStrict verifies that the selected offset is valid for the supplied zone/local value.
 
-Earlier/later here refers to the zone API's documented overlap offset list; state the resulting instant relationship when explaining it. The sample verifies the two resulting instants differ by 3,600 seconds while sharing the same local clock label. A user interface accepting an ambiguous local appointment should retain enough information to express the chosen occurrence.
+For the overlap, +02:00 maps 02:30 to 00:30Z, while +01:00 maps it to 01:30Z. The same displayed local fields correspond to instants 3,600 seconds apart. “Earlier/later offset” follows the zone API's list order; explain the resulting instant instead of guessing from the numerical offset alone.
 
-The code deliberately rejects gaps rather than silently moving them. A different API can legitimately adjust a nonexistent time, but that is a different declared policy. Never describe either default as universally correct for all business rules.
+## Calendar days and elapsed hours diverge
 
-## Duration versus Period across transitions
+At noon on 30 March in Paris, plus Period.ofDays(1) preserves next-day noon. Adding Duration.ofHours(24) reaches 13:00 after the spring transition. A regional calendar day is not universally 86,400 elapsed seconds.
 
-Duration models seconds/nanoseconds of elapsed amount. Period models calendar years/months/days. Across a one-hour spring transition, adding a calendar day to noon can preserve next-day noon while adding 24 elapsed hours reaches 13:00. A calendar day is not defined as exactly 86,400 elapsed seconds in every regional context.
+Month-end adjustments also belong to calendar semantics. A monthly billing rule is not inherently a 30-day elapsed interval. For elapsed measurements inside one process, System.nanoTime supports differences; wall clocks can be adjusted, and nanoTime is not an epoch timestamp to persist or compare across unrelated JVMs.
 
-For an elapsed timeout, use an elapsed-time abstraction appropriate to the operation rather than wall-clock calendar arithmetic. For a recurring local schedule, retain the zone and calendar intent. For month-end arithmetic, inspect normalization behavior: adding a month to an unavailable day can adjust according to the API; it is not the same as preserving a fixed number of days.
+## Complete the next-local-date expiry exercise
 
-## Parsing and formatting boundaries
+<JavaExample file="ExpiryPolicy.java" output={"2024-03-31T22:00:00Z\n23\ntrue"} />
 
-DateTimeFormatter is immutable and can be shared. A pattern is not a natural-language description: year-of-era, proleptic year and week-based year have different meanings. Resolver behavior controls how parsed fields become a valid date. When invalid dates should be errors, choose a strict contract and test invalid inputs rather than assuming a human-readable format implies strict validation.
+The Clock supplies an instant. The explicit ZoneId determines its local date even when the Clock itself has a different zone. nextLocalDateStart obtains that date, adds one calendar date and resolves its start with atStartOfDay(zone). It does not add 24 hours to the current instant.
 
-A local timestamp's successful parsing does not provide a missing offset or zone. An ISO-looking value can therefore remain ambiguous. Machine protocols should declare a format, charset and temporal meaning. User-facing formatting should use the intended locale/zone, not whatever defaults happen to be configured on the developer machine.
+The fixed clock starts at Paris midnight before the 2024 spring transition. The next local midnight is 23 elapsed hours later. isExpired defines the exact deadline as expired: !now.isBefore(deadline). A one-nanosecond-before case is therefore false, while equality and after are true.
 
-Formatting is presentation. Do not sort arbitrary localized display strings as if they were a chronological representation. Compare temporal values or use a representation whose ordering contract is deliberately suitable.
+Some historical/regional transitions affect midnight itself. atStartOfDay returns the first valid time according to zone rules. An API that must reject an adjusted midnight would need a stricter valid-offset check and a declared failure policy; arbitrary 24-hour arithmetic is not that policy.
 
-## Current time and testability
-
-Inject Clock into code that asks what time/date it is. A fixed Clock makes midnight, expiry and leap-date decisions reproducible without sleeping or editing the system clock. A single fixed instant can lie on different local dates in different zones, so the test must also establish its zone policy.
-
-For “expires at the next local midnight,” derive the next local date in the specified zone, then resolve that date's start under regional rules. Adding 24 hours to the current instant does not necessarily reach that boundary. Some historical/regional transitions affect midnight itself, so use the API's actual zone-rule semantics rather than assuming every date begins at an unambiguous 00:00.
-
-For measuring elapsed work in one process, wall-clock time can be adjusted. System.nanoTime supports differences for elapsed intervals and is not an epoch timestamp to persist or compare across unrelated JVMs.
-
-## Boundary tests
+## Test policies, not the current host configuration
 
 <JavaExample file="CoreTimeResolutionTest.java" />
 
-The tests separate unique local time, both overlap choices, overlap rejection, gap rejection and null inputs. They use historical fixed values. Test the application's policy, not a guessed offset based on the current month or the host's default zone. A production time-zone database can evolve, which is one reason to state the runtime/data version when investigating temporal discrepancies.
+<JavaExample file="ExpiryPolicyTest.java" />
 
-## Interview questions with worked answers
+The resolution tests separate unique time, both overlap choices, overlap rejection, gap rejection and null input. The expiry tests use a fixed instant with UTC and Asia/Kolkata to produce different local-date decisions, then test the transition and exact expiry boundary without sleeping.
 
-<details>
-<summary>Why is LocalDateTime insufficient for ordering global events?</summary>
+Time-zone data can evolve. Historical examples make the chosen rule/date explicit; investigations of discrepancies should record the runtime/data version. None of this requires changing the machine clock or relying on its default zone.
 
-It is a local label without a resolved offset. Different regions or repeated overlap occurrences can share it while representing different instants. Resolve/store the timeline meaning before using it as a global event timestamp.
+## Worked design questions
 
-</details>
+**Can a fixed offset replace a regional zone for future meetings?** It describes one UTC relationship but not future regional transitions. Preserve the region and local recurrence when those express the requirement.
 
-<details>
-<summary>Is an offset a replacement for a regional zone?</summary>
+**Can an ISO-looking String lack essential information?** Yes. A local date-time can parse correctly while omitting offset/region. Parsing syntax and resolving timeline meaning are separate steps.
 
-A fixed offset describes one relationship to UTC; a regional zone includes transition rules over time. The offset suitable for one date need not be the offset for a future recurrence in that region.
-
-</details>
-
-<details>
-<summary>What does a strict overlap policy prevent?</summary>
-
-It prevents silently picking one of two possible instants when the input lacks enough information. The caller can supply a policy/offset or request user clarification, depending on the application's contract.
-
-</details>
-
-<details>
-<summary>How would you test a local-date expiry rule?</summary>
-
-Supply a fixed Clock and explicit region, including an instant near local midnight and transition boundaries. Assert the domain date/instant result. Avoid waiting until the machine clock reaches the condition.
-
-</details>
-
-<details>
-<summary>Why can plusMonths differ from adding a fixed day count?</summary>
-
-Months have different lengths and calendar arithmetic has documented date-resolution behavior. A monthly billing rule is not inherently a 30-day elapsed interval. Define which rule the product promises.
-
-</details>
-
-## Coding exercise and solution
-
-Implement a function returning the first valid instant of the next local date for an injected Clock. Derive LocalDate.now(clock), add one date, then call atStartOfDay with the declared zone and return its instant. If the API instead accepts a separate zone, ensure the clock supplies the intended instant and convert using that zone consistently. Test a normal day, a DST transition and different zones sharing one fixed instant.
-
-If the domain requires rejecting any adjusted midnight rather than accepting atStartOfDay's resolution, inspect the valid offset rules and establish that stricter requirement explicitly. Replacing the call with arbitrary 24-hour addition would solve a different problem.
+**Can one Clock support different regional policies?** Yes. Treat its instant as the source and convert with the explicitly requested region, as the complete expiry implementation does.
 
 ## References
 
-- [ZoneRules valid offsets and transitions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/zone/ZoneRules.java)
-- [ZonedDateTime resolution and arithmetic](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/ZonedDateTime.java)
-- [Clock abstraction](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/Clock.java)
-- [DateTimeFormatter patterns and resolution](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/format/DateTimeFormatter.java)
+- [ZoneRules valid offsets and transitions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/zone/ZoneRules.html)
+- [ZonedDateTime resolution and arithmetic](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/ZonedDateTime.html)
+- [Clock abstraction](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/Clock.html)
+- [LocalDate.atStartOfDay zone behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/LocalDate.html#atStartOfDay(java.time.ZoneId))

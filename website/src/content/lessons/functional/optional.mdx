@@ -1,145 +1,85 @@
 ---
-title: "Optional"
+title: "Optional and explicit absence"
 module: "functional"
-group: "Functions and absence"
-summary: "Model absence explicitly and distinguish transformation, composition and lazy fallback."
-order: 240
-version: "Java 8+"
-prerequisites: ["functional/lambdas-and-optional"]
-advanced: true
+group: "Composition and absence"
+summary: "Make “no result” part of an API"
+order: 540
+version: "Java 8+; optional alternatives/stream 9+"
+prerequisites: ["functional/method-references"]
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+## Make “no result” part of an API
 
-## Absence as an API result
+A search can legitimately find no matching value. Returning Optional makes that outcome visible in the method's result type. A returned Optional should itself never be null. First declare what empty means: a missing configuration value is different from a malformed present value or a failed network request.
 
-Optional expresses a result that can be absent. It does not replace exception handling, and an Optional reference should not itself be null. Start by defining what absence means in the API: no matching user, no first element, or an unavailable optional attribute are distinct domain cases.
-
-Use ofNullable at a nullable boundary, of only for a known non-null value and empty for deliberate absence. A returned Optional tells the caller to handle that absence; it does not make a present mutable object immutable or safe to share.
+Create a known value with Optional.of(value), a nullable boundary with ofNullable(value), or deliberate absence with empty(). of(null) fails immediately. Optional is a value-based result abstraction; do not rely on identity, synchronize on it or assume it is Serializable.
 
 <span id="worked-example" aria-hidden="true"></span>
+## Transform a present value and preserve absence
 
-## Trace present, empty and exceptional results
+<JavaExample file="FunctionalValues.java" output={"java\nfallback"} />
 
-Read the example as a sequence of contracts. A present candidate is normalized, filter can reject it, map transforms its value and the fallback supplies a result only if needed. The same operations on empty preserve absence without invoking the transformation.
+The first Optional contains " java ". map invokes String.trim and contains "java"; filter invokes the nonempty predicate and retains it. orElseGet returns that present value without invoking its supplier. The second expression starts empty and selects its plain fallback.
 
-To chain a lookup that already returns Optional, use flatMap. map would treat the returned Optional as its value and create nesting. A mapper that returns null is handled differently by these operations: map produces empty, while flatMap rejects the invalid null Optional.
+The example is a small composition, not an invocation-count experiment. The separate experiment below makes evaluation observable.
 
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Optional transformations and lazy alternatives
-
-### Optional operations and failure modes
 | Operation | Present | Empty |
 | --- | --- | --- |
-| `map(f)` | Apply f; null result becomes empty | Remains empty |
-| `flatMap(f)` | f must return a non-null Optional | Remains empty |
-| `filter(p)` | Keep only if predicate matches | Remains empty |
-| `orElse(value)` | Return value inside Optional; fallback argument was already evaluated | Return evaluated fallback |
-| `orElseGet(factory)` | Factory not called | Invoke factory |
-| `orElseThrow(factory)` | Return value | Throw supplied exception |
+| map(f) | Apply f; null result becomes empty | Skip f, remain empty |
+| flatMap(f) | f must return a non-null Optional | Skip f, remain empty |
+| filter(p) | Retain only if p returns true | Skip p, remain empty |
+| orElse(value) | Return present value; argument was already evaluated | Return evaluated fallback |
+| orElseGet(factory) | Skip factory | Invoke factory |
+| orElseThrow(factory) | Return present value | Construct and throw the supplied exception |
 
-An Optional variable itself should not be null. Do not synchronize on Optional or depend on instance identity: it is a value-based abstraction. It is primarily a result-shape tool; using it for every field/parameter can complicate models without clarifying absence. Optional is not Serializable. Empty means “no result” under the API's contract, not “an exception occurred but was hidden.”
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+## Observe eager and lazy fallback
 
-### Worked composition example
-For `Optional<String> input`, `input.map(String::trim).filter(s -> !s.isEmpty())` normalizes a present string and rejects a blank result. If a lookup already returns Optional, use flatMap to avoid nesting. With a present value, `orElse(expensiveLookup())` still runs the lookup because Java evaluates arguments before method entry. `orElseGet(() -> expensiveLookup())` defers the lookup. This difference matters for I/O and exceptions as well as performance.
+<JavaExample file="OptionalFallbackLab.java" output={"present eager: present, calls=1\npresent lazy: present, calls=0\nempty eager: fallback, calls=1\nempty lazy: fallback, calls=1"} />
 
-<Diagram client:visible definition={"flowchart LR\n A[Possibly absent result] --> P{Present?}\n P -->|yes| M[map or flatMap]\n P -->|no| E[Keep empty]\n M --> F[Explicit result or lazy fallback]\n E --> F"} caption={"Follow the optional relationships described above."} />
+Java evaluates arguments before entering a method. With orElse(fallback(counter)), fallback runs even when the value is present; its result is then discarded. With orElseGet(() -> fallback(counter)), constructing the supplier does not execute its body. Optional invokes it only for empty. Each observation gets its own counter, so prior runs cannot contaminate the result.
 
-## Absence, invalid input and composed lookup
+This difference concerns work and failures, not just speed. If the eager fallback throws, orElse is never entered even for a present Optional. A lazy fallback can still throw when absence actually requires it. Supplier does not promise memoization across separate calls.
 
-### Use one explicit absence meaning
+<JavaExample file="OptionalFallbackLabTest.java" />
 
-A configuration lookup can distinguish missing input from malformed input. If the contract says missing is optional but malformed is an error, a parser must not catch every NumberFormatException and return empty merely to keep a fluent chain running. A database/network failure is another outcome again. Optional communicates one value-presence dimension; it is not a complete error algebra.
+## Compose a lookup without nesting
 
-### Lazy alternatives and stream integration
+Suppose findAccount returns Optional&lt;Account&gt;, and Account.findAddress returns Optional&lt;Address&gt;. map(Account::findAddress) produces Optional&lt;Optional&lt;Address&gt;&gt;. flatMap(Account::findAddress) keeps one presence dimension: either a present Address or empty. Returning null from the flatMap mapper violates its contract; map instead treats a null mapped value as absence.
 
-`orElseGet` defers value construction. `orElseThrow` with a supplier defers exception construction. Optional.or, available from Java 9, provides a lazy Optional-returning alternative, which is different from returning a plain T. The returned Optional itself must not be null.
-
-Optional.stream, also Java 9+, exposes zero or one stream element. A stream of lookup results can therefore flatten present values without repeated get calls. That convenience still must not hide important failures or make external side effects depend on stream callbacks that can be skipped/short-circuited.
-
-### Primitive optionals have their own APIs
-
-OptionalInt, OptionalLong and OptionalDouble avoid boxed result contracts. They do not simply expose every method found on Optional of a wrapper type. Choose the return abstraction needed by the API and inspect the actual supported methods instead of assuming mechanical substitutions.
-
-### Terminal retrieval is a policy boundary
-
-Calling get/orElseThrow is appropriate when the caller has decided absence is unacceptable at that boundary. The error is calling it without establishing or expressing that policy. An ifPresent callback is not automatically better than an ordinary conditional when branching performs important state changes. Prefer the control flow that makes the operation's ownership and failure paths understandable.
-
-### Exercise with an explained solution
-
-Implement an optional port parser with the following contract: null means no configured value; a present value must parse as an integer within 1..65535; malformed/out-of-range input fails. Construct Optional.ofNullable at the external boundary, map through parsing and range validation, and return the result. Do not use Optional.of on the nullable input or a catch-all empty fallback. Test the missing, minimum, maximum, malformed and out-of-range cases independently.
-
-For a multi-source lookup, use a lazy alternative only when the first source is absent. Do not use orElse(expensiveLookup()) and then claim the second source is skipped for a present first result; argument evaluation has already occurred.
+Optional.or on Java 9+ supplies a lazy Optional-returning alternative; orElseGet supplies a plain value. Optional.stream on Java 9+ exposes zero or one stream element for later flattening. Primitive OptionalInt/Long/Double use primitive result contracts and do not mechanically reproduce every Optional method.
 
 <span id="java-implementation" aria-hidden="true"></span>
-
-## Implement explicit optional boundaries
-
-<JavaExample file="FunctionalValues.java" />
-
-Compare an expensive fallback passed to orElse with a supplier passed to orElseGet. Java evaluates the orElse argument before the method call, so work and failures can occur despite a present value. The supplier's body is deferred. Choose a failure policy deliberately rather than converting every exception into empty.
-
-### A strict optional-port parser
+## Complete exercise: missing versus invalid configuration
 
 <JavaExample file="CoreOptionalBoundary.java" output={"443\n8080\ninvalid port"} />
 
-Only null means missing configuration. The present mapper uses Integer.parseInt and then enforces 1..65535. It does not trim whitespace or catch parsing failures under this contract. Optional.map skips the mapper for absence; otherwise its result is a non-null boxed integer. The fallback supplies 8080 for absence, while an invalid present value remains a failure. This separates defaulting from silently accepting malformed configuration.
+The parser treats only null as missing. For a present string, Integer.parseInt parses it and validation enforces 1..65535. It does not trim whitespace or convert malformed data into empty. Absence selects 8080 at the caller; present invalid input fails. This separation prevents a typo from silently switching a service to an unintended default.
 
 <JavaExample file="CoreOptionalBoundaryTest.java" />
 
+The tests cover missing input, both accepted endpoints, malformed input, out-of-range values and ordinary success. A network/database failure would need its own failure contract; an empty Optional is not a complete error algebra.
+
 <span id="common-mistakes" aria-hidden="true"></span>
+## Retrieve only after choosing an absence policy
 
-## Optional misuse and failure masking
-
-Do not call get without a presence guarantee, return null from an Optional-returning method, or synchronize on Optional identity. Optional is value-based and not Serializable. A successful empty result is not automatically the right representation for an infrastructure failure.
+Calling get without a presence guarantee fails for empty. orElseThrow communicates a required value directly. ifPresent is useful for a small conditional action, but a normal if can be clearer when branches own resources or perform different side effects. Using Optional in every field and parameter can complicate a model without clarifying it.
 
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+## Worked reasoning questions
 
-## Optional interview practice
+**Why does map not invoke a mapper for empty?** There is no T to transform; absence propagates. The same rule makes a fluent chain concise, but can hide intended work if a programmer places a mandatory effect in a skipped stage.
 
-<details>
-<summary>When should absence be an exception?</summary>
+**When should absence throw?** A find operation can return empty when no match is normal. A require operation can throw when absence violates its contract. Name and document the difference.
 
-When absence violates the operation contract rather than being a normal result. A find operation can return empty while a require operation can throw a domain exception. Name and document the distinction.
+**Can a lazy alternative return null?** Optional.or requires a non-null Optional. The empty result is Optional.empty, not null. A plain-value fallback has its own documented null contract.
 
-</details>
+## References
 
-<details>
-<summary>How would you test lazy fallback?</summary>
-
-Use a supplier with an observable invocation count. Verify it is not invoked for a present value and invoked exactly when needed for empty. Separately test a fallback exception so absence is not silently confused with failure.
-
-</details>
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Can an empty Optional represent a failed request?</summary>
-
-Only if the API deliberately defines that meaning, which often obscures an important distinction. A normal absence and an operation failure usually need separate contracts so callers can respond correctly.
-
-</details>
-
-<details>
-<summary>What happens if Optional.or supplies null?</summary>
-
-The API requires a non-null Optional result from the alternative supplier and rejects null. An absent value is represented by Optional.empty, not a null Optional reference.
-
-</details>
-
-<details>
-<summary>When is a plain if clearer?</summary>
-
-When the two branches perform distinct side effects, resource operations or failure handling whose order should remain explicit. Optional is a result abstraction, not an obligation to encode every control-flow decision as a chain.
-
-</details>
-
-<span id="references" aria-hidden="true"></span>
-
-## Optional references
-
-- [Optional contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Optional.java)
+- [Optional contracts and value-based behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Optional.html)
+- [Function argument evaluation order](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.7.4)

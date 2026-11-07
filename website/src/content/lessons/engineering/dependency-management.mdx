@@ -1,0 +1,157 @@
+---
+title: "Resolve dependency versions, scopes and BOMs"
+module: "engineering"
+group: "Dependency management"
+summary: "Explain which library actually reaches the application"
+order: 1260
+version: "Java 8+; Maven 3.9+"
+prerequisites: ["engineering/first-project-and-tests"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {Code} from 'astro:components';
+import adapterPom from '../../../../../java-examples/projects/dependency-conflict/adapter/pom.xml?raw';
+import appPom from '../../../../../java-examples/projects/dependency-conflict/app/pom.xml?raw';
+import bomPom from '../../../../../java-examples/projects/dependency-conflict/course-bom/pom.xml?raw';
+import managedAppPom from '../../../../../java-examples/projects/dependency-conflict/app/pom-bom.xml?raw';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Explain which library actually reaches the application
+
+An application uses a library directly. Its adapter also depends on an older version of that library. Which version is compiled and launched? Maven resolves a dependency graph; importing a Java class does not select or download its JAR.
+
+This complete exercise uses synthetic artifacts built from supplied source: study.course:shared-api versions 1.0 and 2.0, an adapter compiled against 1.0, an app directly requiring 2.0, an unused optional-support artifact, and a small BOM. No application dependency is borrowed from an unrelated real product.
+
+<a href={lessonUrl('examples/dependency-conflict.zip')} download>Download the complete dependency-conflict project</a>. Extract it and run commands from the directory containing the parent pom.xml. Its .mvn configuration selects the supplied settings as both user and global settings and uses a project-local .maven-cache. The mirror selects public Maven Central for build plugins. No machine-wide configuration change is needed.
+
+## Distinguish the reactor from the dependency graph
+
+```text
+dependency-conflict/
+  pom.xml
+  settings.xml
+  .mvn/maven.config
+  shared-v1/          shared-api:1.0
+  shared-v2/          shared-api:2.0
+  adapter/            adapter:1.0
+  optional-support/  optional-support:1.0
+  course-bom/        course-bom:1.0
+  app/               app:1.0 and alternate POMs
+```
+
+The parent lists modules to build in a reactor. Dependencies determine their required build order. The two shared-api modules have the same group/artifact but different versions, so they are distinct coordinates. Reactor membership does not put every module on app's classpath.
+
+<Diagram client:visible definition={"flowchart TD\n A[app 1.0] --> D[shared-api 2.0: direct]\n A --> B[adapter 1.0]\n B --> O[shared-api 1.0: transitive request]\n O -. conflict: shorter direct path wins .-> D\n M[course-bom: manages versions] -. configuration only .-> A\n U[optional-support: built and managed]"} caption="The dependency graph selects one shared-api version. Building or managing optional-support does not make it an app dependency." />
+
+## Read the actual declarations
+
+Adapter's POM explicitly requests shared-api:1.0:
+
+<Code code={adapterPom} lang="xml" />
+
+The normal app POM declares adapter and the shared API that app source uses directly:
+
+<Code code={appPom} lang="xml" />
+
+The supplied Java source makes the version distinction observable:
+
+<JavaExample file="projects/dependency-conflict/shared-v1/src/main/java/study/course/shared/SharedApi.java" label="shared-api 1.0: SharedApi.java" />
+
+<JavaExample file="projects/dependency-conflict/shared-v2/src/main/java/study/course/shared/SharedApi.java" label="shared-api 2.0: SharedApi.java" />
+
+<JavaExample file="projects/dependency-conflict/adapter/src/main/java/study/course/adapter/Adapter.java" />
+
+<JavaExample file="projects/dependency-conflict/app/src/main/java/study/course/app/Main.java" output={"direct: shared-api 2.0\nadapter: shared-api 2.0\nfeature: second-version feature"} />
+
+Version two retains version() and adds feature(). Adapter was compiled using version one, but calls a descriptor still present in version two. App needs feature directly, so its direct API dependency is meaningful.
+
+## Build and inspect the selected tree
+
+```bash
+mvn clean install
+mvn -pl app dependency:tree -Dverbose -Dincludes=study.course
+java -cp app/target/classes:adapter/target/classes:shared-v2/target/classes study.course.app.Main
+```
+
+install first builds the modules and places their artifacts/POMs in this project's local repository. It is a local operation; deploy would publish to a configured remote repository and is not needed here. The output directories are Maven-generated. Use a semicolon classpath separator on Windows.
+
+The relevant verbose tree is:
+
+```text
+study.course:app:jar:1.0
++- study.course:adapter:jar:1.0:compile
+|  \- (study.course:shared-api:jar:1.0:compile - omitted for conflict with 2.0)
+\- study.course:shared-api:jar:2.0:compile
+```
+
+Normal Maven mediation chooses the nearest definition; equal-depth conflicts are resolved by declaration order. Here the direct path is shorter than app → adapter → shared-api, so version two wins. This does not prove every newer version is compatible with every older consumer. The main command deliberately supplies only the selected version, producing the three shown lines. A plain app JAR does not automatically embed its dependencies.
+
+## Complete the transitive-only failure experiment
+
+The alternate app/pom-transitive-only.xml omits the direct shared-api declaration and retains only adapter. After the initial install:
+
+```bash
+mvn -f app/pom-transitive-only.xml clean compile
+```
+
+Compilation fails at feature(): version one has no such method. That is a compile-time missing member, not a test failure or an exception reported by a running application. Relying accidentally on a transitive library can make source stop compiling when that path changes.
+
+The completed solution is the supplied normal app POM with its explicit direct dependency on shared-api:2.0. Restore and verify it:
+
+```bash
+mvn clean verify
+```
+
+This experiment changes dependency declarations while leaving Main's requirement intact. The compatibility chapter separately keeps an old compiled client while changing the runtime library; that produces a different stage of failure.
+
+## Import versions through a real BOM
+
+A BOM is a POM whose dependencyManagement supplies coordinated versions. The supplied course-bom manages shared-api, adapter and optional-support. It is not executable code and its import does not itself add JAR dependencies.
+
+<Code code={bomPom} lang="xml" />
+
+The complete BOM-managed app POM imports it with type pom/scope import, then declares actual dependencies without repeating their managed versions:
+
+<Code code={managedAppPom} lang="xml" />
+
+```bash
+mvn -f app/pom-bom.xml clean verify
+mvn -f app/pom-bom.xml dependency:tree -Dverbose -Dincludes=study.course
+```
+
+The tree retains shared-api:2.0. Adapter's transitive edge is reported as “version managed from 1.0; omitted for duplicate.” Management can control applicable transitive selections as well as fill omitted direct versions. optional-support remains absent from the app tree even though the reactor built it and the BOM manages it. Inclusion and management answer different questions.
+
+## Separate compile, test and runtime classpaths
+
+| Scope | Production compile | Test compile/run | Production runtime | Intended use |
+| --- | --- | --- | --- | --- |
+| compile | Included | Included | Included | Ordinary API/implementation dependency |
+| provided | Included | Included | Not supplied by this dependency declaration | An execution environment provides it |
+| runtime | Not included | Included | Included | Runtime implementation not needed for production compilation |
+| test | Not included | Included | Not included | Test framework or test-only support |
+
+These describe the current project's principal classpaths; transitive scope rules also matter. In the first-tests project, JUnit's test scope enables test compilation/execution without making it part of Calculator's production runtime. A test-scoped JAR cannot repair a missing production runtime class.
+
+An exclusion removes one transitive path; it does not guarantee the coordinate disappears from every path or remains unnecessary. If code directly uses a library API, declare it directly and inspect the resolved graph after exclusions/management. Optional dependencies are another declaration policy; do not confuse the module named optional-support in this exercise with Maven's optional flag.
+
+## Read plugin configuration and dependency configuration separately
+
+A dependency adds a library to an appropriate classpath. A plugin goal performs build work. A lifecycle phase selects when goals run: package runs preceding compile/test work; clean belongs to a separate lifecycle. dependencyManagement controls dependency versions, while pluginManagement supplies plugin defaults and does not itself schedule every goal.
+
+The effective POM combines inheritance, properties, profiles and defaults. dependency:tree shows the resolved dependency graph. Inspect both when a declaration and actual behavior disagree. Annotation processors also need explicit modern compiler/build configuration; adding an annotation to source does not install a processor.
+
+Pin relevant plugin/dependency versions and record the JDK target. A Maven wrapper can pin the distribution, while a toolchain selects a JDK independently of the JVM running Maven. Reproducible inputs still require checking the resulting artifact on the intended runtime.
+
+## Worked diagnosis: a dependency upgrade fails at runtime
+
+First identify the compiled caller and actual loaded library, then inspect the selected tree and classpath. A NoSuchMethodError can mean the caller references a descriptor absent from the chosen runtime JAR. Adding an import to already compiled source does not repair that linkage. The next chapter provides a separately compiled client that demonstrates the failure directly.
+
+## References
+
+- [Maven mediation, scopes and dependency management](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html)
+- [Maven lifecycle and plugin goals](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html)
+- [Dependency tree goal](https://maven.apache.org/plugins/maven-dependency-plugin/tree-mojo.html)
+- [Compiler release target](https://maven.apache.org/plugins/maven-compiler-plugin/examples/set-compiler-release.html)
+- [Maven toolchains](https://maven.apache.org/guides/mini/guide-using-toolchains.html)

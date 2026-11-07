@@ -1,5 +1,6 @@
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
@@ -29,6 +30,24 @@ public final class CoreFramedText {
             completed.add(text);
         }
         return completed;
+    }
+    /** Completes parsing at EOF, rejecting any truncated header or body. */
+    public static List<String> finish(final ByteBuffer input) throws CharacterCodingException {
+        final List<String> completed = extract(input);
+        if (input.hasRemaining()) { throw new IllegalArgumentException("truncated frame at EOF"); }
+        return completed;
+    }
+    /** Encodes one complete frame using byte length and strict UTF-8 conversion. */
+    public static ByteBuffer encode(final String text) throws CharacterCodingException {
+        Objects.requireNonNull(text, "text");
+        final ByteBuffer payload = StandardCharsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT)
+                .onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(text));
+        if (payload.remaining() > MAX_BYTES) { throw new IllegalArgumentException("invalid frame length"); }
+        final ByteBuffer frame = ByteBuffer.allocate(Integer.BYTES + payload.remaining());
+        frame.putInt(payload.remaining());
+        frame.put(payload);
+        frame.flip();
+        return frame;
     }
     /** Demonstrates a header and multi-byte character split across two input chunks. */
     public static void main(final String[] args) throws CharacterCodingException {

@@ -1,200 +1,103 @@
 ---
-title: "Generics, wildcards and type erasure"
+title: "Bounds, wildcards and safe data flow"
 module: "generics"
-group: "Type parameters and API bounds"
-summary: "Design reusable APIs with sound producer and consumer types."
-order: 90
+group: "Bounds and wildcards"
+summary: "Choose bounds and wildcards by tracing which values an API can safely read and write."
+order: 310
 version: "Java 8+"
-prerequisites: ["objects/equality-and-immutability"]
-advanced: true
+prerequisites: ["generics/generic-methods", "objects/interfaces"]
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+<span id="type-relationships-and-reusable-apis" aria-hidden="true"></span>
 
-## Type relationships and reusable APIs
+<span id="generic-declarations-encode-relationships" aria-hidden="true"></span>
+<span id="erasure-and-bridge-methods" aria-hidden="true"></span>
+<span id="restrictions-explained-by-representation" aria-hidden="true"></span>
+<span id="heap-pollution-and-varargs" aria-hidden="true"></span>
+<span id="interview-exercise-with-reasoning" aria-hidden="true"></span>
+<span id="why-the-bridge-exists" aria-hidden="true"></span>
+<span id="inference-uses-constraints-not-later-assignments" aria-hidden="true"></span>
+<span id="a-safe-implementation-review" aria-hidden="true"></span>
+<span id="introductory-example" aria-hidden="true"></span>
+<span id="why-can-a-consumer-of-integer-accept-listltnumbergt" aria-hidden="true"></span>
+<span id="additional-interview-questions" aria-hidden="true"></span>
+<span id="coding-exercise" aria-hidden="true"></span>
 
-Generic types express compile-time relationships. List&lt;Integer&gt; is not a subtype of List&lt;Number&gt;: allowing that assignment would permit inserting a Double into a list intended for Integer. A wildcard describes a family of possible element types instead of naming a single exact type.
+## Start with a minimal List contract
 
-A producer read as Number can use ? extends Number. A destination consuming Integer values can use ? super Integer. PECS is a useful starting rule, but the method's actual read/write contract is the reason for its signature. A list with an extends wildcard is not immutable; it may still support removal or be changed through another alias.
+`List<T>` represents an ordered sequence of T values. Get reads a position, add appends when mutation is supported, set replaces a position, size reports its length and an Iterator visits elements with hasNext/next. ArrayList is one growable implementation. Collection internals come later; this chapter needs only those operation contracts.
+
+Generic types are invariant: `List<Integer>` is not a subtype of `List<Number>`. If it were, code could insert a Double through the Number reference into an Integer-only sequence. Inheritance between the element types does not establish that container assignment.
 
 <span id="worked-example" aria-hidden="true"></span>
+<span id="copy-safely-between-producer-and-consumer" aria-hidden="true"></span>
 
-## Copy safely between producer and consumer
+## Express producer and consumer capabilities
 
-The copy method reads T values from a producer and writes them into a consumer. A list of Integer can therefore be copied into a list of Number. The wildcard positions encode the direction of data flow instead of relying on casts.
+<Diagram client:visible definition={"flowchart LR\n S[List of Integer] --> P[Read values as T]\n P --> D[Write values into consumer of T]\n D --> N[List of Number]"} caption="Bounds describe safe data flow at compile time; they do not promise an immutable or mutable implementation." />
+
+A `List<? extends Number>` has one unknown element type bounded above by Number. Reading as Number is safe, but adding an arbitrary Number is not: the actual list might be Integer-only. A `List<? super Integer>` accepts Integer writes but reads only as Object: other existing elements might be Double in a Number list.
+
+| View | Read as | Add safely if supported |
+| --- | --- | --- |
+| `List<Number>` | Number | Any Number |
+| `List<? extends Number>` | Number | Only null without further information |
+| `List<? super Integer>` | Object | Integer values and null |
+| `List<?>` | Object | Only null without further information |
+
+These are type permissions. An unmodifiable implementation may still reject add. An extends view can permit clearing/removal and can observe mutations through another alias; it is not immutable.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Wildcards, erasure and runtime restrictions
-
-<Diagram client:visible definition={"flowchart TD\n A[List of Integer] --> P[Producer extends T]\n P --> C[Copy T values]\n C --> D[Consumer super T]\n D --> B[List of Number]"} caption={"Producer and consumer bounds express the direction of safe data flow; they do not make either collection immutable."} />
-
-### Generic declarations encode relationships
-
-A generic class declares a parameter on its type: `final class Box<T> { T value; }`. A generic method declares its own parameter before the return type: `static <T> T identity(T value)`. A static method cannot use its enclosing class's T unless it declares an independent parameter; static state is shared by all parameterizations.
-
-A bound provides operations the implementation can safely call. `<T extends Number>` permits Number operations. An intersection bound such as `<T extends Number & Comparable<T>>` places the class first and additional interfaces after it. A recursive bound describes a type's relationship to its comparison capability. `Comparable<? super T>` allows comparison defined by a supertype and is often more flexible than `Comparable<T>`.
-
-### Read/write capability matrix
-
-| Parameter | Safely read as | Safely add, if mutation supported |
-| --- | --- | --- |
-| `List<Number>` | Number | Any Number, including Integer and Double |
-| `List<? extends Number>` | Number | Only null without further type information |
-| `List<? super Integer>` | Object | Integer and its subtypes, plus null |
-| `List<?>` | Object | Only null without further type information |
-
-These are type permissions, not promises that `add` succeeds: an unmodifiable implementation can throw. An extends view may allow clearing, iterator removal, or changes through a separate alias. Wildcards do not imply immutability.
-
-### Capture names an unknown type
-
-With `List<?>`, two separate wildcard expressions need not represent the same unknown type. A helper `<T> void swapCaptured(List<T> list, ...)` gives one capture a name and preserves the relationship between a value read from that list and a later write back. The complete GenericAlgorithms example includes this helper, a PECS copy method, and a bounded max implementation.
-
-The complete `GenericAlgorithms.java` source appears in the Java implementation section below.
-
-`max` rejects an empty input rather than inventing a sentinel, seeds its result from the first element, and compares every remaining value. It runs O(n) comparisons with O(1) auxiliary storage. The bound permits a T to be compared using a supertype's comparison contract. The copy method appends O(n) values; its precise cost additionally depends on the destination implementation.
-
-### Erasure and bridge methods
-
-A type variable erases to its first bound or Object. `Box<String>` and `Box<Integer>` share the same runtime class, while casts enforce expected types at use sites. Generic signature metadata can remain for reflection, but an arbitrary runtime List does not advertise all of its actual element values' types.
-
-If `interface Source<T> { T get(); }` is implemented by a class with `String get()`, bytecode must still support callers using the erased Object-returning interface signature. The compiler can generate a synthetic bridge that delegates to String get. Inspect `javap -c -v` and look for `ACC_BRIDGE, ACC_SYNTHETIC`. Erasure does not mean operations are cost-free: boxing, casts and allocation may still matter.
-
-### Restrictions explained by representation
-
-You cannot write `new T()`, `new T[10]` or `List<int>` under ordinary erased generics. Supply a factory, use a collection, or use a primitive specialization as appropriate. A class's static field cannot have its class type parameter as its type. Two overloads differing only by `List<String>` versus `List<Integer>` have the same erased parameter signature and clash.
-
-`Object value; value instanceof List<String>` cannot verify the element type and is rejected. `value instanceof List<?>` is legal. Since Java 16 some parameterized tests are legal when the statically known operand type already establishes the necessary relationship; for example a `List<Integer>` can be tested against `ArrayList<Integer>`. Do not generalize the Object case into a ban on every parameterized instanceof expression.
-
-### Heap pollution and varargs
-
-A raw List can accept an Integer and later be read through a List of String, moving a ClassCastException to the read site. A generic varargs array can also be aliased as Object[] and filled with an incompatible parameterization. `@SafeVarargs` documents a verified implementation restriction; it does not add runtime element checking or make unsafe writes safe. Use it only when the method does not perform or expose unsafe operations on its varargs array.
-
-### Interview exercise with reasoning
-
-Explain why `List<Integer>` is not `List<Number>`, then design `copy(destination, source)` without casts. Next show why replacing the source wildcard with `List<T>` unnecessarily rejects some useful callers when other parameters constrain T. The type signature should describe the minimum capabilities required by the algorithm.
-
-## Inference and bridge methods in executable code
-
-<JavaExample file="CoreErasureLab.java" output={"JAVA\n1\ntrue"} />
-
-### Why the bridge exists
-
-Mapper has an erased Object-to-Object contract. StringMapper supplies a String-to-String implementation. The compiler generates a bridge with the erased descriptor so an interface caller still reaches the overriding implementation. That bridge adapts/casts to the concrete method as necessary. A raw caller can therefore fail at a compiler-generated cast inside the bridge, even when the concrete source body contains no explicit cast.
-
-Inspect the nested class with `javap -c -p -v 'CoreErasureLab$StringMapper'`. The dollar sign is part of the nested class's binary name; quote it in shells that perform variable expansion. Identify the bridge flag, erased descriptor and delegation to the concrete signature. The runtime-class comparison prints true because ordinary generic parameterizations do not create separate ArrayList runtime classes.
-
-### Inference uses constraints, not later assignments
-
-The compiler combines invocation arguments, declared bounds and the target context to infer type arguments. Diamond syntax does not make a type dynamically change after construction. A later add call cannot retroactively change an earlier inferred type. Introducing `var` can remove an assignment's target context and lead to a broader inferred type than an explicitly declared variable would establish.
-
-A named type parameter communicates a relationship between multiple positions; a wildcard communicates an unknown type where that relationship need not be exposed. Use `<T> T first(List<T> input)` when return type must correspond to the input element type. Returning `List<?>` unnecessarily can push capture problems onto callers. PECS describes read/write capabilities but does not choose every API signature automatically.
-
-### Recursive bounds and intersections
-
-A `Comparable<? super T>` bound accepts comparison inherited from a compatible supertype. An intersection bound can require multiple capabilities, with a class bound first where present. Erasure uses the first bound, so bound ordering and erased descriptors matter for binary reasoning even when source constraints look similar. Avoid changing public generic bounds casually in a library API.
-
-### A safe implementation review
-
-Every unchecked cast needs a local invariant explaining why the value has the expected type. A generic container storing Object[] can localize its read cast if all writes enter through a controlled T API. That argument fails if the array escapes or raw callers bypass the contract. Suppressing warnings globally removes the evidence needed to find such violations; it is not a correctness proof.
-
+<span id="wildcards-erasure-and-runtime-restrictions" aria-hidden="true"></span>
 <span id="java-implementation" aria-hidden="true"></span>
+<span id="implement-bounded-generic-algorithms" aria-hidden="true"></span>
 
-## Implement bounded generic algorithms
+<span id="readwrite-capability-matrix" aria-hidden="true"></span>
+<span id="capture-names-an-unknown-type" aria-hidden="true"></span>
+<span id="bounded-algorithms-and-wildcard-capture" aria-hidden="true"></span>
 
-### Bounded algorithms and wildcard capture
+## Read copy, max and capture as separate algorithms
 
 <JavaExample file="GenericAlgorithms.java" output={"[3, 1, 2]\n3\n[3, 1, 2]"} />
 
-### Introductory example
+Copy reads T values from `List<? extends T>` and appends them to `List<? super T>`. It does not overwrite destination positions or make a transactional snapshot: mutation can be partially complete if an add fails. The source loop performs O(n) visits; total cost depends on the destination's add operation. This source consistently puts destination first.
 
-The following program is a complete executable example. Compile with `javac GenericCopy.java` and run with `java GenericCopy`.
+Max rejects empty input, seeds best from the first non-null element and compares each remaining value. Its bound `T extends Comparable<? super T>` permits comparison inherited from a compatible supertype. It uses O(n) comparisons and O(1) auxiliary storage. Number alone would not establish an ordering operation. An intersection such as `T extends Number & Comparable<T>` combines capabilities, with a class bound first.
 
-<JavaExample file="GenericCopy.java" output={"[1, 2]"} />
+Swap accepts `List<?>` but cannot name its unknown element type directly. SwapCaptured introduces one T for that particular captured list, allowing a value read as T to be written back as T. Two independent wildcards need not represent the same unknown type. The helper preserves the relationship without an unchecked cast.
 
+## Practice: choose the minimum necessary permission
+
+A method only reads numbers. Must it accept `List<Number>`? A method only inserts Integers: should it require extends Integer?
+
+<details>
+<summary>Answers</summary>
+
+Use `List<? extends Number>` for the reader so Integer lists can participate. Use `List<? super Integer>` for the writer so Integer, Number or Object destinations can participate. Neither signature guarantees that mutation is supported or that inputs are non-null. When an API must tie an input type to a return type, use a named parameter rather than replacing every occurrence with an unrelated wildcard. PECS summarizes these read/write needs; the algorithm's contract remains the reason for the signature.
+
+</details>
+
+<span id="inference-and-bridge-methods-in-executable-code" aria-hidden="true"></span>
 <span id="common-mistakes" aria-hidden="true"></span>
-
-## Generic API and heap-pollution pitfalls
-
-Do not add arbitrary values to List&lt;? extends Number&gt;, treat raw-type warnings as harmless, or assume an Object can be tested for arbitrary generic element arguments. Wildcards belong in API boundaries where they express flexibility; replacing every type parameter with ? loses useful relationships.
-
-<KnowledgeCheck client:visible question={"A method only inserts Integer values into a destination list. Which bound expresses that capability?"} options={["? extends Integer", "? super Integer", "An unbounded wildcard alone"]} correct={1} explanations={["An extends wildcard describes an unknown subtype, so inserting an arbitrary Integer is not generally safe.", "A consumer accepting Integer values can be a list of Integer or a compatible supertype, expressed by ? super Integer.", "An unbounded wildcard does not establish that Integer can safely be inserted."]} />
-
+<span id="generic-api-and-heap-pollution-pitfalls" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+<span id="generics-interview-practice" aria-hidden="true"></span>
+<span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Generics interview practice
-
-### Why can a consumer of Integer accept List&lt;Number&gt;?
-
-<details>
-<summary>Explanation</summary>
-
-A Number list can safely store every Integer, so it satisfies the write requirement. The method cannot assume that reading from that consumer yields an Integer, because the list might also contain other Number types. Read and write capabilities differ.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Why is the max bound `Comparable<? super T>` useful?</summary>
-
-A subtype T may inherit a comparison contract declared for its supertype. The bound accepts that valid relationship while still allowing each T to be compared with another T. Requiring `Comparable<T>` can reject such otherwise safe types.
-
-</details>
-
-<details>
-<summary>Why not create `new List<String>[10]`?</summary>
-
-Arrays enforce runtime component types, while the ordinary runtime representation cannot distinguish `List<String>` from `List<Integer>`. Permitting that array would allow stores through an Object[] alias that defeat the promised element type. Prefer a typed collection of lists.
-
-</details>
-
-<details>
-<summary>Does `@SafeVarargs` perform a runtime generic check?</summary>
-
-No. It asserts that the implementation does not perform or expose unsafe operations on its non-reifiable varargs array. Unsafe aliasing can still pollute it. The annotation requires reviewing the implementation, not merely suppressing a warning.
-
-</details>
-
-### Coding exercise
-
-Implement a max method with a suitable Comparable bound. Explain why a bridge method may be generated when a generic interface is implemented using a concrete type.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Can reflection recover the element type of every List instance?</summary>
-
-No. Declaration signatures may retain generic metadata, but an arbitrary list object does not carry a runtime-verified element argument. A reflected field declared List of String describes the declaration; it does not validate every actual value supplied through unsafe code.
-
-</details>
-
-<details>
-<summary>Why does a bridge sometimes appear in a stack trace?</summary>
-
-The erased invocation reaches the compiler-generated adapter. A cast required by that adaptation can fail before the concrete typed method body executes. Inspect the bridge descriptor and the raw/unsafe caller rather than assuming the trace names handwritten source only.
-
-</details>
-
-<details>
-<summary>When should you use a type parameter instead of two wildcards?</summary>
-
-When the API needs one shared relationship, such as the same element type appearing in input and output. Two independently captured wildcards can represent different unknown types and may not permit a read/write operation requiring identity of those types.
-
-</details>
+The runtime-representation chapter builds on these relationships to explain erasure, bridges, generic arrays and heap pollution.
 
 <span id="references" aria-hidden="true"></span>
+<span id="generics-references" aria-hidden="true"></span>
 
-## Generics references
+<span id="recursive-bounds-and-intersections" aria-hidden="true"></span>
 
-- [Generic types and declarations](https://dev.java/learn/language/fp/generics/intro/)
-- [Wildcards, bounds and capture](https://dev.java/learn/language/fp/generics/wildcards/)
-- [Erasure and bridge methods](https://dev.java/learn/language/fp/generics/type-erasure/)
-- [Generic restrictions](https://dev.java/learn/language/fp/generics/restrictions/)
-- [Compiler type-test checks](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/jdk.compiler/share/classes/com/sun/tools/javac/comp/Check.java)
+## Bounds references
 
-- [Type inference and target contexts](https://dev.java/learn/language/fp/generics/type-inference/)
+- [Dev.java: wildcards and capture](https://dev.java/learn/language/fp/generics/wildcards/)
+- [List operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html)
+- [Collections.max generic contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html)

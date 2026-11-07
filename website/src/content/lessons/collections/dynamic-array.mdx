@@ -2,10 +2,10 @@
 title: "Implement a dynamic array"
 module: "collections"
 group: "Lists and arrays"
-summary: "Connect indexed access, shifting and amortized growth to executable code."
-order: 130
+summary: "Represent a growing list with a fixed array"
+order: 400
 version: "Java 8+"
-prerequisites: ["language/arrays-strings-unicode", "collections/choosing-collections"]
+prerequisites: ["collections/arraylist", "language/arrays-strings-unicode"]
 advanced: false
 ---
 
@@ -13,169 +13,73 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Logical size and physical capacity
+## Represent a growing list with a fixed array
 
-A dynamic array combines a fixed-size backing array with a logical size. Capacity describes allocated slots; size describes valid elements. Appending uses a spare slot when available and grows the backing array when it is full. Removing an element shifts later values left, preserving sequence order.
+ArrayList's public operations hide storage management. To implement a focused subset, keep an Object array and a logical size. Only indexes below size are elements; remaining slots are unused capacity. The invariant is `0 <= size <= elements.length`, with logical elements stored in the active prefix.
 
-The implementation below stores ints to keep ownership and bounds rules visible. A generic version would store references and clear vacated slots so removed elements can be collected. The core invariant is 0 ≤ size ≤ capacity and every public index must fall inside the appropriate logical range.
+A null element can be valid, so null cannot distinguish membership from spare capacity. Size makes that distinction. Element indexes permit `0 <= index < size`; insertion positions also permit index equal to size. Validate those boundaries before allocating or mutating.
 
 <span id="worked-example"></span>
-## Insertion and removal trace
+## Trace insertion and removal
 
-Adding three values to a two-slot array triggers growth. Removing index 1 returns 20 and moves 30 into that position. The remaining logical sequence is 10, 30; the unused backing-array slot is not a third element.
+Starting with [10,30,null,null], size two, insert 20 at index one. Move 30 from one to two, write 20 at one, then increment size. Remove index one: save 20, move 30 back, decrement size and clear the old final reference. The result is [10,30,null,null], size two.
 
-<span id="mechanics-and-tradeoffs"></span>
-## Growth, shifting and amortized analysis
-
-Doubling growth means a particular append can copy n elements, but a long sequence of appends has linear total copying work, giving amortized O(1) append. Indexed get remains O(1). Removing at an arbitrary index costs O(n − index) due to shifting. These costs assume element reads/writes have bounded cost.
-
-Separate boundary checks from mutation. Reject invalid indices before changing size. Compute how many elements need moving, then reduce size after the operation succeeds. This order makes it easier to reason about failure paths.
-
-<Diagram client:visible definition={"flowchart LR\n A[Append request] --> B{Spare capacity?}\n B -->|yes| C[Store at size and increment]\n B -->|no| D[Allocate doubled array]\n D --> E[Copy existing elements]\n E --> C"} caption={"Geometric growth makes individual expansion expensive but amortizes copying over a sequence of appends."} />
-
-### State and invariants
-
-For a backing array of capacity 4 and size 3, only slots 0, 1 and 2 belong to the sequence. Slot 3 is unused. The generic implementation below maintains `0 <= size <= elements.length`, stores every logical element in that prefix, and clears references outside the prefix when removing or clearing. A null element is permitted and does not mean a slot is unused; size determines membership.
-
-An element index accepts `0 <= index < size`. An insertion position accepts `0 <= index <= size`, including the position immediately after the last element. Confusing these checks prevents valid appends or permits invalid reads. Validate before growing or shifting so rejected operations do not alter the structure.
-
-### Complete generic implementation
-
-The complete `SimpleArrayList.java` source appears in the Java implementation section below.
-
-This is a single-file teaching container, not a complete List implementation. It implements construction, size, get, set, append, indexed insertion, removal and clear. It omits iterators, sublists, serialization and concurrent access. The Object-array cast is localized in `get`; every write enters through a T-typed method, which establishes the representation invariant for ordinary typed callers.
-
-### Explain each mutation
-
-`add(index, value)` validates an insertion position, ensures one spare slot, then shifts the suffix right by `size - index` positions. `System.arraycopy` correctly handles overlapping source and destination ranges. It writes the new value and increments size once. Appending is the same operation at index size, so it shifts zero elements.
-
-`remove(index)` saves the old value, shifts `size - index - 1` elements left, decrements size, and writes null into the newly vacated slot. Without that last write, an otherwise unreachable object could remain retained through the backing array. `set` replaces a logical value without changing size. `clear` nulls the active range and resets size while retaining capacity for reuse.
-
-### Trace insertion and removal
-
-Starting with `[10, 30, _, _]`, size 2, insert 20 at index 1. Copy one value from index 1 to 2, store 20 at 1, then set size to 3. The logical result is `[10, 20, 30]`. Remove index 1: save 20, move 30 left, reduce size to 2, clear index 2. The remaining array is `[10, 30, null, null]`.
-
-<Diagram client:visible definition={"flowchart TD\n A[Validate logical index] --> B[Save removed value]\n B --> C[Shift suffix one position left]\n C --> D[Decrement size]\n D --> E[Clear vacated reference]\n E --> F[Return saved value]"} caption={"Removal preserves sequence order and removes the stale reference beyond the logical end."} />
-
-### Prove amortized append cost
-
-With doubling, expansion copies roughly `1 + 2 + 4 + ... + 2^k` elements over a growing sequence. That geometric sum is less than twice its next power-of-two bound, so total copying across n appends is O(n). Ordinary writes add another O(n), making amortized append O(1). A particular expanding append is still O(n). Growing by a fixed one slot instead gives `1 + 2 + ... + n`, or O(n²) aggregate copying.
-
-Actual ArrayList growth factors are implementation policy, not a public promise to double. Our teaching version doubles and has an explicit exercise capacity limit to prevent arithmetic overflow. It reports that limit rather than accidentally wrapping a requested array length. Automatic shrinking is omitted; shrinking on every removal near a boundary would create allocation thrashing without hysteresis.
-
-### Boundary reasoning
-
-Try insertion into an empty list at 0, removal from empty, insertion at size, negative indexes, repeated growth, duplicate/null values, and removal at first/middle/last positions. Explain the exact number of shifted elements for each case. Capacity is a storage detail; never expose it as an extra logical element.
-
-## Failure paths and bulk compaction
-
-### Validate before changing representation
-
-An element read/removal accepts indexes below size; insertion also accepts index equal to size. Both reject negatives. Perform these checks before allocating, shifting or incrementing counters. That ordering makes an invalid operation a no-op rather than a partial mutation.
-
-Allocation can fail even for a logically valid request. A practical implementation should calculate growth without integer overflow and preserve the old backing array until new allocation/copy succeeds. The teaching capacity bound makes this branch explicit. It is a limit of the exercise, not a promise of the production List API.
-
-### Distinguish operation atomicity from thread safety
-
-An append implemented as several field/array writes is not a thread-safe transaction. A correctly ordered single-threaded mutation helps reason about exceptions, but another thread can still race with it unless access follows a shared protocol. Declaring size volatile does not coordinate array replacement and element insertion as one invariant.
-
-### Bulk removal proof
-
-A compaction scan uses read and write cursors. Accepted values are copied into the active prefix at write, and every read position is considered once. After the scan, clear the discarded reference range and set the new logical size. This can remove many items in O(n) instead of performing a separate O(n) suffix shift per removal.
-
-A throwing predicate introduces a failure-policy question. If mutation has already occurred, the operation cannot casually promise rollback. Production implementations preserve a defined state using careful bookkeeping; a teaching extension should state whether predicate failure leaves partial changes, restores state or first computes an independent acceptance plan.
-
-### Amortized cost is not a latency service level
-
-A resize can allocate and copy a large array in one append. Amortized O(1) says aggregate operation work is bounded over the sequence, not that every request meets a fixed latency. If a workload knows a reliable final size, reserving capacity can reduce repeated copying; an exaggerated reservation wastes memory and can itself fail.
-
-### Exercise solution map
-
-For indexed insertion, validate a position, ensure room, copy size−index elements right, store and increment. For removal, save the old element, copy size−index−1 left, decrement, clear and return. For clear, null the active reference range before resetting size. For a typed backing array, explain erasure and the localized read-cast invariant instead of scattering unchecked casts through public methods.
+<Diagram client:visible definition={"flowchart LR\n A[Validate logical position] --> B[Ensure spare capacity]\n B --> C[Shift suffix right]\n C --> D[Write new value]\n D --> E[Increment size once]"} caption="Insertion keeps bounds validation and allocation ahead of mutation; appending shifts a suffix of length zero." />
 
 <span id="java-implementation"></span>
-## Complete dynamic-array implementation
-
-### Complete generic dynamic array
+## Complete generic implementation
 
 <JavaExample file="SimpleArrayList.java" output={"20\n30\n2\nnull"} />
 
-### Introductory example
+This one-file container implements size, get, set, append, indexed insertion, removal, clear and a bulk-removal extension. It deliberately does not implement the full List contract, iterators, backed ranges, serialization or concurrency. Every typed write receives T; get localizes the Object-to-T cast. Erasure prevents allocating a direct generic T array.
 
-The following program is a complete executable example. Compile with `javac DynamicArrayDemo.java` and run with `java DynamicArrayDemo`.
+## Explain each method against the representation
+
+get validates an element index, then reads one slot. set reads/saves the prior element through that same check before writing the replacement; size does not change. add(value) delegates to add(size,value), which validates an insertion position, ensures room and uses System.arraycopy to shift size−index references right. arraycopy handles overlapping source/destination ranges correctly.
+
+remove saves the old value, shifts size−index−1 references left, decrements size and clears the vacated slot. The saved reference remains returnable even after clearing. clear nulls the active range before setting size to zero, retaining capacity for reuse. None of these operations clones the element objects.
+
+ensureCapacity leaves existing storage intact if room remains. Otherwise it computes a doubled array within the explicit exercise bound and replaces storage only after allocation/copy succeeds. The capacity limit is a teaching policy, not an ArrayList API limit.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Prove the growth bound
+
+Doubling copies roughly 1+2+4+... references. The geometric sum is O(n) over n appends; ordinary writes add O(n), so append is amortized O(1). One expansion is still O(n). Growing by exactly one instead copies 1+2+...+n, or O(n²). This is a bound over a sequence, not a probability average or a latency guarantee.
+
+Actual ArrayList growth multipliers are implementation policy. Pre-sizing can avoid copying when a reliable size is known, while excessive capacity wastes memory. Automatic shrinking is omitted here; shrinking immediately around every threshold can thrash unless a hysteresis policy separates growth and shrink decisions.
+
+## Complete bulk removal with an explicit failure policy
+
+A repeated remove(0) can shift O(n) references O(n) times. Bulk compaction instead keeps a write cursor for accepted elements. This example first evaluates a MatchRule into a boolean acceptance plan, then compacts survivors and clears the discarded tail. It uses O(n) extra boolean storage to leave container membership unchanged if rule evaluation throws before compaction.
+
+MatchRule is a small interface with one boolean matches(value) method. A named implementation can supply the decision without lambda syntax. The caller must not mutate this container or its membership through the rule; arbitrary reentrant/concurrent changes are outside the contract. The guarantee does not undo mutations a rule performs on element objects elsewhere.
+
+During compaction, read scans every old position and write identifies the next accepted slot. Each survivor is copied at most once. After the scan, clear [write,oldSize), set size=write and return oldSize−write. A no-match case preserves the sequence; all matches leave an empty reusable container.
+
+## Compare the primitive representation
 
 <JavaExample file="DynamicArrayDemo.java" output={"20\n30\n2"} />
 
-<span id="common-mistakes"></span>
-## Bounds and retained-reference mistakes
+The introductory int implementation avoids Object casts and retained object references. The same size/capacity and suffix-shift reasoning applies. Clearing unused int slots is not needed to release referenced objects because no object references are stored there; it can still be a chosen display/debug policy.
 
-Do not expose the backing array, use capacity as the iteration boundary, or grow by one on every append. In a reference-based version, leaving stale references beyond size retains otherwise unused objects.
+<span id="common-mistakes"></span>
+## Separate exception ordering from thread safety
+
+Checking before mutation helps preserve state for invalid indexes. It does not make append atomic across threads. Array replacement, contents and size form one invariant; a volatile size field alone cannot coordinate them. Allocation can fail, so keep old storage until new allocation/copy succeeds.
 
 <span id="exercises-and-interview-questions"></span>
-## Dynamic-array interview questions and exercises
+## Completed boundary and compaction exercises
 
-### Why is amortized O(1) different from worst-case O(1)?
+<JavaExample file="SimpleArrayListTest.java" />
 
-<details>
-<summary>Explanation</summary>
+Tests cover growth, empty/negative/too-large positions, insertion at size, first/middle/last removal, duplicates/nulls, replacement, clear/reuse, no/all/mixed bulk matches and a throwing rule that leaves membership unchanged. Count shifted references separately from size: insertion at i moves n−i; removal moves n−i−1; a growth copy is additional work.
 
-Amortized analysis spreads occasional expensive growth across a sequence of operations. A single append can still take linear time when it reallocates and copies. This is not a probabilistic average over random inputs; it is a bound on the aggregate work of a sequence under the growth policy.
+**Why clear after removal?** The backing array remains reachable. A stale reference outside size can retain an otherwise unused object even when logical output looks correct.
 
-</details>
+**Why not promise rollback for an in-place one-pass predicate loop?** Earlier writes may already have overwritten values before a later predicate throws. The two-phase plan here deliberately trades memory for a defined container failure boundary.
 
-### Additional interview questions
-
-<details>
-<summary>How many elements move when inserting at index i in size n?</summary>
-
-n - i elements shift right. Insertion at n shifts zero; insertion at zero shifts the entire sequence. If capacity is exhausted, growth also copies the existing array, independently of that positional shift.
-
-</details>
-
-<details>
-<summary>Why clear the old final slot after removal?</summary>
-
-The logical size shrinks, but the backing array remains reachable. A stale reference outside the active prefix could keep a removed object alive. Clearing the slot preserves the ownership invariant and permits collection when no other roots retain that object.
-
-</details>
-
-<details>
-<summary>Is amortized O(1) a guarantee about one append?</summary>
-
-No. One expanding append can be linear. Geometric growth bounds total copying across a sequence of n appends by O(n), yielding constant amortized work. This aggregate bound does not rely on random input probabilities.
-
-</details>
-
-### Coding exercise
-
-Implement insertion at an arbitrary index. Add tests for empty removal, first/last positions, growth boundaries and invalid indices. Explain how a generic reference version should clear vacated slots.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>What does a volatile size field fail to solve?</summary>
-
-The array reference, its contents and the size relationship still form a compound invariant. Another thread could observe or race with different stages. Visibility of one field does not supply atomic coordination for the operation.
-
-</details>
-
-<details>
-<summary>Why retain the old array until allocation/copy succeeds?</summary>
-
-Failure before replacement can leave the original logical representation intact. Replacing state too early can lose valid elements or expose an incomplete new representation.
-
-</details>
-
-<details>
-<summary>How can bulk removal avoid quadratic shifting?</summary>
-
-Compact accepted values in one pass using a write cursor, then clear the discarded tail once. Analyze predicate failure separately rather than claiming rollback from the happy-path algorithm.
-
-</details>
-
-<span id="references"></span>
-## Primary dynamic-array references
+## References
 
 - [ArrayList storage, shifting and growth](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ArrayList.java)
-- [System.arraycopy contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/System.java)
-- [Array copy utilities](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Arrays.java)
+- [System.arraycopy overlap behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#arraycopy(java.lang.Object,int,java.lang.Object,int,int))
+- [Arrays copying utilities](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html)

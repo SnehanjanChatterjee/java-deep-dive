@@ -1,5 +1,6 @@
 import { readdir, mkdir, copyFile, rm, cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { basename } from 'node:path';
 const root=fileURLToPath(new URL('../',import.meta.url));
 const dest=root+'website/public/examples';
 await rm(dest,{recursive:true,force:true});await mkdir(dest,{recursive:true});
@@ -20,6 +21,17 @@ with ZipFile(root/'website/public/examples/hashmap-exercise.zip','w',ZIP_DEFLATE
 `]);
 
 await cp(root+'java-examples/modern',dest+'/modern',{recursive:true});
+await cp(root+'java-examples/projects',dest+'/projects',{recursive:true,filter:source=>!['target','.maven-cache','out','.DS_Store'].includes(basename(source))});
+execFileSync('python3',['-c',`from pathlib import Path
+from zipfile import ZipFile, ZIP_DEFLATED
+root=Path(${JSON.stringify(root)})
+source=root/'website/public/examples/projects'
+for project in source.iterdir():
+ if project.is_dir():
+  with ZipFile(root/'website/public/examples'/(project.name+'.zip'),'w',ZIP_DEFLATED) as bundle:
+   for file in project.rglob('*'):
+    if file.is_file(): bundle.write(file,file.relative_to(project))
+`]);
 
 execFileSync('python3', ['-c', `from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED

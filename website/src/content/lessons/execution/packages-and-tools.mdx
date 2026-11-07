@@ -1,0 +1,73 @@
+---
+title: "Packages, classpaths and development tools"
+module: "execution"
+group: "Tools and project structure"
+summary: "Organize a greeting into a package, select a classpath and launch the same code from a terminal or IDE."
+order: 20
+version: "Java 8+"
+prerequisites: ["execution/compile-and-run"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Put a class in a namespace
+
+Two projects can both define a class named Hello. A package gives a type a qualified name such as `study.Hello`. It also participates in Java access control. An import only lets source use a shorter name: it does not download a library, load a class or grant access.
+
+Create `src/study/Hello.java`:
+
+<JavaExample file="Hello.java" output={"Hello, Java!"} />
+
+The program has the same main body as the first greeting example. Only its package and project layout have changed. Its binary name is `study.Hello`, rather than an unqualified Hello; no additional calculation or helper method is needed.
+
+```bash
+mkdir -p out
+javac -d out src/study/Hello.java
+java -cp out study.Hello
+```
+
+Run from the directory containing `src`. `-d out` creates `out/study/Hello.class`. The classpath contains the directory **above** `study`; the launcher appends the package path to that root. Output is `Hello, Java!`. The working directory matters when resolving relative paths.
+
+## Know which tool owns which job
+
+Javac compiles source. Java launches a program. Javadoc generates API documentation from source comments, and javap inspects compiled class files. An IDE combines these operations but still selects a particular JDK and launch configuration. Bytecode instructions and call frames are developed in the JVM module; they are not prerequisites for this greeting.
+
+Build into a separate output tree so stale class files do not silently compete with new ones. A JAR is an archive of classes/resources. `java -jar app.jar` additionally needs executable-JAR metadata; a library JAR need not be executable. In `java -cp out study.Hello one two`, the words after the class name become application arguments. The classpath option and class name are launcher inputs, not entries in the application's args array. Arrays and argument processing are taught in the language module.
+
+## Diagnose the failing phase
+
+| Symptom | Investigate first |
+| --- | --- |
+| Compiler cannot find symbol | Spelling, imports, compilation dependencies |
+| Could not find main class | Qualified name, classpath root, selected working directory |
+| UnsupportedClassVersionError | Compiler target and runtime JDK |
+| NoSuchMethodError | Runtime dependency differs from the binary used to compile |
+| ClassNotFoundException | Explicitly requested class unavailable to that loader |
+| NoClassDefFoundError | Missing required definition or earlier failed class initialization |
+
+A runtime linkage error is not repaired by adding an import to already compiled source. Module paths resolve named modules and their encapsulation; putting a modular JAR on the classpath does not make it a named module. Detailed loading and module behavior belongs to the later JVM/platform chapters.
+
+## Target the intended runtime
+
+On Java 9+, `javac --release 8` selects supported source syntax, class-file format and the platform API for Java 8. `-source` and `-target` alone can leave newer library calls visible. Release targeting does not rewrite incompatible third-party dependencies. Preview features require the matching release and flags at compilation and execution.
+
+A process exit status is separate from text printed to the console. Record the exact launch command, JDKs, dependencies and arguments when reproducing a failure. Changing several of these at once can hide the cause.
+
+## Practice: repair the wrong classpath
+
+Why does `java -cp out/study Hello` fail for the program above?
+
+<details>
+<summary>Answer and a debugging workflow</summary>
+
+The class declares binary name study.Hello, and `out` is its classpath root. Use `java -cp out study.Hello`. Confirm both `java -version` and `javac -version`, list the output directory, and check that the expected class file exists. In an IDE, compare its chosen JDK and launch configuration. A debugger breakpoint at main confirms which program started; method stepping is developed after ordinary method calls. Watch expressions can execute code, so keep them free of side effects.
+
+JShell is useful for isolated expressions, but implicit imports and the selected JDK can differ from a project. Move a successful snippet into a complete file before treating it as a reproducible project example. Constant inlining and initialization failures receive executable investigations in the JVM module.
+
+</details>
+
+## Tools references
+
+- [Dev.java: core JDK tools](https://dev.java/learn/jvm/core-tools/)
+- [javac options and release targeting](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javac.html)

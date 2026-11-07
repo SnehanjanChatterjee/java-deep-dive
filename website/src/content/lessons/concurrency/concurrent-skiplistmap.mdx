@@ -1,0 +1,52 @@
+---
+title: "ConcurrentSkipListMap: ordered concurrent navigation"
+module: "concurrency"
+group: "Concurrent data structures"
+summary: "Use neighbors, backed ranges and atomic endpoint removal before studying probabilistic index levels."
+order: 950
+version: "Java 8+"
+prerequisites: ["concurrency/concurrent-collections", "collections/treemap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Concurrent lookup can also require order
+
+A scheduler stores jobs by deadline. It needs the greatest key at or before a query, a bounded range view, and removal of the first job. ConcurrentHashMap supplies exact-key operations without sorted neighbors. ConcurrentSkipListMap supplies concurrent NavigableMap-style operations under a comparison order.
+
+Null keys and values are prohibited, even with a comparator able to order null. Comparison result zero defines key equivalence. Keep comparison consistent with equals when the ordinary Map equality contract is required, and do not mutate ordering fields while keys are stored.
+
+## Trace a backed range and one claimed entry
+
+<JavaExample file="SkipListRangeLesson.java" output={"{10=first, 20=second}\n20\n10=first\n{20=second}"} />
+
+The range includes 10 and excludes 30. It is backed by the map, so adding 20 after obtaining the view changes what that view contains. FloorKey(25) finds 20. PollFirstEntry atomically retrieves/removes the first entry, 10=first. The existing range then reflects that removal.
+
+Calling firstEntry and then remove separately would leave an interference interval. Polling one entry claims that mapping; it does not reserve an entire range or make several subsequent operations a transaction.
+
+## Base list and probabilistic index levels
+
+The implementation maintains an ordered linked base level and sparser index levels. Searches move right while indexed keys precede the target, then descend toward the base. Index placement is probabilistic, yielding expected average logarithmic core key operations under the skip-list model and bounded comparison cost. This is a different structural guarantee from a balanced tree's worst-case height; it is not a latency deadline under contention.
+
+<Diagram client:visible definition={"flowchart TD\n H[Search at index level] --> Q{Next key precedes query?}\n Q -->|yes| R[Move right]\n R --> Q\n Q -->|no| D[Descend toward base list]\n D --> B[Locate matching key or neighbor]\n B --> O[Return one operation outcome]"} caption="Index levels guide a search to ordered base membership. They do not create an immutable duplicate map." />
+
+Atomic link/value transitions coordinate updates. Logical marking can precede physical unlinking; traversals can help cleanup. The source supplies the marker/helping interference cases that a static layered drawing omits. Treat these details as implementation analysis rather than the public contract.
+
+## Individual entry snapshots are not a map snapshot
+
+Views/iterators are weakly consistent and can reflect concurrent changes. Entry objects returned by this class describe individual mapping snapshots and do not support setValue. Several independently obtained entries do not necessarily represent one coherent global version. A value object inside any entry can also remain mutable and shared.
+
+Ascending traversal is generally more efficient than descending traversal for this implementation, but choose the required semantics first and measure a representative workload. Neither sorted traversal nor concurrency establishes an atomic multi-key accounting operation.
+
+## Exercise and complete reference solution
+
+Construct deadlines 10/30, obtain the inclusive-10/exclusive-30 range, insert 20, and atomically remove the first entry. `SkipListRangeLesson` is the complete solution. Explain each printed view before considering concurrency.
+
+If a worker reads a whole range then acts later, other workers may have changed it. Use atomic per-entry claims or a larger coordination protocol matching the real invariant. A backed range alone does not give exclusive ownership of its keys.
+
+## Primary references
+
+- [ConcurrentSkipListMap navigation and entry contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentSkipListMap.html)
+- [OpenJDK skip-list representation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentSkipListMap.java)

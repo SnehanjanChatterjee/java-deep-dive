@@ -1,0 +1,47 @@
+---
+title: "Typed containers and mutable element ownership"
+module: "generics"
+group: "Bounds and wildcards"
+summary: "Keep type safety separate from ownership when containers hold mutable objects or record components."
+order: 320
+version: "Java 8+"
+prerequisites: ["generics/bounds-wildcards-erasure", "objects/immutable-design"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## A typed container can still expose mutable elements
+
+`List<Date>` means its elements follow the Date type contract; it does not promise that the list or dates are immutable. Collections.unmodifiableList blocks structural writes through that view while still observing writes through other aliases. A structural copy detaches membership but can retain the same mutable Date references.
+
+<JavaExample file="ImmutableSchedule.java" output={"1000\n1000\ntrue"} />
+
+CopyDates rejects a null list and null elements, allocates a new list and constructs a new Date from each original timestamp. Construction stores that snapshot; the accessor repeats copying so a caller cannot receive an internal Date. Setting the input to 2000 or an accessor result to 3000 leaves the stored timestamp at 1000. Independent equivalent snapshots compare equal and hash the same state.
+
+Each copy costs O(n) time and space. Returning immutable values such as Instant could simplify ownership by allowing a structural copy of immutable references. This example retains Date specifically to make element copying observable; it is not a recommendation to choose mutable legacy time values for a new domain.
+
+## Modern record components need the same policy
+
+<JavaExample file="modern/CoreRecordOwnership.java" output={"1\ntrue\nfound=2\nmissing=x\nabsent input"} />
+
+This optional example requires Java 21+ record patterns. Sample copies its array on input/output and explicitly defines content equality. Found uses List.copyOf (Java 10+) for an unmodifiable structural snapshot and rejects null list/elements. Because the elements here are immutable String, no Date-style element copy is needed. Mutable nested elements would require another explicit policy.
+
+Missing validates its key. Describe handles both alternatives and null explicitly; null input is not silently translated into a Missing domain outcome. Each constructor owns its invariant before a switch selects behavior. These generic ownership decisions are the same decisions made for the earlier primitive-array immutable class.
+
+## Practice: replace Date with an immutable element
+
+Which copies remain necessary when a schedule stores immutable Instant elements? Is an unmodifiable view over the caller's mutable list sufficient?
+
+<details>
+<summary>Answer</summary>
+
+Copy the container structure so later caller additions/removals cannot change the schedule. Sharing immutable element references is safe under that value contract; per-element cloning is unnecessary. An unmodifiable view alone still observes caller mutations and is not a detached snapshot. On Java 8, copy into a private ArrayList and wrap it; on Java 10+ List.copyOf provides a structural snapshot with its documented null policy. Concurrency and safe publication are additional concerns rather than guarantees inferred from a wildcard or wrapper.
+
+</details>
+
+## Ownership references
+
+- [Collections unmodifiable views](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html)
+- [List.copyOf snapshot contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#copyOf(java.util.Collection))
+- [Date mutability](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Date.html)

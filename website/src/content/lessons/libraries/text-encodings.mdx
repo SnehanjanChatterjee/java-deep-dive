@@ -1,0 +1,53 @@
+---
+title: "Text encodings and strict decoding"
+module: "libraries"
+group: "Text and encodings"
+summary: "A byte count is not a character count"
+order: 660
+version: "Java 8+"
+prerequisites: ["libraries/io-nio-networking", "language/arrays-strings-unicode"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A byte count is not a character count
+
+A String exposes UTF-16 code units. A file or network protocol carries bytes. A charset defines the translation between them. The euro sign is one UTF-16 code unit but three UTF-8 bytes: E2 82 AC. A supplementary character can occupy two UTF-16 units and four UTF-8 bytes.
+
+An explicit charset means the writer and reader use the same declared representation. It is not a claim that every input byte sequence is valid text. A decoder must also choose whether malformed input is rejected or replaced.
+
+## Decode a complete bounded value
+
+<JavaExample file="TextEncodingLab.java" output={"1\n3\n€\nincomplete UTF-8 rejected"} />
+
+getBytes(UTF_8) encodes the known valid text. decodeStrict creates a UTF-8 decoder configured to REPORT malformed/unmappable input. ByteBuffer.wrap adapts the complete byte array to this decoder API without copying it; the next chapter explains buffer positions and views. The decoder returns decoded characters, converted to String.
+
+The first outputs compare String.length with encoded byte length. E2 alone is only the start of the euro sign's encoding, so treating it as a complete value is rejected. It is not a different valid character.
+
+## Distinguish encoding errors from read segmentation
+
+A read may stop after E2 even when the remaining bytes will arrive later. Converting each arbitrary read chunk into an independent String can reject or replace valid split characters. Either retain decoder state across chunks, with correct end-of-input handling, or retain bytes until a complete protocol payload is available. The framing lesson implements the second design.
+
+new String(bytes, charset) uses replacement behavior for malformed input under its contract. That can be suitable for best-effort display but is wrong when malformed protocol data must fail. An encoder also needs a policy for malformed UTF-16, such as an unpaired surrogate; the completed frame encoder later uses REPORT in both directions.
+
+## Keep text normalization separate
+
+Decoding reconstructs characters. It does not canonicalize case, Unicode normalization, line endings or domain identifiers. Locale.ROOT is useful for locale-neutral machine-term case conversion; user-facing language rules may need a chosen locale. Canonically equivalent Unicode strings can have different code-unit sequences unless the application chooses a normalization policy.
+
+A delimiter protocol must define whether a delimiter is a byte sequence or a decoded character rule. A length prefix must state byte length versus character count. The euro sign needs length three in the UTF-8 framing protocol, even though text.length() is one.
+
+## Complete the malformed-input exercise
+
+<JavaExample file="TextEncodingLabTest.java" />
+
+The solution accepts complete UTF-8 and empty input, rejects a truncated multibyte sequence and a malformed continuation, and rejects null input. An empty byte array is valid empty text; it is not EOF by itself. EOF is reported by the underlying source and determines whether more bytes can still arrive.
+
+For strict text input, call decodeStrict once the declared complete payload is present. For unbounded text streams, use a Reader/decoder with a deliberate incremental protocol rather than reading all content just to get one complete byte array.
+
+## References
+
+- [CharsetDecoder error and state contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/charset/CharsetDecoder.html)
+- [StandardCharsets](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/charset/StandardCharsets.html)
+- [String byte decoding behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html#%3Cinit%3E(byte%5B%5D,java.nio.charset.Charset))

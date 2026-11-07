@@ -1,0 +1,60 @@
+---
+title: "Array covariance and nested ownership"
+module: "objects"
+group: "References and identity"
+summary: "Separate array type checks from shallow copies, shared inner arrays and copied elements."
+order: 190
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition", "language/methods-and-references", "language/arrays"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Trace a two-dimensional array as an object graph
+
+Cloning an array creates a new outer array and copies its components. For int[], those components are primitive values. For int[][], the components are references to int[] rows. Copying those references leaves the rows shared.
+
+<JavaExample file="ArrayOwnership.java" output={"9\nfalse\ntrue\ncomponent rejected"} />
+
+Original and shallow are different outer objects, so their identity comparison is false. Their first components identify the same row, so that comparison is true. Writing shallow[0][0] changes the shared row and is observed through original. A variable name such as copy does not establish independent ownership by itself.
+
+## Choose a deep-copy policy for this shape
+
+For an independent primitive matrix, copy the outer array **and every non-null row**. A valid policy can preserve null rows and ragged lengths. For arbitrary object graphs, a recursive copier additionally needs to decide how to preserve shared references and cycles; blindly recursing is not a universal deep-copy algorithm.
+
+```java
+static int[][] copyRows(final int[][] source) {
+    final int[][] result = source.clone();
+    for (int row = 0; row < result.length; row++) {
+        if (result[row] != null) {
+            result[row] = result[row].clone();
+        }
+    }
+    return result;
+}
+```
+
+This rejects a null outer input through the clone call. With r rows and n total primitive components it takes O(r+n) time and space. Returning an internal mutable row still leaks ownership even if the accessor returns a copied outer array.
+
+## An array retains its runtime component type
+
+Reference arrays are covariant: a String[] can be assigned to Object[]. The variable's declared type then permits a source-level Object store, but the actual array remains a String[]. Storing an Integer violates its runtime component type, producing ArrayStoreException. The cast/assignment does not convert the array or its existing elements.
+
+Primitive arrays are objects too, but int[] is not Object[]: its individual components are not object references. Ordinary array equals compares identity; Arrays.equals compares one-dimensional contents and Arrays.deepEquals supports nested object-array shapes. Equality is separate from copying.
+
+## Practice: identify the protected boundary
+
+Does returning `internal.clone()` protect a stored int[][] matrix from caller writes?
+
+<details>
+<summary>Answer</summary>
+
+Only the outer array is protected. The caller can still change shared rows. CopyRows supplies detached primitive rows under its declared null/ragged-row policy; call it at input and output boundaries if a class promises snapshot ownership. Generic collections use different compile-time type rules, explained after type parameters; this chapter needs no generic-varargs assumptions.
+
+</details>
+
+## Array-type references
+
+- [JLS: array types and runtime component checks](https://docs.oracle.com/javase/specs/jls/se25/html/jls-10.html)
+- [Arrays equality APIs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html)

@@ -3,9 +3,9 @@ title: "ArrayDeque"
 module: "collections"
 group: "Queues and priority"
 summary: "Trace circular storage, wraparound, growth and a complete two-ended deque."
-order: 200
+order: 480
 version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/choosing-collections"]
+prerequisites: ["collections/iteration-and-views", "collections/dynamic-array"]
 advanced: true
 ---
 
@@ -19,6 +19,17 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 A deque permits insertion and removal at both ends. ArrayDeque implements it using a resizable circular array. It can express a FIFO queue or LIFO stack without a linked node for every element. It rejects nulls and does not provide synchronized shared access.
 
 For FIFO, add/offer at the last end and remove/poll at the first. For LIFO, push/pop use the first end. A deque's end-operation contract is different from a List's indexed-access contract. Prefer explicit endpoint method names when the algorithm mixes both roles.
+
+## Choose failure behavior as well as the endpoint
+
+| Action | Exceptional form | Sentinel form |
+| --- | --- | --- |
+| Insert at last | addLast / add | offerLast / offer |
+| Remove first | removeFirst / remove | pollFirst / poll |
+| Examine first | getFirst / element | peekFirst / peek |
+| Stack at first | push / pop | offerFirst / pollFirst for explicit sentinel policy |
+
+On an empty deque, remove/get throw NoSuchElementException while poll/peek return null. ArrayDeque rejects null elements, so that sentinel is unambiguous. offer can report capacity rejection for a bounded Queue implementation; an ordinary resizable ArrayDeque is not a fixed-capacity blocking queue.
 
 <span id="worked-example"></span>
 ## Queue and stack examples
@@ -90,13 +101,9 @@ The complete single-file deque above implements both insertion and removal ends 
 `growIfFull` copies the logical sequence into a new array starting at zero and only then replaces storage and resets head. If the old physical sequence wrapped, this restores a contiguous representation without changing logical order. Capacity has an explicit teaching bound so doubling does not overflow. The source deliberately omits iterators, arbitrary-value removal and concurrency.
 
 
-<JavaExample file="BoundedQueueDemo.java" />
+### A fixed ring has a different contract
 
-This separate teaching ring uses explicit size and fixed capacity, plus monitor-based waiting for producers/consumers. It is not a full ArrayDeque clone. Its state still makes circular storage concrete: put writes tail and advances it; take reads head, clears that slot and advances head. Size distinguishes full and empty when head equals tail.
-
-For an ArrayDeque coding exercise, extend that representation with nonblocking addFirst/addLast/pollFirst/pollLast and a geometric grow method. Trace wraparound before growth, then copy the logical i-th value from `(head + i) % oldLength` into new storage starting at zero. Set head to zero and tail to size. Publish the new array only after the copy is complete.
-
-The production source contains the full growing deque implementation. Study its own spare-slot invariant rather than assuming the fixed teaching queue's size field exists there.
+The complete growing RingDeque above solves endpoint insertion/removal and wraparound growth. A bounded producer/consumer queue instead needs a capacity policy and waiting/signalling protocol. BoundedQueueDemo in the concurrency module uses explicit size with monitor-based coordination; it is not an ArrayDeque clone. Do not mix its full/empty tests with OpenJDK's spare-slot invariant. Growth is a storage policy, while blocking for capacity is a coordination policy.
 
 <span id="common-mistakes"></span>
 ## Deque failure cases and ownership

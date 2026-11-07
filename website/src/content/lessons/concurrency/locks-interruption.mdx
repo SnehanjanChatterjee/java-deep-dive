@@ -1,180 +1,99 @@
 ---
-title: "ReentrantLock, conditions and read/write coordination"
+title: "ReentrantLock and separate condition queues"
 module: "concurrency"
-group: "Locks and coordination"
-summary: "Coordinate compound state changes and make cancellation cooperative."
-order: 380
+group: "Guarded waiting"
+summary: "Translate the mailbox invariant from an intrinsic monitor to an explicit lock and two Conditions."
+order: 770
 version: "Java 8+"
 prerequisites: ["concurrency/monitors-wait-notify"]
-advanced: true
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts"></span>
-## Lock ownership and acquisition modes
-
-A synchronized block acquires an object's monitor and releases it when the block exits, including exceptional exit. Reentrant locks allow the owning thread to acquire the same lock again. Explicit Lock APIs add capabilities such as interruptible acquisition, timed attempts and multiple condition queues.
-
-Interruption is a cooperative cancellation signal. Some blocking methods throw InterruptedException and clear the interrupted status. A method that cannot propagate the exception should usually restore the status when abandoning work, rather than silently swallowing cancellation. An interrupt does not forcibly roll back partially completed business operations.
-
-<span id="worked-example"></span>
-## Coordinating termination without timing guesses
-
-A fixed-size executor runs independent tasks and a latch records completion. await waits for all signals without guessing timing. Shutdown is performed in finally so the program does not keep worker threads alive accidentally.
-
 <span id="mechanics-and-tradeoffs"></span>
-## Conditions, cancellation and lock invariants
+<span id="lock-ownership-and-acquisition-modes"></span>
+<span id="coordinating-termination-without-timing-guesses"></span>
+<span id="conditions-cancellation-and-lock-invariants"></span>
+<span id="monitor-ownership-is-attached-to-an-object"></span>
+<span id="wait-for-a-predicate-not-a-notification"></span>
+<span id="explicit-locks-and-separate-condition-queues"></span>
+<span id="cancellation-is-a-protocol"></span>
+<span id="deadlock-starvation-and-livelock"></span>
+<span id="select-the-coordination-primitive"></span>
+<span id="validated-optimistic-reads"></span>
+<span id="completion-coordination"></span>
+<span id="ownership-and-timeout-mistakes"></span>
+<span id="readwrite-locking-and-optimistic-validation"></span>
+<span id="locking-interview-questions-and-exercises"></span>
+<span id="why-can-notifyall-be-necessary-even-when-only-one-item-is-added"></span>
+<span id="additional-interview-questions"></span>
+## Use an explicit lock when acquisition itself needs a policy
 
-Conditions must be checked in a loop because a wakeup is not proof that the desired state holds. With intrinsic monitors, wait atomically releases the monitor and suspends, then reacquires it before returning. notify does not release the lock immediately. Calling wait without owning the monitor is invalid.
+The monitor mailbox already supplies exclusion and guarded waiting. ReentrantLock gives the same kind of ownership with additional acquisition operations: an ordinary lock, an interruptible acquisition, or a timed attempt. It can also create separate Conditions for consumers waiting for data and producers waiting for space.
 
-Keep the protected invariant clear: all participating reads and writes must follow the same protocol. Lock ordering helps avoid deadlock when multiple locks are needed. Holding locks during slow I/O or calling untrusted callbacks while locked can cause contention or reentrancy problems.
+The state invariant stays the same. Switching the API does not repair a predicate checked outside the lock or a read performed under an unrelated lock.
 
-<Diagram client:visible definition={"flowchart LR\n T1[Task one finishes] --> C[CountDownLatch]\n T2[Task two finishes] --> C\n C -->|count reaches zero| A[Awaiting thread continues]"} caption={"A latch expresses completion of a known set of signals without relying on sleeps or timing guesses."} />
-
-### Monitor ownership is attached to an object
-
-An instance synchronized method locks its receiver. A static synchronized method locks the declaring Class object. Two instances have different monitors, so synchronizing on one does not protect data also accessed under another. Reentrancy lets a thread reacquire a lock it already owns; each acquisition must still be matched by release. Monitor exit happens even when a synchronized block throws.
-
-Thread states describe different kinds of waiting: BLOCKED is associated with entering an intrinsic monitor; WAITING can represent wait, join or parking; TIMED_WAITING includes bounded waits and sleep. RUNNABLE does not guarantee the thread is consuming CPU at that instant. Thread state alone cannot establish the root cause of an incident.
-
-### Wait for a predicate, not a notification
-
-The queue example uses one shared monitor for slots, head, tail and size. `put` loops while full; `take` loops while empty. `wait` releases that monitor and reacquires it before returning. It does not release unrelated locks the thread holds. `notifyAll` makes waiters eligible to contend; it does not immediately transfer ownership or guarantee the awakened thread sees its desired predicate true.
-
-<JavaExample file="BoundedQueueDemo.java" output={"first\nsecond\nthird"} />
-
-For capacity 2, put A then B makes head and tail both zero with size 2. Taking A advances head to 1, clears slot 0 and reduces size. Putting C writes slot 0 and wraps tail. Size distinguishes full from empty when head equals tail. Both the predicate check and mutation must occur under the same lock; checking outside and then acquiring the monitor creates a race.
-
-### Explicit locks and separate condition queues
+## Acquire first, then enter the release-owning try
 
 ```java
 lock.lockInterruptibly();
 try {
-    while (size == capacity) {
+    while (value != null && !closed) {
         notFull.await();
     }
-    // Update the protected queue state.
-    notEmpty.signal();
+    // Recheck closure, store the item, then signal notEmpty.
 } finally {
     lock.unlock();
 }
 ```
 
-This is a guarded-operation excerpt: lock is a ReentrantLock, and both Conditions are created from it. Separate notFull/notEmpty wait sets let a producer signal a consumer rather than wake all kinds of waiter. Await still belongs in a while loop. Place the try after successful lock acquisition; otherwise an interrupted acquisition could execute an invalid unlock. ReentrantLock's ordinary lock is not an interruptible acquisition. Fairness can reduce barging but adds overhead and does not promise perfect task scheduling.
+The excerpt assumes lock is a ReentrantLock and notFull is its Condition. Acquisition is before try because an interrupted acquisition has no lock to release. Once acquired, every normal or exceptional body exit must unlock. Ordinary `lock()` does not provide the interruption behavior of `lockInterruptibly()`.
 
-### Cancellation is a protocol
+Reentrancy means the owner can acquire the same lock again, increasing its hold count. Matching unlocks are still necessary. This is useful when a protected method calls another protected method; it does not make unknown callbacks safe.
 
-`interrupt()` sets a cooperative signal. Many blocking operations throw InterruptedException and clear the status. `Thread.interrupted()` tests and clears the current thread's status; `isInterrupted()` observes a thread's status without clearing it. CPU work must check cancellation at suitable points. Some I/O or native work has different interrupt behavior; cancellation is not a forced rollback.
-
-If a method can propagate InterruptedException, let its caller own the policy. If a Runnable boundary cannot propagate it, restore status with `Thread.currentThread().interrupt()` and stop or clean up as intended. Do not restore and then blindly retry an interruptible operation forever. Acquired resources belong in finally; interruption before a successful semaphore acquire must not release a permit that was never acquired.
-
-### Deadlock, starvation and livelock
-
-Deadlock requires a dependency cycle, such as A holding lock X while waiting for Y and B holding Y while waiting for X. A global lock order can break that cycle. Starvation means some work repeatedly fails to gain service; livelock means active participants keep reacting without progress. Timed tryLock and retry can avoid permanent waiting but still create livelock without a disciplined retry policy.
-
-### Select the coordination primitive
-
-CountDownLatch is a one-shot completion count. CyclicBarrier coordinates reusable phases among a fixed participant set. Phaser supports evolving participants/phases. Semaphore bounds concurrent access to a resource. A latch signal should occur in finally when it represents task termination, while failure information needs its own propagation path: “all tasks finished” does not mean “all tasks succeeded.”
-
-## ReentrantLock internals and fairness boundaries
-
-A ReentrantLock has an exclusive owner and a reentrant hold count. A contending caller can enter an acquisition queue and park until it can retry. AbstractQueuedSynchronizer supplies common state/queue machinery, while the lock's acquisition policy decides whether an attempt succeeds. Do not describe the queue as transferring an application's data directly between threads; the successful lock/unlock protocol orders access to that data.
-
-Fair construction affects the documented acquisition policy under contention, but does not make OS scheduling fair or remove deadlock cycles. Untimed tryLock can acquire opportunistically even on a fair lock. A timed/interruptible acquisition has a different contract. Choose the required timeout and cancellation semantics before selecting the method.
-
-Condition.await requires ownership of its associated lock. It releases the lock state for waiting and restores ownership before returning. signal moves an eligible waiter toward reacquisition; it does not let the waiter skip the lock or assume the predicate remains true. Separate notEmpty and notFull queues allow the program to signal a relevant class of waiter. Closure changes both predicates and therefore wakes both queues in the example.
-
-<span id="java-implementation"></span>
 ## Implement a timed condition mailbox
-
-<Diagram client:visible definition={"sequenceDiagram\n participant C as Consumer\n participant L as Lock and condition\n participant P as Producer\n C->>L: acquire and check empty\n C->>L: await releases lock\n P->>L: acquire and store value\n P->>L: signal notEmpty\n Note over C,P: Consumer is eligible, not yet lock owner\n P->>L: unlock\n L-->>C: reacquire before returning from await\n C->>C: recheck predicate and consume"} caption="A condition signal does not transfer ownership. The consumer must reacquire the lock and recheck the guarded predicate." />
 
 <JavaExample file="ConditionMailbox.java" output={"null\nmessage\nnull"} />
 
-put acquires interruptibly and enters its unlock-owning try only after acquisition succeeds. poll includes acquisition waiting in the requested budget, then carries remaining nanoseconds through each condition wait. It rejects negative timeouts and null TimeUnit rather than silently changing policy. Zero-time polling can still deliver a value if the lock and item are immediately available; otherwise it returns null. That null can mean timeout or closed-and-empty under this deliberately compact API, so a richer production result type would be needed if callers must distinguish them.
+Put waits on notFull while occupied and open, rechecks closure, stores the value, then signals notEmpty. Poll waits on notEmpty while empty and open, clears a delivered slot, and signals notFull. Close changes both predicates, so it signals all waiters on both Conditions. Every check and state transition is under the same lock.
 
-The producer waits while occupied and open, then rejects closure before assigning. The consumer clears the slot before signaling notFull. close wakes both condition queues. As with the intrinsic-mailbox version, already accepted data is drainable after closure. Method completion and every exceptional body exit release the acquired lock in finally. Timeout is not a hard real-time guarantee because scheduling and reacquisition remain outside the application's exact control.
+Poll's first null is an immediate empty result. The second call returns message. After closure and draining, null is the terminal result. This compact API intentionally uses null for both timeout and terminal emptiness; a richer result type would be needed to distinguish them. Null data and invalid timeouts are rejected.
 
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+## Trace release, signal and reacquisition
 
+<Diagram client:visible definition={"sequenceDiagram\n participant C as Consumer\n participant L as Lock and notEmpty\n participant P as Producer\n C->>L: acquire, find empty, await\n Note over C,L: await releases associated lock\n P->>L: acquire, store message, signal\n Note over C,P: Consumer eligible while producer still owns lock\n P->>L: unlock\n C->>L: reacquire and recheck\n C->>C: consume the value"} caption="Signalling does not transfer ownership or reserve the state change. Await returns only after reacquiring the associated lock." />
 
-### Validated optimistic reads
+Await belongs in a while loop for the same reasons as Object.wait: a spurious return or competing consumer can leave the predicate false. A Condition is associated with its lock; ownership is required. A separate condition wait queue is different from the lock's acquisition queue.
 
-<JavaExample file="OptimisticPoint.java" output={"5.0\n10.0"} />
+## Carry one time budget across acquisition and waiting
 
-### Completion coordination
+Poll converts the supplied duration to nanoseconds and captures a monotonic start time. Its timed tryLock consumes part of that budget. After acquisition, the remaining budget excludes elapsed acquisition time. Each awaitNanos return supplies the remaining wait estimate, which is carried into the next predicate check.
 
-The following program is a complete executable example. Compile with `javac LatchCoordination.java` and run with `java LatchCoordination`.
+Zero timeout can still deliver an immediately available value if acquisition succeeds; otherwise it returns null. A timeout is a waiting policy rather than a hard real-time return deadline. A notification never grants a fresh full timeout. The complete source implements these cases rather than leaving them as an unsolved extension.
 
-<JavaExample file="LatchCoordination.java" output={"2"} />
+<span id="reentrantlock-internals-and-fairness-boundaries"></span>
+## Fairness and implementation boundaries
+
+A fair ReentrantLock influences its documented acquisition policy under contention. It does not make operating-system scheduling fair, guarantee end-to-end latency, or eliminate cycles involving other locks. Untimed tryLock can acquire opportunistically even on a fair lock. Select the exact acquisition contract before relying on fairness.
+
+AQS supplies internal state/queue machinery; the later implementation chapter explains that machinery after latches and permits. <a href={lessonUrl('learn/concurrency/read-write-locks/')}>Read/write locking</a> and <a href={lessonUrl('learn/concurrency/stamped-lock/')}>optimistic validation with StampedLock</a> have different contracts and their own focused chapters. They are not additional modes to enable blindly on this mailbox.
 
 <span id="common-mistakes"></span>
-## Ownership and timeout mistakes
-
-Do not catch InterruptedException and continue as though nothing happened. Do not use if instead of while around a condition wait. Avoid protecting writes with one lock and reading under another.
-
-## Read/write locking and optimistic validation
-
-ReentrantReadWriteLock permits multiple read owners while excluding write owners. It can improve a workload dominated by sufficiently substantial read sections; it can also add overhead or delay writers. A read path must actually be read-only with respect to the protected invariant. Do not classify an access-order cache get as read-only when it relinks recency state.
-
-A writer can acquire the read lock before releasing its write lock to downgrade while retaining protected observation. Attempting to upgrade by holding a read lock and waiting for the write lock can deadlock progress when competing readers also retain reads. Release/reacquire with a fresh predicate check or choose a different atomic transition. StampedLock's conversion APIs provide different mechanisms and still need validation.
-
-StampedLock is not reentrant and has no ordinary thread ownership model. An optimistic read permits interference: copy the relevant primitive fields into locals, validate the stamp, and discard/reread under a real read lock when validation fails. Do not traverse an inconsistent mutable graph or call unknown methods before validation. A successful stamp validation establishes the documented consistency relationship for that interval; an invalidated optimistic observation must not be used as a trusted snapshot.
-
-The existing OptimisticPoint source below is a complete example of that local-copy/fallback pattern. It illustrates a particular two-field invariant rather than a universal replacement for synchronized or a promise of better performance.
-
 <span id="exercises-and-interview-questions"></span>
-## Locking interview questions and exercises
+<span id="coding-exercise"></span>
+## Exercise and complete reference solution
 
-### Why can notifyAll be necessary even when only one item is added?
-
-<details>
-<summary>Explanation</summary>
-
-Several waiters may be waiting for different conditions on the same monitor. Waking an arbitrary one can leave the thread able to make progress asleep. notifyAll wakes contenders to recheck their conditions under the lock. Explicit Conditions can separate wait sets but still require loop-based checks.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Does wait release every lock held by the thread?</summary>
-
-No. It releases the monitor on which wait was invoked and must reacquire that monitor before returning. Holding another lock while waiting can block progress or contribute to a deadlock.
-
-</details>
-
-<details>
-<summary>Does notifyAll immediately let a waiter execute its guarded operation?</summary>
-
-No. The notifying thread still owns the monitor until it releases it. Waiters then contend to reacquire it and recheck their predicates. Another participant can consume the state change first.
-
-</details>
-
-<details>
-<summary>Why put unlock in finally after acquisition succeeds?</summary>
-
-All body exits must release the acquired lock, including exceptions. If acquisition itself throws InterruptedException, no lock was acquired; an unconditional unlock from an incorrectly placed finally would be invalid.
-
-</details>
-
-### Coding exercise
-
-Implement a guarded wait with a timeout using a remaining-time calculation. Explain the distinction between interruption, timeout and normal completion.
+Implement interruptible put, timed poll and drain-on-close using separate notEmpty/notFull Conditions. `ConditionMailbox` is the complete solution. Trace interruption before lock acquisition, interruption during await, timeout while empty, and close waking a full producer. In each case identify whether ownership was acquired and which finally must run. Release is required only for successfully acquired ownership.
 
 <span id="references"></span>
-## Primary lock and condition references
+<span id="primary-lock-and-condition-references"></span>
+## Primary references
 
-- [Object monitor wait/notify semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Object.java)
-- [ReentrantLock acquisition and fairness](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/ReentrantLock.java)
-- [Condition guarded-wait pattern](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/Condition.java)
-- [CountDownLatch lifecycle](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CountDownLatch.java)
-- [Thread interruption](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Thread.java)
-
-- [StampedLock optimistic-read contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/StampedLock.java)
-
-- [Condition queue and reacquisition semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/Condition.java)
-- [ReentrantReadWriteLock upgrade/downgrade contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/ReentrantReadWriteLock.java)
-
-- [AbstractQueuedSynchronizer acquisition and condition machinery](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/AbstractQueuedSynchronizer.java)
+- [ReentrantLock acquisition and fairness](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/locks/ReentrantLock.html)
+- [Condition waiting contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/locks/Condition.html)

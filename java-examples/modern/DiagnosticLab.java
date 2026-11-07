@@ -28,8 +28,8 @@ public final class DiagnosticLab {
         for (int i = 0; i < 16; i++) { RETAINED.add(new byte[64 * 1024]); }
         final CountDownLatch owned = new CountDownLatch(1);
         final CountDownLatch release = new CountDownLatch(1);
-        final Thread owner = Thread.ofPlatform().name("study-owner").unstarted(() -> hold(owned, release));
-        final Thread waiter = Thread.ofPlatform().name("study-waiter").unstarted(DiagnosticLab::contend);
+        final Thread owner = new Thread(() -> hold(owned, release), "study-owner");
+        final Thread waiter = new Thread(DiagnosticLab::contend, "study-waiter");
         owner.start();
         try {
             if (!owned.await(5, TimeUnit.SECONDS)) { throw new IllegalStateException("owner did not acquire monitor"); }

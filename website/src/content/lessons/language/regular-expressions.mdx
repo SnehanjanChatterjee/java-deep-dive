@@ -1,0 +1,42 @@
+---
+title: "Regular expressions and escaping"
+module: "language"
+group: "Arrays and strings"
+summary: "Build a pattern, find matches and separate Java string escapes from regular-expression syntax."
+order: 100
+version: "Java 8+"
+prerequisites: ["language/strings"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Describe a text pattern rather than every position
+
+A regular expression describes matching text. Java's Pattern compiles that description; a Matcher holds a particular matching operation's state. String.matches tests the **whole** input, while Matcher.find searches for matching occurrences. Confusing those questions can silently accept or reject the wrong text.
+
+<JavaExample file="DigitSearch.java" output={"12\n7\nfalse"} />
+
+Compile DigitSearch.java and launch DigitSearch. Output is 12, 7, false on separate lines. The plus means one or more occurrences; here the digit class uses Pattern's default policy. If international decimal digits are required, specify an appropriate Unicode class or flag rather than assuming the shorthand defines your domain.
+
+## Account for two escaping layers
+
+The regex engine needs `\d+`. The Java source String must escape its backslash, producing `"\\d+"`. A literal dot in the regex similarly needs `\.` and therefore `"\\."` in ordinary Java source. Text read from a file has no Java-literal layer. Pattern.quote turns external literal text into a literal pattern fragment; blindly interpolating it as regex can change the pattern's meaning.
+
+Compile a reused nontrivial Pattern once. Pattern is immutable and can be shared; Matcher is mutable and should not be shared concurrently. Matching a whole input is useful for format validation, but a syntactically matching string can still violate business rules, such as an out-of-range numeric value.
+
+## Practice: search or validate?
+
+You must validate an entire three-digit code, and separately extract all numbers from a sentence. Which operation fits each? Why can a regex be a poor choice for unbounded hostile input?
+
+<details>
+<summary>Answer</summary>
+
+Use matches for the whole-code rule and find repeatedly for extraction. A three-ASCII-digit format can use `[0-9]{3}`. A range requirement still needs parsing and a numeric check. Some backtracking patterns with nested repetition have pathological behavior on near-matching input; bound input and avoid ambiguous nested repetitions. Do not treat compiling a pattern as proof of safe cost for every input.
+
+</details>
+
+## Pattern references
+
+- [Pattern syntax, flags and quoting](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/regex/Pattern.html)
+- [Matcher operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/regex/Matcher.html)

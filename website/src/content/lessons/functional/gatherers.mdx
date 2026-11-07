@@ -1,0 +1,55 @@
+---
+title: "Gatherers and stateful intermediate transformations"
+module: "functional"
+group: "Gatherers"
+summary: "Continue the pipeline after a stateful transformation"
+order: 600
+version: "Java 24+; stable API"
+prerequisites: ["functional/collectors", "functional/parallel-streams"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Continue the pipeline after a stateful transformation
+
+A collector terminates a pipeline into a result. A gatherer defines an intermediate operation that can retain state and emit zero, one or several values downstream. Windowing and running totals are useful examples: later filter/map/limit stages can still operate on their outputs.
+
+Gatherers became final in Java 24. The examples use that stable API without preview flags. Ordinary map/filter/flatMap remain clearer for ordinary one-to-one or flattening tasks; a gatherer is useful when the intermediate transformation needs a different state/emission model.
+
+## Fixed and sliding windows
+
+<JavaExample file="modern/GathererWindows.java" output={"[[1, 2, 3], [4, 5]]\n[[1, 2, 3], [2, 3, 4], [3, 4, 5]]"} />
+
+With size three, fixed windows collect 1,2,3, then 4,5. The final short window is retained. Sliding windows overlap: after [1,2,3], the next input moves the window to [2,3,4], then [3,4,5]. The output is a stream of window values, not a grouping map keyed by arbitrary classification.
+
+Gatherers.scan supplies a running scan from initial state; fold accumulates a final state emitted when its contract finishes. mapConcurrent applies bounded concurrent transformations under its documented ordering/failure contract. Those operations do not imply that every stream source, downstream side effect or external resource becomes safe.
+
+## Implement a running-total gatherer
+
+<JavaExample file="modern/RunningTotalGatherer.java" output={"[1, 3, 6, 10]\n[1, 3]"} />
+
+The initializer creates a fresh one-element long array for each evaluation. Its single field is private accumulation state, not a shared singleton. The integrator reads one Integer, adds it with Math.addExact, then pushes the new Long total downstream. Inputs 1,2,3,4 therefore emit 1,3,6,10.
+
+The integrator returns downstream.push's boolean. A false result signals that downstream no longer wants input; ignoring it would mishandle cancellation. With limit(2), only the first two running totals are needed. The source shown is a conceptual sequential computation, not a guarantee about every callback in unrelated optimized pipelines.
+
+ofSequential intentionally supplies no parallel combiner. Computing running prefixes across partitions needs more information than adding final totals; a downstream prefix from a later partition must account for earlier inputs. Claiming ordinary associative sum alone solves that ordering problem would be incorrect.
+
+## Know the four responsibilities
+
+A general gatherer can have an initializer, integrator, combiner and finisher. The initializer owns per-evaluation state. The integrator processes elements and interacts with downstream demand. A lawful combiner is required when supporting partition combination. The finisher can emit remaining state, such as a final incomplete window, when its protocol permits it.
+
+An integrator's emission count need not equal its input count. Always define behavior for empty input, incomplete buffered state, cancellation and failure. Resource ownership remains with the operation that actually owns the resource; a custom intermediate stage does not automatically close arbitrary captured handles.
+
+## Worked exercise: running totals followed by filtering
+
+Add filter(total -> total >= 6) after gather(runningTotals()). The complete input produces [6,10]. Putting the same filter before the gatherer would filter input integers instead, yielding empty for this input. The operation order changes the meaning, so fluent syntax must not obscure which values a stage receives.
+
+Compile the examples with a JDK supporting release 24 or later. Stable API availability is distinct from the runtime used to verify the course.
+
+## References
+
+- [Gatherer API and lifecycle](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Gatherer.html)
+- [Built-in Gatherers](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Gatherers.html)
+- [JEP 485: final in Java 24](https://openjdk.org/jeps/485)

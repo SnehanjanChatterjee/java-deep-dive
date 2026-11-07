@@ -23,7 +23,8 @@ public final class StringInterviewAlgorithms {
         final Map<Integer, Integer> counts = new LinkedHashMap<>();
         for (int offset = 0; offset < input.length();) {
             final int point = input.codePointAt(offset);
-            counts.merge(point, 1, Integer::sum);
+            final Integer previous = counts.get(point);
+            counts.put(point, previous == null ? 1 : previous + 1);
             offset += Character.charCount(point);
         }
         for (final Map.Entry<Integer, Integer> entry : counts.entrySet()) {

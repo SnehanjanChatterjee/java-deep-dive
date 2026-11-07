@@ -1,0 +1,61 @@
+---
+title: "Semaphore: bound the scarce resource"
+module: "concurrency"
+group: "Coordination utilities"
+summary: "Distinguish resource admission from worker count and release permits only after acquiring them."
+order: 820
+version: "Java 8+"
+prerequisites: ["concurrency/countdown-latch", "concurrency/locks-interruption"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Three workers share two resource slots
+
+A program can start many threads while a remote service permits only two simultaneous calls. The thread count and the service's capacity are separate. A Semaphore initialized to two represents two available resource permits. A successful acquire consumes one; release returns one.
+
+When no permit is available, acquire waits interruptibly. A worker can wait without being inside an application's critical section. The permit must cover actual resource use, not unrelated work before or after it.
+
+## Run a coordinated admission experiment
+
+<JavaExample file="PermitLesson.java" output={"maximum=2\npermits=2"} />
+
+There are three workers and two permits. The first two admitted workers count down entered, then wait on release while retaining their permits. The third cannot pass acquire yet. Main waits for both entered signals, establishing occupancy two without guessing elapsed time. It then opens release, allowing all workers eventually to finish.
+
+Occupancy's synchronized enter/leave methods record active users; they do not control admission. Semaphore is the mechanism enforcing the bound. The maximum is two because main establishes two admitted users and the two-permit budget prevents a third concurrent user. After joining every worker, availablePermits is two again.
+
+## Put finally around the acquired region
+
+```java
+permits.acquire();
+try {
+    useResource();
+} finally {
+    permits.release();
+}
+```
+
+Acquisition is before the try whose finally releases. If acquire throws InterruptedException, no permit was acquired. Entering an unconditional release finally before successful acquisition would increase capacity incorrectly. The full source applies this rule and also cleans up its latch-controlled workers on an exceptional owner path.
+
+A Semaphore does not track permit ownership like a ReentrantLock. A different thread can legitimately release for a handoff protocol, but accidental extra releases are not automatically rejected. A one-permit semaphore is not a reentrant mutex: the same thread acquiring again can wait for its own retained permit.
+
+## Capacity, fairness and rate are different
+
+A plain count limits simultaneous admission. It does not enforce calls per second: a fast task can acquire/release many times within a time interval. Rate limiting requires a time/replenishment policy as well.
+
+Fair construction influences documented acquisition order under contention, while untimed tryAcquire can barge. It does not guarantee equal CPU service or equal response latency. Timed tryAcquire bounds the waiting policy; the parent operation should decide whether its deadline includes admission, resource work and cleanup.
+
+A worker retaining the only permit while waiting for a child that needs it can prevent progress. Permits cannot manufacture downstream capacity. Virtual threads later change the cost of waiting; they do not change this resource invariant.
+
+## Exercise and complete reference solution
+
+Run three tasks with two permits, establish two simultaneous admitted users, then prove all acquired permits are returned. `PermitLesson` is the complete solution. Main's entered signal proves a milestone; joining proves the workers ended. Reading a convenient count before cleanup would not establish restoration.
+
+For an interrupted acquisition, the correct answer records cancellation and releases nothing. For failure after acquisition, release exactly once in finally. An external write performed before failure may still need compensation; returning a permit does not undo that write.
+
+## Primary references
+
+- [Semaphore permits, memory effects and fairness](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Semaphore.html)
+- [OpenJDK Semaphore](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Semaphore.java)

@@ -1,11 +1,11 @@
 ---
-title: "Future, task cancellation and deadlines"
+title: "Future cancellation, deadlines and cleanup"
 module: "concurrency"
 group: "Tasks and executors"
-summary: "Own the result, interruption request and cleanup lifetime of submitted work."
-order: 430
-version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["concurrency/locks-interruption"]
+summary: "Observe a cancelled result separately from the worker that is still releasing its resources."
+order: 850
+version: "Java 8+"
+prerequisites: ["concurrency/task-failures", "concurrency/countdown-latch"]
 advanced: true
 ---
 
@@ -13,111 +13,68 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Results and task ownership
+<span id="mechanics-and-tradeoffs"></span>
+<span id="results-and-task-ownership"></span>
+<span id="state-and-result-publication"></span>
+<span id="deadlines-versus-independent-timeouts"></span>
+## Stop needing a result without abandoning its work
 
-A Future is a handle to one computation’s eventual result. It separates submitting work from observing completion. The result can be successful, exceptional or cancelled. It does not mean the task has started, and its completion state is not a universal observation that all underlying side effects have ceased.
+A caller submits work, then no longer needs its result. Cancelling the Future changes the result handle's selected outcome. If interruption is requested and supported, it also asks a running task to stop. Neither step proves that cleanup has finished or that a remote side effect was undone.
 
-Runnable describes work without a returned value; Callable returns a value and can throw a checked exception. ExecutorService.submit normally wraps either in a FutureTask. FutureTask implements Runnable as well as Future: its run method owns execution and completion publication, while get waits for and interprets that outcome. A manually created FutureTask does not execute until some thread invokes run or an executor runs it.
-
-Define ownership before adding a timeout: who observes failure, who requests cancellation, who releases resources, and who waits for termination? A fire-and-forget submission that discards its Future can lose the application’s only failure observation path.
+Use one owner to answer four questions: who observes failure, who requests cancellation, who releases acquired resources, and who accounts for termination? Adding a timeout without answering them merely changes how long one caller waits.
 
 <span id="worked-example"></span>
-## Trace cancellation and cleanup
-
-A worker begins an interruptible wait and signals that it has started. The caller cancels its Future with interruption requested. Calling get now reports CancellationException. Separately, the worker exits its wait through InterruptedException and executes a finally block that signals cleanup. The caller waits for that cleanup signal before declaring resource ownership finished.
-
-These events are intentionally observed separately. Cancellation can make get report cancellation before a task’s finally block finishes. A real task could catch interruption, ignore it or be stuck in a noninterruptible operation. The result handle cannot safely force arbitrary Java execution to stop.
-
-<span id="mechanics-and-tradeoffs"></span>
-## FutureTask completion internals
-
-### State and result publication
-
-OpenJDK 25 FutureTask uses a state field, an outcome and a runner reference. Execution records a returned value or thrown failure, publishes a terminal state and releases waiting threads. Its internal transitions distinguish NEW, transient COMPLETING, NORMAL, EXCEPTIONAL, CANCELLED and the interruption-request transition. These are implementation states, not the same names as Thread.State or every Future implementation’s public state API.
-
-A waiting thread can park until completion or a waiting deadline. Completion unparks waiters. Successful get supplies a memory-consistency edge from the completed task’s actions to the caller’s subsequent actions. A caller that observes a pending task through unrelated fields has not thereby established the same publication proof.
-
-### Interpret get outcomes precisely
-
-| Outcome | Meaning | Caller responsibility |
-| --- | --- | --- |
-| Returned value | Successful computation result | Use the value under its own mutation/ownership contract |
-| ExecutionException | Task failed | Inspect/preserve its cause and apply the operation’s failure policy |
-| CancellationException | Handle was cancelled | Do not treat this as a successful null result |
-| InterruptedException | Waiting caller was interrupted | Propagate or preserve cancellation according to the boundary |
-| TimeoutException | This bounded wait expired | Decide separately whether to cancel work or continue observing it |
-
-`get(timeout, unit)` does not alter the task merely because the caller stops waiting. `cancel(false)` can cancel a FutureTask that is already running without interrupting its runner; the computation may continue even though its result will no longer be delivered through the cancelled handle. `cancel(true)` requests interruption if cancellation succeeds while a runner is known. It is neither rollback nor an external-service cancellation protocol.
-
-### Deadlines versus independent timeouts
-
-Suppose a parent operation has 500 ms remaining and performs three dependent waits. Giving each wait a fresh 500 ms timeout permits a much longer total operation. Track an overall deadline with a monotonic time source, calculate remaining budget before each wait, and define what happens when no budget remains. Do not derive elapsed durations from wall-clock time, which can be adjusted.
-
-Executor shutdown and task cancellation are separate lifecycle operations. shutdown rejects new submissions but permits accepted work to finish. shutdownNow requests interruption and returns queued work that never began. Those returned Runnable objects are not automatically a report that all corresponding application Futures have been cancelled. Ownership code must deliberately complete, cancel or otherwise account for work removed from the queue.
-
-<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant F as FutureTask\n participant W as Worker\n C->>W: execute task\n W->>C: started signal\n C->>F: cancel true\n F->>W: request interruption\n F-->>C: cancelled result state\n W->>W: finally cleanup\n W-->>C: separate cleanup signal"} caption={"Own the result, interruption request and cleanup lifetime of submitted work."} />
-
 <span id="java-implementation"></span>
-## Implement cancellation ownership
+<span id="implement-cancellation-ownership"></span>
+<span id="cancellation-mistakes"></span>
+## Trace cancellation and cleanup
 
 <JavaExample file="TaskCancellationLesson.java" output={"true\ncancelled result\ncleanup finished"} />
 
-`started` prevents the example from accidentally demonstrating only cancellation before start. `release` supplies an interruptible blocking point. `cleanup` is a distinct lifecycle acknowledgement, signalled in finally even when the task fails or is interrupted. Bounded latch waits make a broken demonstration fail explicitly rather than hang forever.
+Started makes the task reach its intended interruptible wait before main cancels. Without it, the task might be cancelled before it began, demonstrating a different case. Cancel(true) selects cancellation and requests interruption. Get now throws CancellationException; it cannot deliver an ordinary Integer result from this cancelled handle.
 
-The Future result is deliberately not read as an Integer after cancellation. Its get call reports cancellation regardless of the Callable’s potential return value. Finally releases the latch and requests executor shutdown, ensuring the demonstration does not retain a blocked worker on an exceptional caller path. The task body does not swallow InterruptedException; the submit wrapper records task termination while cancellation still determines the Future’s selected outcome.
+The worker separately leaves its wait and executes finally, counting down cleanup. Main waits for that acknowledgement before reporting cleanup finished. A successful cancellation can therefore precede resource cleanup. Finally also opens release and requests executor shutdown if main takes an exceptional path.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant O as Owner\n participant F as Future\n participant W as Worker\n W->>O: started signal\n O->>F: cancel true\n F->>W: request interruption\n F-->>O: cancelled result selected\n W->>W: finally releases owned resources\n W-->>O: cleanup signal"} caption="The cancelled result and completed cleanup are separate observations. A cooperative task must implement the second." />
+
+<span id="interpret-get-outcomes-precisely"></span>
+## Interpret every get outcome
+
+| Outcome | What it establishes | What the owner must decide |
+| --- | --- | --- |
+| Value | Successful computation result | How returned mutable data may be shared |
+| ExecutionException | Task failed | Preserve/interpret its cause |
+| CancellationException | Handle was cancelled | How to account for remaining work |
+| InterruptedException | Waiting caller was interrupted | Propagate or preserve cancellation at its boundary |
+| TimeoutException | This bounded wait expired | Whether to cancel or keep observing the task |
+
+IsDone includes failure and cancellation. Cancel(false) can cancel an already running FutureTask without interrupting its runner; the computation may continue while its result is no longer delivered through that handle. Cancel(true) requests interruption if cancellation succeeds with a known runner. A task can ignore that request or be in a noninterruptible action.
+
+## Share one deadline across dependent waits
+
+For a parent operation with 500 milliseconds remaining, assigning a fresh 500 milliseconds to each of three waits permits a longer total operation. Track a monotonic start/deadline and recompute remaining budget before each wait. A timeout is not a statement that remote work stopped. Wall-clock adjustments make currentTimeMillis unsuitable for measuring elapsed budgets.
+
+Shutdown stops new acceptance; shutdownNow additionally requests interruption and returns queued Runnable objects that did not start. Those returned wrappers are not an automatic report that all corresponding Futures were cancelled/completed. Deliberately account for removed work and its result handles.
+
+## FutureTask completion internals
+
+A manually constructed FutureTask is both Runnable and Future. It remains unexecuted until a thread or executor invokes run. The task description, its result handle and its executing thread are distinct objects/responsibilities.
+
+On the selected OpenJDK source baseline, FutureTask has state, outcome and runner fields. It distinguishes NEW, transient COMPLETING, NORMAL, EXCEPTIONAL, CANCELLED and interruption-request transitions. Completion publishes an outcome and releases parked waiters. These are private implementation states, not Thread.State labels or a promise that every Future implementation uses the same representation. Read this state machine after understanding the public outcomes above.
 
 <span id="common-mistakes"></span>
-## Cancellation mistakes
-
-Do not interpret isDone as successful completion: failure and cancellation are also done. Do not describe Future.cancel as guaranteed task termination. Do not catch ExecutionException and throw only its message, losing its cause. A timeout should not silently become an empty success result. Interrupting one caller waiting on get does not automatically cancel the task it was waiting for.
-
 <span id="exercises-and-interview-questions"></span>
-## Future interview questions
+<span id="coding-exercise-and-solution"></span>
+## Exercise and complete reference solution
 
-<details>
-<summary>Can a cancelled task still change application state?</summary>
+Cancel a running interruptible task, require get to report cancellation, and separately observe finally cleanup. `TaskCancellationLesson` is the complete solution. Explain why started and cleanup cannot be one latch: one establishes entry before cancellation, while the other acknowledges work performed after cancellation.
 
-Yes. Cancellation changes the result handle’s state and may request interruption. A running task can already have performed effects or can continue if it does not cooperate. Place cancellation checks at meaningful boundaries and define idempotency/compensation for external effects.
-
-</details>
-
-<details>
-<summary>Why can submit failures appear silent?</summary>
-
-FutureTask captures task exceptions as exceptional completion. If no owner retrieves or otherwise reports that outcome, an uncaught-exception handler need not receive it. The application must own observation.
-
-</details>
-
-<details>
-<summary>What happens if cancel loses a race with success?</summary>
-
-Cancellation returns false once completion prevents it. The successful result remains available. Always handle the returned boolean rather than assuming a cancellation request won.
-
-</details>
-
-<details>
-<summary>Does get publish results from the task?</summary>
-
-Successful result retrieval has the documented task-to-caller happens-before guarantee. This does not automatically make a returned mutable object safe for later concurrent writes.
-
-</details>
-
-<details>
-<summary>When should interruption be restored?</summary>
-
-When a boundary cannot propagate InterruptedException but is abandoning work in response, restore the current thread status before returning/throwing an appropriate wrapper. Do not restore and blindly retry forever.
-
-</details>
-
-### Coding exercise and solution
-
-Implement an owner that submits one task, waits until it starts, cancels its result, observes CancellationException and waits separately for cleanup. The complete TaskCancellationLesson source above is the reference solution: started establishes the state, cancel selects the result outcome, get observes it, and cleanup acknowledges the worker's finally path.
-
-For an extension, hold cleanup on a second latch and prove that cancellation can be observed before that latch is released. Preserve bounded waits and unconditional release guards; never infer task cleanup from isDone.
+If an owner is interrupted while waiting for cleanup, it must apply its own ownership policy rather than return a fabricated result. The finite controlled wait in this lab is deliberately interruptible; general termination bounds require cooperation from the actual task.
 
 <span id="references"></span>
+<span id="future-interview-questions"></span>
 ## Primary Future contracts
 
-- [Future result, cancellation and memory contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Future.java)
-- [FutureTask state, runner and waiters](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/FutureTask.java)
-- [ExecutorService shutdown contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ExecutorService.java)
+- [Future cancellation and retrieval](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Future.html)
+- [FutureTask execution and completion](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/FutureTask.html)
+- [OpenJDK FutureTask implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/FutureTask.java)

@@ -1,0 +1,70 @@
+---
+title: "Methods, return values and recursion"
+module: "language"
+group: "Methods and recursion"
+summary: "Pass arguments, return values and follow nested or recursive calls through their local state."
+order: 60
+version: "Java 8+"
+prerequisites: ["language/control-flow"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Name a calculation and return its result
+
+A method groups statements into a callable operation. Instead of repeating a calculation, call a named method with argument values. In `static int twice(final int value)`, int is the return type, twice is the name and value is a parameter. Calling `twice(7)` supplies the argument 7. A parameter is a local variable belonging to that invocation.
+
+<JavaExample file="MethodsRecursion.java" output={"14\n24"} />
+
+Execution begins in main. Evaluating `twice(7)` enters twice with value equal to 7. `return Math.multiplyExact(value, 2)` supplies 14 to the caller and exits twice. Main stores that returned value in result, then prints it. The multiplication helper detects overflow; the failure mechanism is developed in exceptions. Ordinary `value * 2` can instead wrap at an int boundary.
+
+A void method performs an action without returning a value; println is one. `return;` can exit a void method early. A non-void method must return a compatible value on every normal path. Returning is different from printing: a caller can store or combine a return value without displaying it.
+
+## Each invocation has its own locals
+
+Calling twice again creates another parameter variable with the new argument. Reassigning a primitive parameter cannot reassign the caller's local variable. Locals in one call are not shared with another call. A conceptual call frame records an invocation's parameters, locals and where execution will return; this is a reasoning model, not a promise about physical JVM allocation.
+
+Static methods here belong to the class; instance methods later act on a particular object. A method signature distinguishes its name and parameter types. Begin with a unique descriptive name before introducing overload sets.
+
+## Make recursive progress and stop
+
+Factorial satisfies `factorial(0) = 1` and, for a positive n, `factorial(n) = n * factorial(n-1)`. The base case stops recursion. Each recursive call receives a smaller argument, so valid inputs reach zero.
+
+| Invocation | Waits for | Returns |
+| --- | --- | --- |
+| factorial(3) | 3 × factorial(2) | 6 |
+| factorial(2) | 2 × factorial(1) | 2 |
+| factorial(1) | 1 × factorial(0) | 1 |
+| factorial(0) | No further call | 1 |
+
+The multiplication happens as calls return, from the base case outward. Validation rejects negatives, which would otherwise keep decreasing, and values above 20, whose factorial cannot fit a long. Valid n takes O(n) multiplications and O(n) nested invocations.
+
+## Practice: write the iterative factorial
+
+Implement the same 0..20 contract using a loop. Explain why the initial product is 1 rather than zero.
+
+<details>
+<summary>Solution</summary>
+
+```java
+static long factorialIterative(final int number) {
+    if (number < 0 || number > 20) {
+        throw new IllegalArgumentException("number must be between 0 and 20");
+    }
+    long product = 1L;
+    for (int factor = 2; factor <= number; factor++) {
+        product *= factor;
+    }
+    return product;
+}
+```
+
+One is multiplication's identity and gives the required zero-factorial result when the loop executes zero times. Starting at zero would make every result zero. The iterative version takes O(n) multiplications and constant auxiliary storage. Arbitrarily deep recursion can cause StackOverflowError; Java does not guarantee tail-call elimination. Prefer the form whose progress and space use you can explain.
+
+</details>
+
+## Method references for further reading
+
+- [Dev.java: defining methods](https://dev.java/learn/language/oop/classes-objects/defining-methods/)
+- [Dev.java: parameters and arguments](https://dev.java/learn/language/oop/classes-objects/calling-methods-constructors/)

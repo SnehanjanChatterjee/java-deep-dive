@@ -358,5 +358,285 @@
   {
     "class": "ScheduledWorkLab",
     "expected": "cancelled=true\nfailed runs=1"
+  },
+  {
+    "class": "HelloJava",
+    "expected": "Hello, Java!"
+  },
+  {
+    "class": "study.Hello",
+    "expected": "Hello, Java!"
+  },
+  {
+    "class": "ExpressionBasics",
+    "expected": "15\n20\ntrue"
+  },
+  {
+    "class": "LoopBasics",
+    "expected": "pass\n10\n3\n2\n1"
+  },
+  {
+    "class": "MethodsRecursion",
+    "expected": "14\n24"
+  },
+  {
+    "class": "ArrayBasics",
+    "expected": "4\n0\n15\n0\n4"
+  },
+  {
+    "class": "ArrayOwnership",
+    "expected": "9\nfalse\ntrue\ncomponent rejected"
+  },
+  {
+    "class": "ArraySearch",
+    "expected": "1\n-4\n3"
+  },
+  {
+    "class": "StringBasics",
+    "expected": "8\nJava\ntrue\n1, 2, 3\n1, 2, 3!"
+  },
+  {
+    "class": "DigitSearch",
+    "expected": "12\n7\nfalse"
+  },
+  {
+    "class": "ScoreCard",
+    "expected": "2\n0\nfalse"
+  },
+  {
+    "class": "ConstructorLesson",
+    "expected": "Ada:2\nLin:3\n2"
+  },
+  {
+    "class": "NestedEnumLesson",
+    "expected": "true\nparcel\nWest"
+  },
+  {
+    "class": "ExceptionFlow",
+    "expected": "doubleInput\nparse\ninvalid integer\nafter handler"
+  },
+  {
+    "class": "CheckedFailureLesson",
+    "expected": "12\nInvalid count\nNumberFormatException\nattempt finished"
+  },
+  {
+    "class": "CheckedSettingsLoader",
+    "expected": "8080\nCannot load port\nnot available"
+  },
+  {
+    "class": "GenericBox",
+    "expected": "second\n7"
+  },
+  {
+    "class": "ObjectBoxLesson",
+    "expected": "4\nwrong value type"
+  },
+  {
+    "class": "GenericMethods",
+    "expected": "Java\n7\nAda"
+  },
+  {
+    "class": "EqualityBasics",
+    "expected": "false\ntrue\ntrue"
+  },
+  {
+    "class": "ImmutableRoute",
+    "expected": "2\ntrue"
+  },
+  {
+    "class": "ConstructionOrder",
+    "expected": "0\n7"
+  },
+  {
+    "class": "OverloadChoice",
+    "expected": "long\nInteger\nvarargs"
+  },
+  {
+    "class": "SwitchBasics",
+    "expected": "weekday\nweekend"
+  },
+  {
+    "class": "CollectionIteration",
+    "expected": "Mira\nNoor\n[Ada, Noor]\n[Mira]"
+  },
+  {
+    "class": "CollectionOrdering",
+    "expected": "[A:20, B:10, C:10]\n[B:10, C:10, A:20]"
+  },
+  {
+    "class": "SimpleBinarySearchTree",
+    "expected": "v25\nv20\n[10, 25, 30, 40]\nchain height=4"
+  },
+  {
+    "class": "SimpleLinkedHashSet",
+    "expected": "[B, A, C]\n[B, C, A]"
+  },
+  {
+    "class": "FunctionalInterfacesLab",
+    "expected": "true\ntrue\ntrue"
+  },
+  {
+    "class": "MethodReferenceLab",
+    "expected": "42\njava\njvm\n0\n2\n4\ntrue"
+  },
+  {
+    "class": "OptionalFallbackLab",
+    "expected": "present eager: present, calls=1\npresent lazy: present, calls=0\nempty eager: fallback, calls=1\nempty lazy: fallback, calls=1"
+  },
+  {
+    "class": "StreamFoundationsLab",
+    "expected": "[JAVA, JVM]\n[JAVA, JVM]\n[A, B, C]\n4"
+  },
+  {
+    "class": "StreamReductionLab",
+    "expected": "10\n4\nfalse\n10"
+  },
+  {
+    "class": "CollectorRecipes",
+    "expected": "{3=[jvm], 4=[java, java]}\njava, jvm, java\n{java=2, jvm=1}\n{3=1, 4=2}"
+  },
+  {
+    "class": "DecimalCalculation",
+    "expected": "59.85\n64.79"
+  },
+  {
+    "class": "DateTimeBasics",
+    "expected": "2024-02-29\n2024-02-28\n2024-02-29\n2024-02-28\n2024-02-28T13:30:00Z"
+  },
+  {
+    "class": "ExpiryPolicy",
+    "expected": "2024-03-31T22:00:00Z\n23\ntrue"
+  },
+  {
+    "class": "FilePathLab",
+    "expected": "Mira\nNoor\n2"
+  },
+  {
+    "class": "TextEncodingLab",
+    "expected": "1\n3\n\u20ac\nincomplete UTF-8 rejected"
+  },
+  {
+    "class": "SimpleTreeSet",
+    "expected": "false\n[10, 20, 30]\n[10, 30]"
+  },
+  {
+    "class": "BarrierLesson",
+    "expected": "phase total=3\nphase total=6"
+  },
+  {
+    "class": "BlockingQueueHandoffLesson",
+    "expected": "consumed=10\nconsumed=20\nconsumed=12\ntotal=42"
+  },
+  {
+    "class": "CompletionStepsLesson",
+    "expected": "42\n43\n43\nscore=43"
+  },
+  {
+    "class": "ConcurrentQueueDrainLesson",
+    "expected": "null\nA\nA\nB\nC\nnull"
+  },
+  {
+    "class": "ContextParametersLesson",
+    "expected": "request-42: report"
+  },
+  {
+    "class": "CooperativeStopLesson",
+    "expected": "terminated=true\ncleanup=true"
+  },
+  {
+    "class": "ExecutorBasicsLesson",
+    "expected": "42"
+  },
+  {
+    "class": "ExecutorFailureLesson",
+    "expected": "invalid score\n42"
+  },
+  {
+    "class": "JoinPublicationLesson",
+    "expected": "42"
+  },
+  {
+    "class": "LatchLesson",
+    "expected": "total=42\nremaining=0"
+  },
+  {
+    "class": "MonitorHandoffLesson",
+    "expected": "consumer waits\nproducer stores message\nconsumer receives message"
+  },
+  {
+    "class": "PermitLesson",
+    "expected": "maximum=2\npermits=2"
+  },
+  {
+    "class": "PhaserLesson",
+    "expected": "registered before=3\ntotal=42\nregistered after=1\nterminated=true"
+  },
+  {
+    "class": "ReadWriteCatalog",
+    "expected": "{java=Language}\n{java=Language, jvm=Runtime}"
+  },
+  {
+    "class": "ScheduledOnceLesson",
+    "expected": "42"
+  },
+  {
+    "class": "SharedStateLesson",
+    "expected": "chosen interleaving=1\nsynchronized=2000"
+  },
+  {
+    "class": "SkipListRangeLesson",
+    "expected": "{10=first, 20=second}\n20\n10=first\n{20=second}"
+  },
+  {
+    "class": "ThreadBasicsDemo",
+    "expected": "task on main\ntask on lesson-worker\nworker finished=true"
+  },
+  {
+    "class": "GarbageCollectionWorkload",
+    "expected": "retained buffers=16\nretained bytes=1048576"
+  },
+  {
+    "class": "ExecutionFramesDemo",
+    "expected": "6"
+  },
+  {
+    "class": "ReachabilityWalkDemo",
+    "expected": "[list, A, B]\n[list, A, B]\n[list, B]\n[C, D]"
+  },
+  {
+    "class": "ReflectionStepsDemo",
+    "expected": "Sample\nHello Mira\nmissing member\nwrong argument type\ntarget cause=NumberFormatException"
+  },
+  {
+    "class": "AnnotationBasicsDemo",
+    "expected": "worker:2\noperation:1\ninherited=false"
+  },
+  {
+    "class": "ProxyLesson",
+    "expected": "Hello Mira\ntrue\nfalse\ncause preserved"
+  },
+  {
+    "class": "MethodHandleLesson",
+    "expected": "6\n8\nwrong signature"
+  },
+  {
+    "class": "SerializationGraphLesson",
+    "expected": "same original=false\nshared address=true\nKolkata\nsession=null"
+  },
+  {
+    "class": "SignatureLesson",
+    "expected": "true\nfalse"
+  },
+  {
+    "class": "BranchAndLoopLesson",
+    "expected": "pass\n10\n3\n2\n1\n1"
+  },
+  {
+    "class": "TwoWorkersLesson",
+    "expected": "task completed\ntask completed\nall finished"
+  },
+  {
+    "class": "OperationCounts",
+    "expected": "1:1:1\n2:2:4\n4:4:16\n8:8:64"
   }
 ]

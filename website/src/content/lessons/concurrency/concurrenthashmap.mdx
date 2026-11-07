@@ -1,11 +1,11 @@
 ---
-title: "ConcurrentHashMap"
+title: "ConcurrentHashMap and atomic per-key operations"
 module: "concurrency"
 group: "Concurrent data structures"
-summary: "Study atomic per-key operations, publication, concurrent iteration and resize mechanics."
-order: 500
+summary: "Repair a shared frequency update, then trace bins and cooperative resize paths."
+order: 920
 version: "Java 8+"
-prerequisites: ["concurrency/concurrent-collections"]
+prerequisites: ["concurrency/concurrent-collections", "collections/hashmap"]
 advanced: true
 ---
 
@@ -13,121 +13,72 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Concurrent key contracts
-
-ConcurrentHashMap supports concurrent key-based operations with a defined publication contract. It rejects null keys and values, unlike HashMap. A null lookup result therefore denotes absence without the extra stored-null ambiguity.
-
-Choose it for shared independent mappings when its per-key guarantees fit. Do not infer a multi-key transaction, a globally consistent snapshot or thread-safe mutable values merely from storing them in this container.
-
-<span id="worked-example"></span>
-## Trace atomic updates
-
-For a frequency map, a get followed by put can lose updates even though both calls are individually thread-safe. Express an atomic per-key update with merge or compute, or store an appropriately coordinated counter. A LongAdder value is useful for statistics but its concurrent sum is not an exact atomic admission limit.
-
-A computeIfAbsent callback should be short and avoid unsupported recursive map updates. A null result does not create a non-null mapping. Publishing a List value through the map publishes that reference under the collection's guarantees; subsequent list mutation still needs its own ownership protocol.
-
 <span id="mechanics-and-tradeoffs"></span>
-## Bins, publication and resizing
+<span id="modern-implementation-overview"></span>
+<span id="cas-retries-and-aba"></span>
+<span id="trace-modern-table-update-paths"></span>
+<span id="concurrenthashmap-interview-questions"></span>
+<span id="source-reading-and-interview-follow-ups"></span>
+## Thread-safe calls can still lose a frequency update
 
-### ConcurrentHashMap guarantees are per operation and key
-ConcurrentHashMap rejects null keys and values, making null a useful absence indicator. A non-null retrieval reporting an update has a happens-before relationship with that update for the key. This does not make putAll, iteration, or a multi-key accounting operation one atomic snapshot. Aggregate size during modification is useful for observation but not generally a reliable authorization/admission decision.
+Two callers both read count zero from a shared map, each calculate one, and each put one. The map can correctly perform all four individual calls while the composed increment loses an update. Choose an operation that represents the whole per-key change.
 
-`if (!map.containsKey(k)) map.put(k, v)` has a check-then-act race. Use putIfAbsent, conditional replace/remove, compute or merge to express the intended atomic per-key change. `computeIfAbsent` does not store a null result; its callback must be short and must not recursively modify the map in unsupported ways. An expensive blocking callback can obstruct other updates. Publishing a mutable value through a concurrent map does not make later mutations to that value thread-safe.
+ConcurrentHashMap supplies merge, compute, putIfAbsent and conditional replace/remove. It rejects null keys and values, letting a null retrieval mean absence. It is useful for shared independent mappings, not arbitrary transactions across keys and counters.
 
-### Modern implementation overview
-OpenJDK 25 uses a table with bin nodes rather than the fixed Segment-array design often described for Java 7. Reads generally traverse without locking. Updates can use CAS for an empty bin and coordination on an occupied bin, with special tree-bin and resize paths. Cooperative transfer and forwarding nodes support resizing. These are implementation details; the public concurrency contract is the stable starting point.
-
-A HashMap plus synchronized access can be correct under one consistently used mutex, but serializes more operations. A synchronized wrapper still needs its documented lock for iteration and compound operations. Choose based on the complete invariant instead of treating “concurrent” as a universal upgrade.
-
-### CAS, retries and ABA
-Compare-and-set changes a variable only if it still equals an expected value. A retry loop reads state, calculates a candidate and retries after interference. The calculation can run more than once; side effects inside update functions may therefore repeat. CAS on one reference does not make separate variables atomically consistent unless state is grouped into one immutable object and replaced together.
-
-ABA occurs when a location changes A→B→A: a value-only comparison sees A again and misses the intervening history. AtomicStampedReference compares a reference and a stamp together. Every participant must advance/check the stamp consistently; the API does not invent that policy. Garbage collection prevents some raw-memory reclamation hazards but does not eliminate every logical ABA problem.
-
-<Diagram client:visible definition={"sequenceDiagram\n participant A as Writer A\n participant M as Map key java\n participant B as Writer B\n A->>M: merge one increment atomically\n B->>M: merge one increment atomically\n Note over M: Same-key updates preserve both increments\n M-->>A: Updated value\n M-->>B: Updated value"} caption={"Follow the concurrenthashmap relationships described above."} />
-
-### Trace modern table update paths
-
-For an ordinary empty bin, putVal can install a node using a compare-and-set operation. For an occupied ordinary bin, updates coordinate around the bin's head while validating that the observed bin still belongs to the table position. A tree bin uses additional internal coordination. Retrieval ordinarily follows published node references without acquiring the same update lock, but this is not a claim that arbitrary user hashCode/equals callbacks cannot block.
-
-During resizing, forwarding nodes identify bins transferred to a replacement table. Threads can participate in transfer or route operations toward the new table. The invariant is that mappings remain discoverable through the supported traversal/transfer protocol, not that all readers see one instantaneous whole-table version. Size accounting is optimized for concurrent updates and aggregate observations can reflect transient states.
-
-The fixed Segment-array description belongs to older implementations and should not be used to explain Java 25. concurrencyLevel is a sizing hint retained for compatibility, not a promise to create exactly that many locks or permit exactly that many writers.
-
-### Callback and value ownership
-
-computeIfAbsent applies its callback atomically according to its per-key contract when a value must be established. Keep that callback short, and avoid unsupported recursive updates. Returning null leaves no non-null value installed, and throwing propagates failure without creating a successful mapping from that result. An expensive callback can delay competing updates; the container does not move every callback into a separate executor.
-
-A map of LongAdder values is useful for contended statistics: computeIfAbsent establishes the counter, increment updates it. A concurrent sum is not a single linearizable hard-limit decision. A map of ordinary ArrayList values is not safe for concurrent list mutations merely because creating the reference was atomic.
-
-A compound invariant spanning two keys requires additional coordination. Conditional replace protects the expected value of one mapping, not a business transaction covering arbitrary keys. Holding an unrelated application lock in one code path protects nothing unless every participant follows the same protocol.
-
-<span id="java-implementation"></span>
+<span id="concurrenthashmap-guarantees-are-per-operation-and-key"></span>
 ## Implement per-key counting
 
-<JavaExample file="ConcurrentMapExample.java" />
+<JavaExample file="ConcurrentMapExample.java" output={"2000\n2000\n2000\nnull rejected"} />
 
-The two submitted workers share one ConcurrentHashMap and each call `merge("java", 1, Integer::sum)` 1,000 times. On an absent key, merge installs one. On an existing non-null value, it atomically combines the old value and one under the map's per-key protocol. No caller performs a separate get followed by put, so the competing updates cannot overwrite the same stale observation and lose an increment.
+Two submitted workers each call merge("java", 1, Integer::sum) one thousand times. On absence, merge installs one; on an existing value, it atomically combines the old value with one. There is no caller-controlled get/put gap. Main retrieves both Future results before reading the final 2000.
 
-The owner retrieves both Future results before reading the final count. Those successful waits establish task completion and the documented task-to-caller publication relationship. The first printed value is therefore 2,000 for this finite workload. It is a correctness result, not evidence of a particular scheduling order or throughput.
+PutIfAbsent then returns the existing 2000 and leaves it unchanged; the following get still reports 2000. A null insertion throws before creating a valid mapping. These results demonstrate contracts, not a particular update order or throughput.
 
-`putIfAbsent("java", 9)` then returns the existing 2,000 and leaves that mapping unchanged; the following get also prints 2,000. The final insertion attempts a null value and receives NullPointerException before creating that invalid mapping. This illustrates ConcurrentHashMap's null policy, rather than silently interpreting a failed write as a legitimate absent result.
+A non-null retrieval reporting an update has the documented happens-before relationship with that update for the key. Iteration, aggregate size and putAll are not a whole-map point-in-time transaction. A size observed during modifications is unsuitable as a hard admission check.
 
-Every atomic update here affects one key. The example does not establish a transaction across several keys or make arbitrary mutable value objects thread-safe. Integer values are immutable, and each merge publishes a replacement value. Finally requests shutdown of the explicitly owned executor on normal and exceptional owner paths; shutdownNow is a cooperative interruption request, not forced termination of arbitrary task code.
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+<span id="trace-atomic-updates"></span>
+## Trace the difference between separate and combined operations
 
-For production internals, follow the versioned source's get, putVal, computeIfAbsent, helpTransfer, transfer and forwarding-node paths. The complete example exercises the public concurrency contract; it does not reimplement the library's table and resize algorithm.
+| Operation sequence | Interference interval | Better expression when it matches the invariant |
+| --- | --- | --- |
+| containsKey then put | Another caller can insert between them | putIfAbsent |
+| get count then put incremented count | Both callers can use the same old count | merge or compute |
+| get expected value then replace | Value can change before replacement | conditional replace |
+| Update key A then key B | Readers can see the intermediate state | A larger shared protocol |
+
+Callbacks must be short and follow their documented restrictions. ComputeIfAbsent returning null creates no non-null mapping; throwing preserves failure rather than installing that result. Blocking callbacks can delay competing updates. Avoid unsupported recursive updates to the same map.
+
+## Bins, publication and resizing
+
+On the selected OpenJDK implementation, an ordinary empty-bin update can CAS-install a node. An occupied ordinary bin coordinates updates around its head after checking the observed bin still belongs to that table slot. Tree bins use additional coordination. Reads normally follow published node references without acquiring the same update lock; user hashCode/equals can still introduce their own blocking/cost.
+
+<Diagram client:visible definition={"flowchart TD\n P[Per-key put] --> B{Observed bin}\n B -->|empty| C[CAS-install node or retry]\n B -->|ordinary occupied| L[Coordinate, validate bin and update]\n B -->|forwarding node| N[Follow/help replacement-table transfer]\n L --> R[Publish supported mapping update]\n C --> R"} caption="This is a conceptual subset of modern update paths, not a replacement for the full JDK table/resize algorithm." />
+
+During resize, forwarding nodes identify transferred bins. Threads can route toward the replacement table or help transfer. The invariant preserves discoverability through the supported protocol, not one global instantaneous table version. Size accounting can reflect transient concurrent state.
+
+The fixed Segment-array architecture describes older implementations. ConcurrencyLevel is a retained sizing hint, not a promise to create exactly that number of segments/locks or permit exactly that many writers. Private node/control details should always name their source baseline.
+
+## Callback and value ownership
+
+Publishing an ArrayList value through the map does not protect later list.add calls. A map of LongAdder values can suit contended statistics, but sum during updates is not one exact linearizable admission decision. An invariant spanning keys needs a common lock or atomically replaced combined state followed consistently by every participant.
+
+CAS and ABA are developed in the atomics chapter: a conditional update does not make unrelated fields one transaction, and retry computations must avoid repeatable external side effects. A consistently used synchronized map wrapper can be correct, with its documented complete traversal/compound-operation locking protocol.
 
 <span id="common-mistakes"></span>
-## Concurrent-map assumptions
-
-Weakly consistent iteration is not a snapshot, and aggregate size under updates is not a hard capacity-control primitive. Do not teach the Java 7 fixed Segment-array architecture as the Java 25 implementation. A custom concurrent hash map needs a memory-model and resize protocol, not just synchronized added to a few methods.
-
 <span id="exercises-and-interview-questions"></span>
-## ConcurrentHashMap interview questions
+## Exercise and complete solution
 
-<details>
-<summary>Why are null values prohibited?</summary>
+Implement a shared frequency map with no lost increments and observe it only after both workers complete. `ConcurrentMapExample` is the complete solution. Explain separately per-key update atomicity, completed Future retrieval, immutable Integer replacement and null policy. None of these establishes a multi-key business transaction.
 
-The API uses null as absence and as part of concurrent retrieval/computation protocols. Allowing a stored null would require a different presence/result contract; this restriction is a design guarantee, not an accidental missing feature.
-
-</details>
-
-<details>
-<summary>Can two key updates protect a balance transfer?</summary>
-
-No per-key operation alone makes the two-key relationship atomic. Use a protocol covering the entire invariant, such as a common lock or an atomically replaced combined immutable state, depending on the problem.
-
-</details>
-
-### Source-reading and interview follow-ups
-
-<details>
-<summary>Why does putIfAbsent avoid a containsKey/put race?</summary>
-
-It expresses a single conditional update under the map's protocol. Two individually safe calls leave an interval in which another caller can insert. A compound operation's correctness comes from its contract, not from the fact that each primitive method is thread-safe.
-
-</details>
-
-<details>
-<summary>Can clear and iteration form a whole-map snapshot?</summary>
-
-No. Aggregate mutation and weakly consistent traversal do not supply an atomic global view. A traversal can observe some mappings during change. Use an explicitly defined snapshot/locking or immutable-state publication design when a coherent multi-key view is required.
-
-</details>
-
-<details>
-<summary>Which Java 25 source methods explain resizing?</summary>
-
-Read putVal, get, initTable, helpTransfer, transfer and the forwarding-node traversal. Relate each implementation path to its publication/coordination invariant. Do not substitute the existence of CAS in one path for a proof that every method is lock-free.
-
-</details>
-
-### Coding exercise with reference solution
-
-Implement two writers incrementing the same key without a get/put lost-update race. ConcurrentMapExample is the complete reference solution: merge expresses each atomic update; Future.get observes task completion; putIfAbsent must preserve the final count. Then explain why moving a mutable ordinary List into the value slot would not make list updates safe.
+For deeper source study, follow get, putVal, computeIfAbsent, helpTransfer, transfer and forwarding-node paths in the selected release. A hand-written hash map with a few synchronized methods does not reproduce those algorithms.
 
 <span id="references"></span>
+<span id="concurrent-key-contracts"></span>
+<span id="concurrent-map-assumptions"></span>
+<span id="coding-exercise-with-reference-solution"></span>
 ## Primary concurrent-map contracts
 
-- [ConcurrentHashMap algorithms and guarantees](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentHashMap.java)
-- [ConcurrentMap atomic operations](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentMap.java)
+- [ConcurrentHashMap](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentHashMap.html)
+- [OpenJDK table, update and transfer paths](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ConcurrentHashMap.java)

@@ -1,0 +1,57 @@
+---
+title: "Switch statements and switch expressions"
+module: "language"
+group: "Decisions and loops"
+summary: "Select discrete alternatives and distinguish fallthrough from a returned expression value."
+order: 50
+version: "Java 8+"
+prerequisites: ["language/control-flow"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Group discrete alternatives
+
+An if/else chain is useful for arbitrary boolean conditions, including ranges. A switch selects among discrete cases for one selector. The example classifies numbered days: one through five are weekdays, six and seven are weekends, and other numbers violate its domain.
+
+<JavaExample file="SwitchBasics.java" output={"weekday\nweekend"} />
+
+The helper returns its chosen text to main. Each group of consecutive labels reaches one return. Labels themselves perform no action, so entering case 1 passes the following empty labels and returns weekday. Default rejects a value not named by another case.
+
+## Explain colon-label fallthrough
+
+With colon labels, execution continues into following statements and labels unless something transfers control. A return exits the method. A break exits the switch, allowing statements after the switch to run. Merely reaching another case label does not stop execution. This makes intentional grouping possible, but can also accidentally execute a later group's work.
+
+For a variable assigned inside a switch, definite assignment must cover every path before the variable is read. Do not add a silent default value simply to conceal an unhandled domain case. Classic selectors have restrictions on accepted types; the pattern-switch chapter later extends the model to type alternatives and explicit null handling. A null boxed or String selector in a classic switch throws rather than selecting default.
+
+## Use a value expression when every path computes a value
+
+Java 14+ finalizes switch expressions and arrow rules. In a source file targeting that release or later, the same choice can return a value directly:
+
+```java
+final String kind = switch (day) {
+    case 1, 2, 3, 4, 5 -> "weekday";
+    case 6, 7 -> "weekend";
+    default -> throw new IllegalArgumentException("invalid day");
+};
+```
+
+Arrow rules do not fall through. A block arm can use yield to provide the switch expression's value; yield is different from returning from the enclosing method. A switch expression must produce a value or complete abruptly on every required path. The classic runnable example remains usable on Java 8.
+
+## Practice: choose break or return
+
+A switch appears in a method that must print a footer after choosing a message. Should each case return immediately?
+
+<details>
+<summary>Answer</summary>
+
+Return would skip the footer by exiting the method. Assign a message and break from each ordinary colon group, then print the message/footer after the switch. On Java 14+, an expression assigned to a local often makes this structure clearer. If exiting the entire method is the intended behavior, return is appropriate. State the desired continuation point before selecting a branching keyword.
+
+</details>
+
+## Switch references
+
+- [Dev.java: switch statements](https://dev.java/learn/language/constructs/basics/switch-statement/)
+- [JLS: switch statements](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.11)
+- [JLS: switch expressions](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.28)

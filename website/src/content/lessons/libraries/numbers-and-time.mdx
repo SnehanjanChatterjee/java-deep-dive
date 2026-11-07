@@ -1,9 +1,9 @@
 ---
-title: "Decimal arithmetic, dates and time zones"
+title: "Decimal arithmetic in everyday calculations"
 module: "libraries"
-group: "Numbers and time"
-summary: "Choose explicit precision, rounding and temporal semantics."
-order: 270
+group: "Decimal arithmetic"
+summary: "Calculate an invoice from decimal inputs"
+order: 610
 version: "Java 8+"
 prerequisites: ["objects/equality-and-immutability"]
 advanced: false
@@ -11,186 +11,58 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+## Calculate an invoice from decimal inputs
 
-## Decimal precision and temporal meaning
+Three items cost 19.95 each and tax is 8.25 percent. The intended quantities are decimal: subtotal 59.85, tax 4.937625 before rounding, tax 4.94 at the invoice boundary, total 64.79. BigDecimal lets the program express those quantities and choose its rounding policy explicitly.
 
-BigDecimal represents a decimal value with an unscaled integer and a scale. Constructing it from a decimal string preserves that representation; constructing from a double captures that double's approximate value. equals includes scale while compareTo compares numerical value. A sorted collection can therefore treat values as equivalent even when BigDecimal.equals does not.
-
-Instant identifies a point on the global time line. LocalDate and LocalDateTime describe calendar values without an offset or zone. ZonedDateTime combines local fields with zone rules. A local time can be ambiguous or nonexistent around daylight-saving transitions, so converting it to an instant requires a policy.
+BigDecimal is immutable. add, subtract, multiply and divide return results; they do not change an operand. Ignoring amount.add(fee) leaves amount unchanged. A final reference alone would not supply this property; it comes from the value type.
 
 <span id="worked-example" aria-hidden="true"></span>
+## Work from inputs to a rounded result
 
-## Trace rounding and a fixed clock
+<JavaExample file="DecimalCalculation.java" output={"59.85\n64.79"} />
 
-Dividing one by three requires an explicit scale and rounding mode for a finite decimal result. The program uses a fixed Clock to make a date-dependent calculation deterministic rather than relying on the machine's current date or default zone.
+The constructor receives "19.95" as a String, preserving the declared decimal spelling. BigDecimal.valueOf(3) represents the quantity. Multiplication computes the exact subtotal. The tax rate 0.0825 is a proportion, so 8.25 percent must not be entered as 8.25.
+
+total requires a nonnegative unit price, positive quantity and nonnegative tax rate. It accepts prices that fit two fractional places exactly, then rounds tax once per invoice with HALF_EVEN. It is one declared currency/minor-unit domain; two places are an example policy, not a universal rule for money.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+## Distinguish value, representation and rounding
 
-## Scale, zones and daylight-saving behavior
+A BigDecimal stores an unscaled integer and a scale. For 19.95, those are 1995 and 2: 1995 × 10^-2. Scale is not precision. Precision counts significant digits; scale locates the decimal point and may be negative.
 
-<Diagram client:visible definition={"flowchart TD\n L[Local date and time] --> Z[Zone rules and resolution policy]\n Z --> I[Instant]\n D[Decimal operation] --> R[Scale and rounding policy]\n R --> V[Decimal result]"} caption={"Temporal conversion and decimal division both need explicit policies; default environmental behavior is not a domain contract."} />
+Constructing from a double records information already present in that binary floating-point value. new BigDecimal(0.1) does not recover a user's original decimal spelling. valueOf(double) uses its canonical decimal string representation, but also cannot restore information lost in an earlier calculation. Use a String or validated integer minor units when those are the actual input contract.
 
-### Decimal representation is part of the contract
+setScale(2, UNNECESSARY) asserts the unit price needs no rounding to fit the domain. setScale(2, HALF_EVEN) on computed tax allows rounding under a specific tie policy. These are different operations. The dedicated BigDecimal chapter examines precision contexts, ties, division and exact conversion in detail.
 
-BigDecimal represents an unscaled integer and a scale: `1.00` has unscaled value 100 and scale 2. Prefer decimal strings or `BigDecimal.valueOf(double)` when the input is a decimal quantity; `new BigDecimal(0.1)` captures the exact binary floating-point approximation of 0.1 rather than the short decimal spelling.
+## Keep units and boundaries in the model
 
-Operations return new values. Calling `amount.add(fee)` without assigning the result leaves amount unchanged. `equals` includes scale, so 1.0 and 1.00 are unequal; compareTo returns zero for their numeric equivalence. This difference affects HashSet versus TreeSet membership. `stripTrailingZeros` can normalize representation, sometimes with a negative scale, but domain precision policy should be explicit rather than inferred from a display format.
+A fixed-minor-unit long can be simpler when every amount has the same declared scale and exact arithmetic checks overflow. BigDecimal is useful when decimal arithmetic/rounding is itself part of the domain. Binary floating point remains appropriate for approximate scientific quantities. Choose based on meaning, not the slogan that one numeric type is always correct.
 
-### Rounding is a business rule
-
-Dividing 1 by 3 without a rounding/precision policy throws ArithmeticException because the decimal expansion does not terminate. Specify a result scale and RoundingMode or a MathContext with significant-digit precision. Scale and precision answer different questions. HALF_UP and HALF_EVEN differ at ties; repeated tie rounding can accumulate different totals. Round at the required domain boundary rather than after every intermediate calculation without justification.
-
-For fixed minor units, a long can be simpler than decimal arithmetic, provided currency scale, overflow detection and division rules are explicit. `intValue()` can truncate or overflow; `intValueExact()` rejects a fractional or out-of-range result. Binary floating point remains appropriate for many scientific calculations where approximate arithmetic is the intended model.
-
-### Choose the temporal meaning first
-
-| Type | Meaning | Missing information |
-| --- | --- | --- |
-| Instant | A point on the UTC timeline | A user's presentation zone |
-| LocalDate | Calendar date | Time and zone |
-| LocalDateTime | Local date and wall-clock time | Offset/zone needed to identify an instant |
-| OffsetDateTime | Date/time plus fixed UTC offset | Regional future transition rules |
-| ZonedDateTime | Local date/time plus zone rules and resolved offset | Rules can evolve with time-zone data |
-| Duration | Seconds/nanoseconds elapsed amount | Calendar interpretation |
-| Period | Years/months/days calendar amount | Exact elapsed seconds until applied in a context |
-
-A meeting recurring at 09:00 in a named zone is different from repeating every 24 elapsed hours. Formatting is also distinct from storage: DateTimeFormatter is immutable and shareable, while legacy SimpleDateFormat is mutable and unsafe for unsynchronized shared use.
-
-### Daylight-saving gaps and overlaps
-
-A regional zone can have zero, one or two valid offsets for a local date/time. In a spring gap, the local clock skips a range; default `atZone` resolution normally shifts a nonexistent time forward. In an autumn overlap, the same local clock time occurs twice; choose the intended offset explicitly when needed. `zone.getRules().getValidOffsets(local)` exposes that ambiguity instead of hiding it.
-
-The complete `TimeBoundaryLab.java` source appears in the Java implementation section below.
-
-The example uses historical 2024 transitions in Europe/Paris. The spring 02:30 has zero valid offsets; autumn 02:30 has two. This is why a LocalDateTime alone cannot uniquely timestamp an event. Applying Period.ofDays(1) to a zoned time preserves a calendar-day intention; Duration.ofHours(24) preserves elapsed seconds and may end at a different wall-clock hour across a transition.
-
-### Deterministic time and locale behavior
-
-Inject Clock when code asks for the current time. A fixed clock makes boundary tests repeatable without sleeps or changing the system clock. Choose a ZoneId explicitly for local-date decisions. For machine identifiers use locale-neutral normalization such as `toLowerCase(Locale.ROOT)`; user-facing language and number/date presentation need the user's intended locale. Do not use formatted display strings as temporal sort keys without a defined format contract.
-
-### Interview exercise
-
-Design a subscription expiry rule that expires at local midnight in a customer's region. Explain why adding 86,400 seconds is not always equivalent to moving to the next local date. Include the zone, clock, ambiguous input policy and rounding policy in the API contract rather than leaving them to machine defaults.
-
-## Temporal boundaries and decimal invariants
-
-### Storage representation and presentation are different
-
-An Instant is suitable for ordering actual events on a timeline; a LocalDate can represent a birthday or billing date without pretending it is midnight UTC. A LocalDateTime is a wall-clock label until offset/zone rules resolve it. Formatting that value with a pattern does not supply the missing zone information.
-
-For an event stored with a regional zone, retain the information required by its domain: a past recorded instant and an intended recurring future local schedule are different data models. Regional rules can change through time-zone data updates, so a fixed offset is not a permanent replacement for a named region.
-
-### Parse with a declared format and strictness policy
-
-DateTimeFormatter is immutable/shareable. Pattern letters have precise meanings: week-based year is not interchangeable with calendar/proleptic year. Choose the resolver behavior needed for invalid dates rather than letting lenient normalization silently invent a different date. Machine formats should specify locale/zone where relevant; user-facing formats should use the intended user locale rather than a developer machine default.
-
-### Test boundaries through an injected clock
-
-Code asking what date it is should accept a Clock or a boundary abstraction that supplies it. A fixed instant can fall on different local dates in different zones. Boundary tests should therefore choose both instant and zone and assert the business result, not change the system clock or wait for midnight.
-
-### Decimal equality enters collections
-
-BigDecimal compareTo can report numeric equality for different scales while equals does not. Sorting and hash-based deduplication can therefore choose different cardinality semantics. A normalization policy belongs at the domain boundary; stripping trailing zeros can introduce a negative scale and is not equivalent to formatting money to two decimals.
-
-### Solved scenario
-
-For a subscription expiring at the next local midnight, obtain today's local date using the explicit clock/zone, move to the next date, and resolve the start of that date using the regional rules/API. Adding 86,400 seconds models elapsed time and can reach a different wall-clock time across DST. State the policy for unusual zone transitions, including a midnight that is adjusted by zone rules.
-
-For a money conversion, define units and rounding first. Scaling a decimal then using an exact integer conversion rejects a fraction or overflow that a truncating conversion would silently accept. Numeric range and decimal precision are separate constraints.
+Per-item tax rounding and per-invoice rounding can produce different totals. The method's named boundary makes that choice reviewable. Adding amounts in different currencies requires another value model, not merely a wider numeric type.
 
 <span id="java-implementation" aria-hidden="true"></span>
+## Test the arithmetic policy
 
-## Numeric and temporal boundary examples
+<JavaExample file="DecimalCalculationTest.java" />
 
-### Decimal and daylight-saving boundaries
-
-<JavaExample file="TimeBoundaryLab.java" output={"0\n2\n1.0 equals 1.00: false\n1.0 compares to 1.00: 0"} />
-
-### Introductory example
-
-The following program is a complete executable example. Compile with `javac DecimalAndTime.java` and run with `java DecimalAndTime`.
-
-<JavaExample file="DecimalAndTime.java" output={"0.33\n2025-01-02"} />
+The tests assert decimal results including their required scale, a zero amount, a HALF_EVEN tie, null/negative inputs, nonpositive quantity and a price with fractional minor units. Exact conversion/rounding failures remain failures rather than silently being truncated.
 
 <span id="common-mistakes" aria-hidden="true"></span>
+## Separate arithmetic from presentation
 
-## Precision and time-zone pitfalls
-
-Do not construct monetary values from an unexplained binary floating-point input, divide without considering rounding, or assume the default time zone is stable. BigDecimal is immutable; arithmetic returns a new result.
-
-<KnowledgeCheck client:visible question={"How do BigDecimal 1.0 and 1.00 compare?"} options={["equals is true and compareTo is nonzero", "equals is false and compareTo is zero", "Both comparisons must reject the scales"]} correct={1} explanations={["equals considers scale, while numerical comparison does not treat the extra zero as a different value.", "The representations differ in scale, but compareTo reports numerical equality.", "Different scales are valid; the distinction is between representation-sensitive equality and numerical ordering."]} />
+Formatting a value with two printed places does not establish the intermediate calculation policy. BigDecimal.equals includes representation scale: 1.0 and 1.00 are unequal, while compareTo returns zero. The next chapter develops the collection/equality consequences. Date and time use different concepts and are taught in their own fundamentals and zone-boundary chapters.
 
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+## Completed exercise: zero tax and invalid precision
 
-## Number and time interview practice
+Call total(new BigDecimal("19.95"), 3, BigDecimal.ZERO): the subtotal is 59.85 and tax is 0.00, so the result is 59.85. Call it with "1.001": UNNECESSARY rejects the unit price rather than quietly rounding it. A different application can choose to round input prices, but that would be a different public promise.
 
-### Why is LocalDateTime insufficient for global event ordering?
+<Diagram client:visible definition={"flowchart LR\n I[Validated decimal price and quantity] --> S[Exact subtotal]\n S --> T[Exact tax product]\n T --> R[Round tax at invoice boundary]\n S --> F[Add final total]\n R --> F"} caption="The rounding boundary is explicit; display formatting is a later concern." />
 
-<details>
-<summary>Explanation</summary>
+## References
 
-It has no offset or zone and does not uniquely identify an instant. Two locations can have the same local clock value at different instants; a daylight-saving overlap can repeat one local time in the same region. Use Instant or an explicitly resolved offset/zone when an event must be placed on a global timeline.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Why can a one-day Period differ from a 24-hour Duration?</summary>
-
-A calendar day across a daylight-saving transition can contain 23 or 25 elapsed hours in a regional zone. Period applies calendar semantics; Duration applies seconds/nanoseconds. Choose based on the domain rule before doing arithmetic.
-
-</details>
-
-<details>
-<summary>Why does BigDecimal divide sometimes throw for valid nonzero operands?</summary>
-
-An exact decimal result may have a nonterminating expansion, such as 1/3. Supply the intended scale/rounding mode or precision context. This is a precision-policy issue, separate from division by zero.
-
-</details>
-
-<details>
-<summary>What makes a time-dependent test deterministic?</summary>
-
-Pass a Clock and explicit zone into the code that asks for current time, then use a fixed clock in the test. Sleeping until a boundary or assuming the developer machine's default zone creates slow and fragile tests.
-
-</details>
-
-### Coding exercise
-
-Compare BigDecimal("1.0") and BigDecimal("1.00") using equals and compareTo. Build a Clock-injected expiration check and test the exact boundary without sleeping.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Why can an ISO-looking text still omit essential temporal information?</summary>
-
-A local date-time string can be well formed without specifying an offset or region, so it need not identify a unique instant. Parsing syntax and resolving a timeline meaning are separate steps.
-
-</details>
-
-<details>
-<summary>Why inject both Clock and ZoneId concepts?</summary>
-
-Clock supplies the current instant and a zone policy. The domain still needs to state which regional date/time interpretation applies. Fixed clocks make those decisions deterministic in tests.
-
-</details>
-
-<details>
-<summary>What does rounding at every intermediate step change?</summary>
-
-It can accumulate error and produce a different total from rounding once at the specified final boundary. Apply the domain's declared scale/precision policy rather than an arbitrary formatting habit.
-
-</details>
-
-<span id="references" aria-hidden="true"></span>
-
-## Number and time references
-
-- [BigDecimal arithmetic, scale and conversion](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/math/BigDecimal.java)
-- [ZonedDateTime gap/overlap resolution](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/ZonedDateTime.java)
-- [ZoneRules valid offsets](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/zone/ZoneRules.java)
-- [Clock abstraction](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/time/Clock.java)
+- [BigDecimal arithmetic and representation](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/BigDecimal.html)
+- [RoundingMode definitions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/RoundingMode.html)

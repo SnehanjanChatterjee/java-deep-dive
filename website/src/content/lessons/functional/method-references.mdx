@@ -1,0 +1,58 @@
+---
+title: "Method references and function composition"
+module: "functional"
+group: "Composition and absence"
+summary: "Name an existing implementation"
+order: 530
+version: "Java 8+"
+prerequisites: ["functional/lambdas-and-optional"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Name an existing implementation
+
+When a lambda only calls an existing method, a method reference can name that method. Start by expanding it back to a lambda to identify the arguments, receiver and result. The target interface still resolves overloads and compatible parameter/result types.
+
+<JavaExample file="MethodReferenceLab.java" output={"42\njava\njvm\n0\n2\n4\ntrue"} />
+
+| Reference | Lambda expansion | What supplies the receiver? |
+| --- | --- | --- |
+| Integer::parseInt | text -> Integer.parseInt(text) | Static method; no receiver |
+| text::trim | () -> text.trim() | Bound text object |
+| String::trim | value -> value.trim() | First functional argument |
+| ArrayList&lt;String&gt;::new | () -> new ArrayList&lt;String&gt;() | New object created per invocation |
+| String[]::new | length -> new String[length] | Array length argument |
+
+The reference does not invoke the target body just by being declared. Calling apply/get does. A bound receiver is evaluated when the reference is created: a null receiver fails then. `() -> receiver.work()` defers that dereference until invocation. Constructor references can target different overloads depending on their functional signature.
+
+## Compose transformations in a declared order
+
+trim produces a String; length consumes a String and produces Integer. trim.andThen(length) therefore computes length(trim(input)). Function.compose reverses that relationship: f.compose(g) computes f(g(input)). The intermediate output/input types must fit.
+
+For " java ", trim yields "java", then length yields 4. Reversing these particular functions would not type-check: length returns Integer, while trim needs String. Composition is a typed data flow, not a request to call arbitrary functions in either order.
+
+Predicate.and/or short-circuit. nonempty.and(shortText) invokes shortText only when nonempty returned true; or invokes the second only when the first returned false. That can avoid invalid accesses, but side effects/exceptions also make the order observable. Reordering filters is valid only when their contracts permit it.
+
+Consumer.andThen sequences side effects; if the first action throws, the next is not performed. Supplier alone does not cache anything. Memoization would require explicit storage and failure/concurrency policy.
+
+## Express the previously named comparator
+
+```java
+final Comparator<CollectionOrdering.Score> order =
+        new CollectionOrdering.ByPointsThenId();
+```
+
+This named object remains a valid functional implementation. For an accessible value type with point/id accessors, Comparator.comparingInt(value -> value.points()).thenComparing(value -> value.id()) constructs the same kind of two-stage policy. A method reference can shorten a pure accessor lambda. The comparison relation, tie policy and equality obligations do not change because its spelling becomes shorter.
+
+## Worked exercise: expand an unbound reference
+
+`String::length` can target ToIntFunction&lt;String&gt; as `value -> value.length()`. The String argument is the receiver, and the result is primitive int. `"java"::length` instead has its receiver fixed and can target IntSupplier with `() -> "java".length()`. Predicting those invocation shapes explains why they are not interchangeable.
+
+## References
+
+- [Method-reference forms and expansions](https://dev.java/learn/lambdas/method-references/)
+- [Function composition contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/Function.html)
+- [Predicate short-circuit composition](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/Predicate.html)

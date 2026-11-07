@@ -1,11 +1,11 @@
 ---
-title: "Structured concurrency"
+title: "Structured concurrency and owned child lifetimes"
 module: "modern-concurrency"
-group: "Context and task lifetimes"
-summary: "Own related child tasks through one outcome, cancellation and cleanup boundary."
-order: 550
-version: "Java 25 · preview API"
-prerequisites: ["modern-concurrency/virtual-threads", "modern-concurrency/scoped-values"]
+group: "Structured task lifetimes"
+summary: "Start from a parent needing two results, then keep failure selection, sibling cancellation and finished cleanup distinct."
+order: 1040
+version: "Java 25 preview; matching compile/run flags required"
+prerequisites: ["concurrency/future-cancellation", "concurrency/completablefuture", "modern-concurrency/virtual-threads", "modern-concurrency/scoped-values"]
 advanced: true
 ---
 
@@ -13,118 +13,78 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Why related tasks need an owner
+<span id="mechanics-and-tradeoffs"></span>
+<span id="why-related-tasks-need-an-owner"></span>
+<span id="java-25-lifecycle-rules"></span>
+<span id="outcome-selection-versus-thread-termination"></span>
+<span id="recognize-lifetime-mistakes"></span>
+<span id="explain-and-implement-the-task-lifetime"></span>
+## One operation needs two related results
 
-A parent operation often needs several independent results before it can return. Ordinary task submission makes concurrency easy to start, but ownership harder to finish: who cancels siblings after failure, who responds when the caller is interrupted, and who waits for cleanup? Related work should not accidentally survive the operation that requested it.
+A parent operation fetches two independent inputs before constructing its answer. With ordinary submissions it can start both, but it must also decide what happens when one fails: cancel the other, respond to parent interruption, and account for actual cleanup. Combining result handles alone does not provide all those lifetime responsibilities.
 
-Structured concurrency associates these children with a lexical scope. The opening thread owns that scope; child lifetime is bounded by its closing boundary. The outcome policy decides what joining means—such as all children succeeding or selecting a successful result. Closing accounts for the actual child threads, rather than merely combining result handles.
+Structured concurrency gives related children one owning scope. They belong to the parent operation's lexical lifetime. This fits one operation's related work; a long-running maintenance service can legitimately have a different owner and longer lifetime.
 
-This fits related subtasks of one operation, not every independently scheduled background activity. A periodic maintenance service can have an intentionally longer owner lifetime. The design question is the relationship between work and its owner, not whether every asynchronous API must disappear.
+The code here targets the Java 25 **preview** API. Use the matching JDK and flags; previews can change between releases.
 
 <span id="worked-example"></span>
+<span id="java-implementation"></span>
 ## Trace a successful operation
-
-The first example opens a scope, starts children returning 42 and 1, joins the selected policy and reads their successful results. Both results contribute once, giving 43. Forking does not guarantee a particular execution order; the sum is deterministic because it depends on completed values rather than whichever thread happens to print first.
 
 <JavaExample file="modern/StructuredConcurrencyDemo.java" output={"43"} />
 
-`open` creates the ownership boundary. `fork` creates each subtask. `join` waits for the policy's outcome. Subtask result retrieval follows its documented success/state conditions. Try-with-resources closes the scope on both normal and exceptional paths, so the method cannot leave its child threads unaccounted for merely because a later statement throws.
+Open creates the scope and identifies its owner. Fork starts the children returning 42 and one. Join waits for the selected outcome policy. Under the default successful policy, the parent reads both successful subtask results and adds them. Closing the try-with-resources scope accounts for its child threads on normal and exceptional paths.
 
-<span id="mechanics-and-tradeoffs"></span>
-## Scope states, policies and cancellation
+No particular child order is required for 43: the sum uses completed values rather than whichever task happens to print first. A Subtask result is not available simply because fork returned.
 
-### Java 25 lifecycle rules
+Compile/run this example with:
 
-Only the owner invokes fork, join and close. Forking after joining and repeatedly calling join violate the selected API's lifecycle rules. A scope is not a reusable global executor; opening another operation normally creates another scope with its own children and outcome.
+```bash
+javac --enable-preview --release 25 StructuredConcurrencyDemo.java
+java --enable-preview StructuredConcurrencyDemo
+```
 
-The default open policy requires successful completion or reports failure. A failed child causes sibling cancellation to be requested. Other Joiner policies support other aggregate outcomes, so the join result and cancellation trigger depend on the chosen policy. They do not remove ownership or the requirement to finish child cleanup.
-
-These rules target Java 25's preview API. Earlier previews used different construction/policy classes; examples built around ShutdownOnFailure are not interchangeable with this release's open/Joiner API.
-
-### Outcome selection versus thread termination
-
-An operation can select failure while a child is still responding to interruption. Cancellation is cooperative: an interruptible wait can throw, while ignored interruption or noninterruptible native work can delay termination. Close waits for child threads to finish. It cannot safely force arbitrary Java code to stop or roll back an external effect already performed.
-
-A configured scope timeout similarly bounds outcome selection but is not permission to abandon children still cleaning up. Define interruption and resource-release behavior inside every child, especially around connection permits, files and remote requests. A semaphore release belongs only after acquisition succeeded.
-
-### Context inheritance and resource ownership
-
-Scoped-value bindings can be inherited through the documented structured-scope mechanism and lifetime checks. This is different from assuming an arbitrary executor captures ambient context. Keep inherited values immutable where practical; a fixed binding does not make its referenced object thread-safe.
-
-A lexical task tree also does not create a database transaction or a general rollback mechanism. If one child performs a remote write before another child fails, cancelling siblings cannot establish that the write never occurred. The application still owns idempotency, compensation and the final operation contract.
-
-<Diagram client:visible definition={"sequenceDiagram\n participant P as Owning thread\n participant A as Child A\n participant B as Child B\n P->>A: Fork interruptible work\n P->>B: Fork dependent failure demonstration\n B-->>P: Child failure selects outcome\n P->>A: Cancellation requests interruption\n A->>A: Finally releases owned resources\n Note over P: Close waits for child termination\n P->>P: Propagate failure after scope exit"} caption={"Failure selection, sibling cancellation and completed cleanup are separate events within one owned task lifetime."} />
-
-<span id="java-implementation"></span>
-## Implement failure and sibling cleanup
+<span id="implement-failure-and-sibling-cleanup"></span>
+## Follow failure into sibling cleanup
 
 <JavaExample file="modern/StructuredFailureLesson.java" output={"child failed\ncleanup remaining=0"} />
 
-`started` makes the failure child wait until its sibling has entered work. Without that coordination, the sibling could be cancelled before reaching the intended wait, producing a different demonstration. The sibling waits interruptibly and always signals `cleaned` from finally. The owner catches FailedException outside the resource block, preserving the failed child's cause. Observing zero remaining cleanup signals after that block is supported by scope closure.
+One child reports started then waits interruptibly. The failure child waits for started before throwing, ensuring this experiment demonstrates cancellation of entered work rather than only cancellation before entry. The selected failure requests sibling interruption. The sibling's finally records cleanup. The owner catches FailedException outside the resource block, so that catch runs after scope closure has accounted for child termination.
 
-Compile and run this preview source with the matching Java 25 toolchain:
+<Diagram client:visible definition={"sequenceDiagram\n participant P as Owning parent\n participant A as Child A\n participant B as Child B\n P->>A: fork interruptible work\n P->>B: fork failure experiment\n A-->>B: started milestone\n B-->>P: failure selects policy outcome\n P->>A: cancellation requests interruption\n A->>A: finally releases owned resources\n Note over P: close waits for child termination\n P->>P: propagate cause after resource boundary"} caption="Failure selection, a cancellation request and finished cleanup are separate events inside one owned task lifetime." />
 
-```bash
-javac --enable-preview --release 25 StructuredFailureLesson.java
-java --enable-preview StructuredFailureLesson
-```
+Compile StructuredFailureLesson with the same preview flags and run its class name. Its five-second startup guard detects a broken demonstration; it is not a recommended application deadline or measured latency result.
 
-This file uses one class with a main demonstration and nested task lambdas. It does not need a separate source file per task or method. Its bounded start wait fails explicitly if coordination cannot be established; that guard is not a measured latency claim or a production timeout recommendation.
+## Scope states, policies and cancellation
+
+In this Java 25 API, only the owner invokes fork, join and close. Forking after join or repeatedly joining violates lifecycle rules. A scope is not a reusable global executor. The default policy waits for success or reports failure while cancelling siblings. Joiner policies support different aggregate outcomes, so join can have a different result shape or cancellation trigger under a deliberately selected policy.
+
+Earlier preview examples using ShutdownOnFailure are not interchangeable with this API's open/Joiner design. Those release details belong here after the task ownership mechanism, not before the first thread concept.
+
+Cancellation uses cooperative interruption. A child ignoring it or blocked in a noninterruptible operation can delay close indefinitely. A configured timeout can select an outcome without guaranteeing that all child cleanup already finished; close still accounts for those child threads. The scope cannot safely force arbitrary code to stop.
+
+<span id="context-inheritance-and-resource-ownership"></span>
+## Context and external resources remain explicit
+
+The supported scope mechanism captures scoped bindings when opening and permits controlled child inheritance under its lifetime rules. Keep values immutable where practical: the binding does not freeze an object.
+
+Each child must release its own acquired permits/files/connections. The scope does not infer application resource ownership, and an interrupted acquire must not be followed by an extra release. It also creates no remote transaction: if one child already wrote externally, another's failure cannot establish that write never happened. Compensation/idempotency belong to the operation's domain contract.
+
+CompletableFuture.allOf represents aggregate result completion without automatically owning child threads or cancelling siblings. A structured scope adds owner/lifetime and outcome constraints. Both still require operation-specific resource and failure policies.
 
 <span id="common-mistakes"></span>
-## Recognize lifetime mistakes
-
-Do not read a subtask result as if fork itself proved success, share the scope between arbitrary owners, or swallow interruption in a loop. Do not mistake an exceptional joined outcome for an instantaneous guarantee that remote work has ceased. Keep preview flags and release information with the example instead of teaching it as a stable Java 8 API.
-
-A child should release its own acquired resources. The scope owns task lifetime, but cannot infer an application's connection/permit ownership. Double release after a failed acquire can violate a resource bound even though the task tree eventually terminates correctly.
-
 <span id="exercises-and-interview-questions"></span>
-## Explain and implement the task lifetime
+<span id="coding-exercise-and-complete-solution"></span>
+## Exercise and complete reference solution
 
-<details>
-<summary>How does this differ from CompletableFuture.allOf?</summary>
+Create two children where one fails only after its interruptible sibling enters. Preserve the failure cause and demonstrate sibling cleanup before returning. `StructuredFailureLesson` is the complete solution. Explain started versus cleaned, and why the catch is outside try-with-resources.
 
-allOf represents aggregate completion but does not by itself own child threads or request sibling cancellation. A structured scope adds owner/lifetime and outcome-policy constraints. Neither abstraction replaces operation-specific cleanup or a remote-service cancellation protocol.
-
-</details>
-
-<details>
-<summary>Why can close take longer than a timeout outcome?</summary>
-
-A child may still be responding to cancellation or may not be interruptible at its current point. Outcome selection and termination are distinct. The owner cannot continue beyond close until the scoped child threads have finished.
-
-</details>
-
-<details>
-<summary>Why is the start latch important in the failure solution?</summary>
-
-It establishes the state the lesson intends to demonstrate. A fast failure otherwise could cancel a child before it began waiting. Coordination creates a reproducible causal trace without claiming deterministic task scheduling in general.
-
-</details>
-
-<details>
-<summary>Can a child safely release a semaphore in every finally?</summary>
-
-Only after it successfully acquired the corresponding permit. An InterruptedException before successful acquire means there is no permit to release. Track the acquired region structurally or with explicit ownership state.
-
-</details>
-
-<details>
-<summary>What changes when a different Joiner policy is selected?</summary>
-
-The condition for a joined outcome, result shape and cancellation trigger can change. The scope still has an owner and a closing boundary. Read the selected policy's contract rather than assuming every join means all successful results are available.
-
-</details>
-
-### Coding exercise and complete solution
-
-Implement two children where one fails after an interruptible sibling starts. Preserve the cause, cancel related work and demonstrate cleanup before returning. StructuredFailureLesson above is the complete reference solution. Explain each latch and the placement of the catch outside try-with-resources.
-
-For an extension, give each child a semaphore-protected resource and test interruption before acquisition versus after acquisition. Keep the resource-count invariant separate from the task-termination observation. Replacing the first child's wait with code that ignores cancellation deliberately demonstrates why structured lifetime cannot provide forced safe termination.
+For a resource extension, place acquire before each release-owning finally and keep the permit invariant separate from the child-termination observation. Replacing the interruptible wait with cancellation-ignoring work changes the cleanup/close behavior; structure cannot provide unsafe forced termination.
 
 <span id="references"></span>
-## Primary sources for Java 25
+<span id="primary-sources-for-java-25"></span>
+## Primary sources for the selected preview
 
-- [StructuredTaskScope ownership, policies and subtask states](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/StructuredTaskScope.java)
+- [Java 25 StructuredTaskScope lifecycle and policies](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/StructuredTaskScope.html)
 - [Structured concurrency fifth preview](https://openjdk.org/jeps/505)
-- [ScopedValue structured inheritance](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ScopedValue.java)
+- [ScopedValue structured inheritance](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ScopedValue.html)

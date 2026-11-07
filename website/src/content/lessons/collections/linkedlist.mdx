@@ -3,9 +3,9 @@ title: "LinkedList"
 module: "collections"
 group: "Lists and arrays"
 summary: "Trace node links, iterator positions, endpoint repair and a complete linked-list implementation."
-order: 120
+order: 390
 version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/choosing-collections"]
+prerequisites: ["collections/arraylist", "collections/iteration-and-views"]
 advanced: true
 ---
 
@@ -83,7 +83,7 @@ Check validation before mutation, then endpoint branches, then reciprocal links,
 
 This complete single-file teaching implementation supplies endpoint append, indexed insertion, indexed read/removal, first removal and size. It permits null values and omits iterators, serialization and the full List interface. Node helpers are nested in the same file.
 
-`nodeAt` validates before traversing from the nearer endpoint. `add` treats index equal to size as append; otherwise it connects a new node before the located successor. `unlink` repairs previous.next and next.previous, or first/last when a neighbor is absent. A singleton has neither neighbor, so removing it sets both endpoints to null. The main method proves the list can then be reused. Every successful insertion/removal changes size once.
+`nodeAt` validates before traversing from the nearer endpoint. `add` treats index equal to size as append; otherwise it connects a new node before the located successor. `unlink` repairs previous.next and next.previous, or first/last when a neighbor is absent. A singleton has neither neighbor, so removing it sets both endpoints to null. The main method demonstrates that empty-list reuse case. Every successful insertion/removal changes size once.
 
 
 The iterator example above is a complete executable Java file. For a handwritten list, use one class with a nested static Node, first, last and size. Implement endpoint insertion/removal before indexed operations; the node-search helper should return the appropriate node without changing the structure.

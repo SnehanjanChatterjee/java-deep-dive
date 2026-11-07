@@ -30,4 +30,18 @@ public final class CoreFramedTextTest {
         assertThrows(NullPointerException.class, () -> CoreFramedText.extract(null));
         assertThrows(IllegalArgumentException.class, () -> CoreFramedText.extract(ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN)));
     }
+    @Test public void testEncodeAndFinish() throws CharacterCodingException {
+        final ByteBuffer frame = CoreFramedText.encode("\u20AC");
+        assertEquals(3, frame.getInt(0));
+        assertEquals(Arrays.asList("\u20AC"), CoreFramedText.finish(frame));
+        assertEquals(Arrays.asList(""), CoreFramedText.finish(CoreFramedText.encode("")));
+        assertTrue(CoreFramedText.finish(ByteBuffer.allocate(0)).isEmpty());
+        assertThrows(IllegalArgumentException.class, () -> CoreFramedText.finish(ByteBuffer.wrap(new byte[] {0})));
+        final ByteBuffer partial = ByteBuffer.allocate(5); partial.putInt(3).put((byte) 'x').flip();
+        assertThrows(IllegalArgumentException.class, () -> CoreFramedText.finish(partial));
+        assertThrows(NullPointerException.class, () -> CoreFramedText.encode(null));
+        assertThrows(CharacterCodingException.class, () -> CoreFramedText.encode("\uD800"));
+        final char[] large = new char[1025]; Arrays.fill(large, 'a');
+        assertThrows(IllegalArgumentException.class, () -> CoreFramedText.encode(new String(large)));
+    }
 }

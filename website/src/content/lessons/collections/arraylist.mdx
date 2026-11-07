@@ -3,9 +3,9 @@ title: "ArrayList"
 module: "collections"
 group: "Lists and arrays"
 summary: "Understand array storage, growth, shifting, views and a complete dynamic-array implementation."
-order: 110
+order: 380
 version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/choosing-collections"]
+prerequisites: ["collections/iteration-and-views"]
 advanced: true
 ---
 
@@ -68,22 +68,18 @@ Removing many items one at a time from the front shifts many suffixes and can ma
 
 ### Mutation exercise with an invariant
 
-Implement removeAllMatching on the teaching SimpleArrayList. Before the scan, remember the old size. For every read index, preserve the accepted prefix at write; after the scan clear [write, oldSize), then set size=write. A throwing predicate requires an explicit failure policy: a naive compaction can leave partial changes. A production implementation needs documented behavior and careful bookkeeping rather than silently claiming all-or-nothing mutation.
+Implement removeAllMatching on the teaching SimpleArrayList. Before the scan, remember the old size. For every read index, preserve the accepted prefix at write; after the scan clear [write, oldSize), then set size=write. A throwing predicate requires an explicit failure policy: a naive compaction can leave partial changes. The dynamic-array chapter supplies a complete two-phase acceptance-plan solution that leaves container membership unchanged when the rule throws; it trades extra storage for that explicit failure boundary.
 
 ### API overload review
 
 For List of Integer, primitive remove selects an index while remove(Object) selects value equality. For `toArray`, array component types participate in runtime checks and may reject incompatible values. Prefer an explicitly typed array construction idiom supported by the target JDK rather than unchecked casts from Object[].
 
 <span id="java-implementation"></span>
-## Implement a generic dynamic array
+## Connect the library to a dynamic array
 
-<JavaExample file="SimpleArrayList.java" />
+The implementation chapter builds SimpleArrayList method by method, with the add/get/set/remove behaviors illustrated here. It owns the complete source, geometric growth proof, index boundaries and compaction exercise. ArrayList additionally implements the full List API, including the iterators and views discussed above; the teaching class deliberately does not.
 
-This complete generic teaching implementation supports get, set, append, indexed insertion, removal and clear in one class. It uses Object[] internally and localizes the cast in get. Every typed write preserves the element-type invariant. It deliberately omits the full List contract, iterators and backed views.
-
-Read `add` in this order: validate insertion position, ensure room, shift the suffix, store the new value, increment size. Read `remove` in this order: validate/read the old value, shift the remaining suffix, decrement size, clear the now-unused reference and return the saved value. A rejected index must not change the logical sequence.
-
-Trace capacity 2 with values 10 and 30: inserting 20 at 1 first grows, then moves 30 to 2. Removing index 0 shifts 20 and 30 left. Explain the number of copied references separately from the logical size. The existing dynamic-array chapter develops the aggregate growth proof and boundary exercises.
+Trace capacity two containing 10 and 30. Inserting 20 at index one first ensures room, moves 30 to index two, stores 20 and increments size. Removing index zero then shifts two references left and clears the old final slot. The movement changes reference positions without cloning stored objects.
 
 <span id="common-mistakes"></span>
 ## ArrayList pitfalls and ownership

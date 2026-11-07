@@ -17,3 +17,9 @@ design-qa.md
 
 java-examples/benchmarks/target/
 java-examples/benchmarks/.maven-cache/
+java-examples/projects/**/.maven-cache/
+java-examples/projects/**/target/
+java-examples/projects/**/out/
+
+# Local IDE workspace files
+.idea/

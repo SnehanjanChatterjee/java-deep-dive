@@ -1,0 +1,50 @@
+---
+title: "Sorted arrays and binary-search boundaries"
+module: "language"
+group: "Arrays and strings"
+summary: "Trace sorted ranges, midpoint decisions and insertion positions for present and absent values."
+order: 110
+version: "Java 8+"
+prerequisites: ["language/arrays", "language/methods-and-recursion"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## State the sorted-input precondition
+
+A linear search examines components in order and works without sorting. Binary search discards half the remaining positions after each comparison, which is sound only when the range is sorted under the same ordering as the search. Arrays.binarySearch does not first verify or establish that precondition.
+
+<JavaExample file="ArraySearch.java" output={"1\n-4\n3"} />
+
+The array is nondecreasing. Its first 4 is at index 1. Searching for absent 5 with Arrays.binarySearch returns -4, encoding insertion position 3 as `-(position)-1`. Decode only a negative result with `-result-1`. A nonnegative result is a matching index; for duplicates it need not be the first match.
+
+## Maintain a half-open interval
+
+LowerBound returns the first index whose value is at least target, or length if none exists. It maintains possible positions in `[low, high]`, with array inspections confined to the half-open range `[low, high)`. Values before low are below target; values at or after high are at least target.
+
+For target 4 in `{2,4,4,7}`:
+
+| low | high | middle | Decision |
+| --- | --- | --- | --- |
+| 0 | 4 | 2 | 4 is not below target: high = 2 |
+| 0 | 2 | 1 | 4 is not below target: high = 1 |
+| 0 | 1 | 0 | 2 is below target: low = 1 |
+| 1 | 1 | — | Return 1 |
+
+`low + (high-low)/2` avoids overflowing low+high. Every branch shrinks the interval, establishing termination. Empty input returns zero without a read. The method rejects null and trusts the sortedness contract; checking sortedness on every call would add O(n) work. Its search uses O(log n) reads and O(1) auxiliary storage. Sorting's cost is separate.
+
+## Practice: test actual membership
+
+Does lowerBound alone prove that target is present?
+
+<details>
+<summary>Solution</summary>
+
+No. After `int index = lowerBound(values, target);`, membership requires `index < values.length && values[index] == target`. The short-circuit condition protects the possible length result. For target 5, lower bound is 3 but values[3] is 7, so membership is false. Scanning backward from an arbitrary matching binarySearch result can become linear with many duplicates; lower bound preserves logarithmic first-position search.
+
+</details>
+
+## Search references
+
+- [Arrays.binarySearch preconditions and result encoding](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Arrays.html)

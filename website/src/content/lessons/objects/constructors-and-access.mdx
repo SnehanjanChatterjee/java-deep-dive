@@ -1,0 +1,56 @@
+---
+title: "Constructors, this and encapsulation"
+module: "objects"
+group: "Construction and encapsulation"
+summary: "Initialize valid objects, use this and expose operations through deliberate access boundaries."
+order: 150
+version: "Java 8+"
+prerequisites: ["objects/classes-and-instances", "language/control-flow"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Construct a valid object rather than repairing it later
+
+A constructor initializes a newly created instance. Its name matches the class and it has **no return type**, including no void. A score card here must always have a non-null name and nonnegative points. Constructors establish that invariant, and every public mutation must preserve it.
+
+<JavaExample file="ConstructorLesson.java" output={"Ada:2\nLin:3\n2"} />
+
+The one-argument constructor delegates with `this(name, 0)`. The two-argument constructor performs the actual initialization. In `this.name = name`, the left side is the current object's field and the right side is the parameter. Parameters can shadow field names; this disambiguates them. Objects.requireNonNull rejects a missing name, and the negative-score check rejects invalid construction. Exception control flow is taught in the reliability module.
+
+## Chain constructors and protect state
+
+Once any constructor is declared, the compiler no longer supplies a default no-argument constructor. A caller must use an available declaration. Constructor chaining avoids having several initializers drift apart. These examples put this(...) first for a source form usable on Java 8 and later. Java 25 permits restricted constructor prologues; understand the ordinary initialization model before using that extension.
+
+Private fields keep callers from writing `points = -1`. Award checks the requested amount and computes an exact sum before assignment. If validation or overflow fails, the old points remain stored. Final name can be initialized during construction and cannot be reassigned afterward; the String it identifies is itself immutable.
+
+| Access | Intended visibility |
+| --- | --- |
+| private | Within the declaring top-level nest of related classes |
+| no modifier | Within the package |
+| protected | Package access plus defined subclass access |
+| public | Wherever the declaring type and module permit access |
+
+Protected access across packages has receiver restrictions, covered with inheritance. Public does not mean module encapsulation or reflection has disappeared. Start with the narrowest useful access and publish operations that preserve the class contract.
+
+## Distinguish a class variable from an instance variable
+
+Name and points belong to each card. Static created belongs to the class and records successful constructor completions. The source increments it only after validation. `ConstructorLesson.created()` reads shared class state without a receiver. This is a single-threaded illustration; incrementing a plain static int is not a concurrent counter design.
+
+## Practice: explain the missing default constructor
+
+Why does `new ConstructorLesson()` fail? Why not make points public so callers can set it afterward?
+
+<details>
+<summary>Answer</summary>
+
+Neither declared constructor accepts zero arguments, and declaring constructors prevents an implicit default from being generated. A public mutable points field would allow invalid negative values and bypass overflow policy. Provide a meaningful constructor or operation, not an interval during which every caller must remember to repair invalid state. A final field is useful only when its meaning is fixed for the object's lifetime; points intentionally changes through award.
+
+</details>
+
+## Construction references
+
+- [Dev.java: constructors](https://dev.java/learn/classes-objects/defining-constructors/)
+- [Dev.java: this, access and class members](https://dev.java/learn/language/oop/classes-objects/more-on-classes/)
+- [JLS: constructor declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8)

@@ -1,0 +1,123 @@
+---
+title: "Build a Java project and write your first tests"
+module: "workflow"
+group: "Build and test a small project"
+summary: "Organize source files, describe a dependency, run assertions and package a working program."
+order: 250
+version: "Java 8+ · Maven 3.9+"
+prerequisites: ["objects/classes-and-instances", "language/methods-and-recursion"]
+advanced: false
+---
+
+import {Code} from 'astro:components';
+import projectPom from '../../../../../java-examples/projects/first-tests/pom.xml?raw';
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Turn individual files into a repeatable project
+
+So far, a small program can be compiled with javac and launched with java. A growing program also has tests, dependencies and a packaging process. A build tool records those inputs and performs a repeatable sequence. An IDE can invoke that same build rather than maintaining an unrelated private definition of success.
+
+This project has one class with an addition method and one test class. The small calculation keeps attention on project structure and the testing workflow. It uses JUnit 4, which also runs the baseline downloadable exercises in this course. Later testing frameworks have related concepts but different APIs and runtime requirements.
+
+<a href={lessonUrl('examples/first-tests.zip')} download>Download the complete first-tests project</a>. Extract it and open a terminal in the directory containing pom.xml. You need a JDK and Maven on your command path; check `java -version`, `javac -version` and `mvn -version` before running the commands.
+
+## Read the directory structure
+
+```text
+first-tests/
+  pom.xml
+  settings.xml
+  .mvn/maven.config
+  src/main/java/study/math/Calculator.java
+  src/test/java/study/math/CalculatorTest.java
+```
+
+Production code lives under src/main/java. Tests live under src/test/java and can use the production classes. The package declaration `study.math` corresponds to the directory path below the source root. Maven places compiled output below target; source files do not need to share directories with generated class files.
+
+The bundled settings and Maven configuration select public Maven Central and a project-local dependency cache. They make the downloaded exercise self-contained with respect to repository configuration. They are not Java source files and are not separate files for individual methods.
+
+## Implement the behavior before testing it
+
+<JavaExample file="projects/first-tests/src/main/java/study/math/Calculator.java" output={"5"} />
+
+`add` receives two int values and returns their sum. `static` allows a caller to use `Calculator.add` without creating a Calculator. `main` is a separate entry point that prints one result. A test will call add directly; it does not need to parse printed text or run main.
+
+This method deliberately uses ordinary int addition, including its wrapping boundary behavior. A requirement to reject overflow would be a different contract, such as using Math.addExact. Write expectations for the contract the method actually promises.
+
+## Describe the project and its test dependency
+
+<Code code={projectPom} lang="xml" />
+
+The project coordinates are groupId, artifactId and version. Together they identify an artifact. The compiler properties select Java source/target compatibility for this simple project. The build plugins are pinned so that the example does not silently select different plugin releases on different runs.
+
+JUnit is a dependency with test scope: it is available to compile and execute tests, and is not required by Calculator's production code. A dependency declaration records the artifact to resolve; an import in Java only makes a source-level type name convenient. An import does not download a JAR.
+
+## Write assertions with explicit expected values
+
+<JavaExample file="projects/first-tests/src/test/java/study/math/CalculatorTest.java" />
+
+`@Test` marks a method for the runner. The runner creates the test fixture and invokes test methods; this class needs no main method. The static import lets the code write `assertEquals` instead of its declaring class name.
+
+In `assertEquals(5, Calculator.add(2, 3))`, the expected value comes first and the actual result second. A mismatch produces an assertion failure with both values. Each test method is independent: these tests do not rely on execution order or shared mutable state.
+
+The first test checks an ordinary successful call. The second includes zero and a negative operand. The third checks the specified int boundary. Choosing cases begins with the behavior and its boundaries; reproducing the implementation's expression in every expected value would provide weaker independent evidence.
+
+## Run one test, all tests and packaging
+
+```bash
+mvn test
+mvn -Dtest=CalculatorTest#testPositiveOperands test
+mvn package
+java -cp target/classes study.math.Calculator
+```
+
+The test phase compiles production code, compiles test code and runs the configured test runner. The supplied solution has three passing tests. Selecting one method shortens the feedback cycle while investigating a specific behavior; run the full relevant suite after a change.
+
+Maven itself runs inside a selected Java installation. If it reports that no compiler is provided, inspect the Java home printed by `mvn -version`: it must be a JDK, even when a separate javac command exists on PATH. A command-local `JAVA_HOME="/path/to/your/jdk" mvn test` can select that installed JDK for this process without changing other projects' configuration.
+
+Package runs the preceding phases and creates a JAR under target. The final command above launches the compiled class directly and prints 5. A library JAR is not automatically an executable `java -jar` application: that launch mode requires suitable manifest entry-point metadata.
+
+<Diagram client:visible definition={"flowchart TD\n S[Production source] --> C[compile: target/classes]\n C --> T[test-compile: target/test-classes]\n J[Test-scope JUnit dependency] --> T\n T --> R[test: execute assertions]\n R --> P[package: create JAR]\n P --> I[install: copy artifact to local repository]"} caption="Maven phases form a lifecycle. Naming a later phase runs its earlier lifecycle work; install here is a local repository operation." />
+
+## Read a failing assertion and fix the right problem
+
+Temporarily change the first test's expected value from 5 to 6, then run that one test. The relevant failure is:
+
+```text
+expected:<6> but was:<5>
+```
+
+Read the test name and the assertion's source line, then compare the expected and actual values with the requirement. In this deliberate exercise the implementation still adds correctly; the expectation was changed incorrectly. Restore the expectation to 5 and rerun. The downloaded solution already contains the correct expectation.
+
+A test failure and a test error need different investigation. A failed assertion means the test reached a comparison and disagreed. An unexpected exception may stop it before the intended assertion. Compilation failure happens earlier still: no test execution can establish behavior for code that did not compile.
+
+## Exercises and complete answers
+
+<details>
+<summary>Add a test for two negative operands.</summary>
+
+Add a method annotated with @Test, named testNegativeOperands, containing `assertEquals(-7, Calculator.add(-3, -4));`. It belongs in CalculatorTest beside the other operand cases. Run that method, then run all tests. No new production class or separate test file is needed for this scenario.
+
+</details>
+
+<details>
+<summary>Why should an arithmetic unit test call add rather than main?</summary>
+
+The behavior under test is the returned arithmetic result. Calling add isolates that contract from console output and process startup. Test an entry point separately when its arguments, output or exit behavior are themselves the requirement.
+
+</details>
+
+<details>
+<summary>What changes if overflow must be rejected?</summary>
+
+Change the production operation to Math.addExact and replace the wrapping-boundary expectation with an assertion that ArithmeticException is thrown. The requirement, implementation and test must change together. Exception contracts are developed in the next module; a test's current behavior is not permission to invent a different API silently.
+
+</details>
+
+## References for project and test fundamentals
+
+- [Maven getting started: project, POM and lifecycle](https://maven.apache.org/guides/getting-started/index.html)
+- [JUnit 4 test and assertion APIs](https://junit.org/junit4/javadoc/latest/)
+- [Maven Surefire test selection](https://maven.apache.org/surefire/maven-surefire-plugin/examples/single-test.html)

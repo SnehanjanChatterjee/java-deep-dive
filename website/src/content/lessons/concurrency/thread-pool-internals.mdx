@@ -1,10 +1,10 @@
 ---
-title: "ThreadPoolExecutor internals and overload control"
+title: "ThreadPoolExecutor admission and overload"
 module: "concurrency"
 group: "Tasks and executors"
-summary: "Trace worker admission, queue capacity, rejection and orderly termination."
-order: 440
-version: "Java 8+ · internals OpenJDK 25"
+summary: "Trace one accepted task at a time through workers, queue capacity and explicit refusal."
+order: 860
+version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation"]
 advanced: true
 ---
@@ -13,114 +13,75 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Workers, queues and overload
+<span id="mechanics-and-tradeoffs"></span>
+<span id="worker-and-shutdown-internals"></span>
+<span id="implement-deterministic-saturation"></span>
+<span id="pool-configuration-mistakes"></span>
+## A worker limit does not bound accepted work
 
-A thread pool reuses workers and defines how submitted tasks compete for finite execution resources. Its configuration is a scheduling and overload policy: core size, maximum size, queue type/capacity, keep-alive, thread factory and rejection handler work together. Naming a pool fixed does not mean its total accepted work is bounded.
+Suppose one request arrives while every worker is busy. A pool may queue it, create another worker if policy allows, or refuse it. A queue absorbs a burst; it cannot create sustained processing capacity. If arrivals continue faster than completion, an unbounded queue converts overload into growing latency and retained request state.
 
-Separate executing tasks from queued tasks and waiting callers. A queue can absorb a short burst but cannot create sustained capacity. If arrivals continually exceed service rate, an unbounded queue converts overload into growing latency and memory consumption. A small bounded queue exposes overload earlier; the application must then decide whether to reject, slow the producer or shed optional work.
+ThreadPoolExecutor combines core size, maximum size, queue capacity/type, keep-alive, thread factory and rejection policy. Learn their combined admission decision rather than treating a factory name such as fixed as a complete resource bound.
 
 <span id="worked-example"></span>
+<span id="java-implementation"></span>
+<span id="rejection-is-a-public-outcome"></span>
 ## Trace admission and rejection
 
-Use core=1, max=2 and queue capacity=1 with workers held at a latch. Task A starts the core worker. Task B enters the queue. Task C cannot queue and starts the second worker. Task D can neither queue nor create another worker and is rejected. After release, A/C complete and a worker drains B. Three tasks complete, while D was never accepted under AbortPolicy.
+Use core one, maximum two, and queue capacity one. Hold accepted workers at a latch so they cannot accidentally finish during submission.
 
-Increasing maximumPoolSize alone would not increase active workers if the queue continued accepting every task. Conversely, a direct-handoff SynchronousQueue normally cannot buffer a task, so submission often requires a worker handoff or growth. Queue choice is part of the worker-growth algorithm.
-
-<span id="mechanics-and-tradeoffs"></span>
-## Worker and shutdown internals
-
-### Admission algorithm
-
-For a running ThreadPoolExecutor, execute first tries to add a worker when worker count is below core size. Otherwise it offers the task to the work queue. After successful offer, it rechecks lifecycle state: shutdown may have raced with the offer, requiring removal/rejection. It also ensures queued work has a worker. If offer fails, it attempts worker creation up to the maximum; failure invokes the configured rejection handler.
-
-The lifecycle recheck matters. A simplified diagram that says enqueue always succeeds once offer returns true misses the shutdown race. The source combines run state and worker count in its control representation, allowing admission and termination transitions to coordinate rather than treating an arbitrary queue insertion as an irrevocable execution promise.
-
-### Workers and retrieval
-
-Workers repeatedly retrieve tasks through getTask and execute through runWorker. Queue take/poll behavior depends on whether that worker can time out. Keep-alive normally applies to excess workers, while allowCoreThreadTimeOut changes core-idle behavior when configured appropriately. An empty queue does not alone mean the executor is terminated; workers and lifecycle state still participate.
-
-ThreadFactory can give meaningful worker names and uncaught-error policy. A factory returning null can prevent needed worker creation. beforeExecute/afterExecute hooks must not accidentally break workers, and a Future-wrapped task’s captured failure is different from a Throwable escaping task.run. Observability should inspect the actual task representation rather than assuming afterExecute always receives the application’s exception directly.
-
-### Rejection is a public outcome
-
-| Handler | Saturated running pool | Important consequence |
+| Submitted task | Decision | State afterward |
 | --- | --- | --- |
-| AbortPolicy | Throws RejectedExecutionException | Explicit refusal the caller can handle |
-| CallerRunsPolicy | Executes in submitting thread | Can provide feedback but can block a UI/lock-owning producer |
-| DiscardPolicy | Drops silently | A submit-produced Future can remain incomplete |
-| DiscardOldestPolicy | Drops queued head and retries | Can violate ordering and is unsuitable for some queue strategies |
-
-CallerRunsPolicy discards rather than runs when the executor is shut down. A rejection handler returning normally is not proof that work ran. A production policy must account for both overload and shutdown, result handles, retries and failure reporting.
-
-### Termination and resource budgets
-
-RUNNING accepts tasks. SHUTDOWN stops acceptance and drains accepted queued work. STOP additionally requests interruption of workers and does not process ordinary queued work. Termination requires workers to exit; it is not a flag that instantly kills them. awaitTermination waits for this state and should use a meaningful deadline.
-
-Pool sizing cannot be reduced to one CPU-count formula. CPU work competes for processors; blocking work competes for both workers and downstream resources. Avoid creating a new pool for every request. Bound a scarce connection/service independently of executor choice, including when moving to virtual-thread-per-task execution.
-
-<Diagram client:visible definition={"flowchart TD\n S[Execute request] --> C{Below core count?}\n C -->|yes| W[Attempt worker creation]\n C -->|no| Q{Queue offer succeeds?}\n Q -->|yes| R[Recheck run state and worker availability]\n Q -->|no| M{Can grow toward maximum?}\n M -->|yes| W\n M -->|no| X[Invoke rejection policy]\n W --> E[Worker executes and later retrieves queued work]"} caption={"Trace worker admission, queue capacity, rejection and orderly termination."} />
-
-<span id="java-implementation"></span>
-## Implement deterministic saturation
+| A | Below core size: create worker | One active worker |
+| B | Core occupied: enqueue | One active, one queued |
+| C | Queue full: grow toward maximum | Two active, one queued |
+| D | Queue full and maximum reached | AbortPolicy rejects D |
 
 <JavaExample file="ExecutorSaturationLab.java" output={"rejected\ncompleted=3"} />
 
-The canonical source uses firstStarted and bothStarted latches to establish that workers occupy their execution slots before the rejection attempt. Without coordination, a fast completed task could free capacity and make the expected rejection timing-dependent. release holds the accepted worker tasks without sleeps.
+FirstStarted and bothStarted establish the intended occupancy milestones. Release holds tasks without guessed sleeps. After release, A/C finish and a worker drains B. Main shuts down and awaits termination before observing completed-task statistics. Finally opens release and requests cleanup on an exceptional path. The guard durations expose a broken demonstration; they are not workload recommendations.
 
-The code selects AbortPolicy so refusal is explicit. It releases work, calls shutdown and waits for termination before reading completed-task statistics. Finally releases blocked work and requests shutdownNow on exceptional paths. The bounded awaits are demonstration failure guards, not benchmark measurements or suggested production timeout values.
+<span id="admission-algorithm"></span>
+## Follow the admission algorithm
+
+<Diagram client:visible definition={"flowchart TD\n S[Execute request] --> C{Below core workers?}\n C -->|yes| W[Attempt worker creation]\n C -->|no| Q{Queue offer succeeds?}\n Q -->|yes| R[Recheck lifecycle and worker availability]\n Q -->|no| M{Can grow toward maximum?}\n M -->|yes| W\n M -->|no| X[Invoke rejection policy]\n W --> E[Execute, then retrieve queued work]"} caption="Queuing normally precedes growth beyond the core size. Lifecycle races require a recheck after successful queue insertion." />
+
+An unbounded accepting queue usually keeps queuing beyond core size, so increasing maximumPoolSize alone may not add active workers. A SynchronousQueue stores no buffered tasks, making handoff/growth decisions different. Successful offer is followed by lifecycle rechecks because shutdown can race with admission; queued work also needs an available worker.
+
+## Rejection is externally visible behavior
+
+| Policy | Saturated running pool | Consequence to design |
+| --- | --- | --- |
+| AbortPolicy | Throws RejectedExecutionException | Explicit refusal |
+| CallerRunsPolicy | Executes on submitting thread | Caller latency; an unsuitable caller may block |
+| DiscardPolicy | Drops silently | Submit-produced Future can remain incomplete |
+| DiscardOldestPolicy | Drops queued head and retries | Changed ordering/loss; poor fit for some queues |
+
+CallerRunsPolicy discards during shutdown. A rejection handler returning normally does not prove execution occurred. Retries, result handles, shutdown and overload all need a policy. Do not describe a pool as backpressure without stating who waits or refuses work.
+
+<span id="workers-queues-and-overload"></span>
+<span id="workers-and-retrieval"></span>
+<span id="termination-and-resource-budgets"></span>
+## Workers, retrieval and termination
+
+On the OpenJDK source baseline, runWorker executes tasks and getTask retrieves more, using take or timed poll according to idle-worker policy. Keep-alive normally concerns excess workers; allowCoreThreadTimeOut changes core-idle behavior. An empty queue alone does not establish termination.
+
+The lifecycle distinguishes accepting work, draining accepted work after shutdown, interruption/stopping, and completed worker termination. AwaitTermination waits for that actual transition. The internal control representation coordinates run state and worker count rather than treating a flag write as instant thread death.
+
+A ThreadFactory can name workers and configure uncaught-error policy. A factory returning null can prevent worker creation. beforeExecute/afterExecute hooks must not break workers; a Future-wrapped task can capture a failure without passing it directly as afterExecute's Throwable. Observe the actual task representation.
 
 <span id="common-mistakes"></span>
-## Pool configuration mistakes
-
-Do not set max size high while retaining an unbounded queue and expect automatic scaling to that maximum. Do not silently discard important submitted work. Do not retry forever in a rejection handler, block on a child task queued to the same single worker, or call a thread pool itself backpressure without specifying its queue and rejection behavior.
-
 <span id="exercises-and-interview-questions"></span>
-## Executor interview questions
+<span id="coding-exercise-and-solution"></span>
+## Exercise and complete solution
 
-<details>
-<summary>What determines whether task three queues or creates a worker?</summary>
+Reproduce A/B/C/D admission with explicit worker milestones and AbortPolicy. `ExecutorSaturationLab` is the complete solution. Explain the effect of substituting an unbounded queue: B, C and D can keep queuing instead of forcing growth/refusal. Explain separately how shutdown racing with queue insertion affects acceptance.
 
-After core workers exist, the queue is tried before non-core worker growth. An accepting queue postpones growth. A full/direct-handoff queue makes the maximum bound relevant.
-
-</details>
-
-<details>
-<summary>Can core threads be idle while a new task creates a worker?</summary>
-
-When worker count is below the configured core count, ordinary admission can create a worker even if an existing worker is idle. Core size is part of admission policy, not simply an estimate of currently busy tasks.
-
-</details>
-
-<details>
-<summary>Why can silent discard leave a Future pending?</summary>
-
-submit can create a FutureTask before execute hands it to the rejection handler. If the handler drops it without running or cancelling it, no outcome may ever be installed.
-
-</details>
-
-<details>
-<summary>Why does shutdownNow not guarantee immediate termination?</summary>
-
-Interruption is cooperative and some work can ignore it or block without responding. The owner needs cleanup and termination observation, not just a method call.
-
-</details>
-
-<details>
-<summary>Why is queue latency an overload signal?</summary>
-
-A growing backlog means accepted work waits longer before execution. A stable worker count hides neither the queue’s memory footprint nor the caller’s end-to-end deadline.
-
-</details>
-
-### Coding exercise and solution
-
-Demonstrate deterministic rejection for core=1, max=2, queue=1 without sleeps. The full ExecutorSaturationLab is the reference solution: establish occupied workers with latches, submit the queued and growing-worker tasks, assert rejection of the next request, then release and await termination. Explain why each accepted task occupies its particular resource.
-
-As an extension, predict core=1, max=3, queue=1 while accepted tasks remain blocked: four can be accepted and the fifth rejected. If the queue becomes unbounded, ordinary submissions queue rather than cause non-core growth. Adapt all latch counts and task submissions, not just the constructor number.
+CPU work competes for processors; blocking work also competes for downstream resources. No universal CPU-count formula replaces representative workload analysis. Do not create a new pool per request or let a single worker wait for a child queued behind itself.
 
 <span id="references"></span>
+<span id="executor-interview-questions"></span>
 ## Primary executor contracts
 
-- [ThreadPoolExecutor execute, getTask and runWorker](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java)
-- [Executor factory configurations](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Executors.java)
-- [SynchronousQueue direct handoff](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/SynchronousQueue.java)
+- [ThreadPoolExecutor configuration and hooks](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html)
+- [OpenJDK admission and worker paths](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java)

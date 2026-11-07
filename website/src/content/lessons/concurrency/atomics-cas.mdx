@@ -1,11 +1,11 @@
 ---
 title: "Atomics, compare-and-set and ABA"
 module: "concurrency"
-group: "Threads and correctness"
-summary: "Build a linearizable reservation transition, analyze CAS retries and ABA, and choose between atomic counters and striped statistics."
-order: 360
-version: "Java 8+ · source analysis OpenJDK 25"
-prerequisites: ["concurrency/memory-model"]
+group: "Advanced synchronization"
+summary: "Build one conditional state transition, then analyze retries, ABA and progress boundaries."
+order: 980
+version: "Java 8+; additional access modes vary by release"
+prerequisites: ["concurrency/volatile-publication", "concurrency/cyclic-barrier", "concurrency/semaphore"]
 advanced: true
 ---
 
@@ -13,14 +13,21 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Define the atomic transition
+<span id="mechanics-and-tradeoffs"></span>
+<span id="complete-cas-budget-and-aba-demonstration"></span>
+<span id="atomiclong-longadder-and-false-sharing"></span>
+<span id="interview-exercises-with-worked-reasoning"></span>
+## A budget needs an indivisible decision and update
 
-An atomic variable is useful when a state transition fits one supported atomic operation. For a budget, the invariant is remaining≥0 and a successful reservation subtracts its units exactly once. A separate get followed by set is not an atomic reservation: two callers can read the same remaining amount and both report success.
+A budget has three units remaining. Two callers each request two. A separate read/check followed by set can let both report success from the same old three. The invariant requires an indivisible validate-and-decrement, not just a visible read or individually atomic assignment.
 
-Compare-and-set checks that the current value equals an expected value and, if so, installs an update indivisibly. It returns whether the update succeeded. A CAS loop computes a candidate from an observation and retries after interference. A successful CAS is the operation's linearization point: one instant at which the reservation can be treated as taking effect relative to other reservations.
+compareAndSet checks an expected value and installs a replacement as one atomic transition. If another caller changed the value, it returns false. The caller must reread and recompute; its earlier observation no longer authorizes a reservation.
 
 <span id="worked-example"></span>
-## Lost update versus a successful retry
+<span id="java-implementation"></span>
+<span id="define-the-atomic-transition"></span>
+<span id="lost-update-versus-a-successful-retry"></span>
+## Trace a successful transition and a rejected retry
 
 | Step | Caller A | Caller B | Remaining |
 | --- | --- | --- | --- |
@@ -28,77 +35,64 @@ Compare-and-set checks that the current value equals an expected value and, if s
 | 2 | | Read 3, request 2 | 3 |
 | 3 | CAS 3→1 succeeds | | 1 |
 | 4 | | CAS 3→1 fails | 1 |
-| 5 | | Reread 1; reject request 2 | 1 |
-
-The failure is useful information: the old observation no longer authorizes the candidate. A retry must recompute from fresh state, not keep writing an old candidate until it succeeds. There is no reason to reserve a negative value temporarily and compensate later if the transition can validate before CAS.
-
-<Diagram client:visible definition={"flowchart TD\n A[Read remaining] --> B{Requested units fit?}\n B -->|no| R[Return false without mutation]\n B -->|yes| C[Compute remaining minus units]\n C --> D{CAS succeeds?}\n D -->|yes| S[Return true]\n D -->|no| A"} caption="The reservation loop validates every newly observed state and changes the budget only at successful CAS." />
-
-<span id="java-implementation"></span>
-## Complete CAS budget and ABA demonstration
+| 5 | | Reread 1 and reject request | 1 |
 
 <JavaExample file="AtomicCounterLab.java" output={"true\nfalse\n1\nfalse"} />
 
-Budget's constructor rejects negative capacity. tryReserve rejects zero/negative requests before touching shared state. It reads remaining, refuses an over-budget request, computes a nonnegative candidate and attempts CAS. Since units≤previous, subtraction cannot underflow under the established nonnegative invariant. remaining exposes an atomic observation, not a reservation promise for a later call.
+Budget validates nonnegative capacity and positive requests. tryReserve reads current remaining, rejects a request that does not fit, then attempts a nonnegative candidate. Since units do not exceed the observed nonnegative amount, subtraction cannot underflow. A successful CAS is the reservation's linearization point: its single taking-effect position relative to other reservations.
 
-The retry body has no external side effects. Logging a charge, sending an email or decrementing another ordinary counter inside that calculation could execute repeatedly on failed CAS attempts. Update functions accepted by atomic APIs can also be retried, so the same purity requirement matters beyond handwritten loops.
+<Diagram client:visible definition={"flowchart TD\n R[Read remaining] --> F{Request fits?}\n F -->|no| N[Return false]\n F -->|yes| C[Calculate remaining minus units]\n C --> S{CAS succeeds?}\n S -->|yes| Y[Return true]\n S -->|no| R"} caption="Every retry uses a fresh observation and revalidates the request. An unsuccessful CAS does not reserve anything." />
 
-<span id="mechanics-and-tradeoffs"></span>
-## ABA is history hidden by value equality
+## Keep retries free of external side effects
 
-The second example observes reference A with stamp 0, then changes A→B→A with stamps 1 and 2. A plain expected-reference comparison sees A again and cannot detect the intervening changes. AtomicStampedReference compares the reference identity and stamp together; the stale stamp 0 causes the final CAS to return false.
+The calculation may run several times. Sending an email, charging an external account or decrementing another ordinary counter inside it could repeat despite one successful reservation. Atomic update functions have the same retry concern. A side effect after successful CAS still needs its own delivery/failure policy; an in-memory atomic update is not a distributed transaction.
 
-Every participant must follow the stamp protocol. Setting a reference without advancing an associated stamp can defeat it. Stamps are finite and can wrap; they are not an unbounded proof of all history or cryptographic identifiers. Garbage collection removes some raw-pointer reclamation hazards, but a logical A→B→A transition can still matter in an object-based algorithm.
+For relationships spanning fields, CAS one immutable combined state or use a common lock. Independent CAS operations on two balances do not make a transfer indivisible.
+
+<span id="aba-is-history-hidden-by-value-equality"></span>
+## ABA is history hidden by equality
+
+The source also observes reference A with stamp zero, changes A→B→A with stamps one/two, then attempts a stale update. Reference identity is A again, but the old stamp fails. AtomicStampedReference compares both together.
+
+Every participant must follow the stamp policy; omitting advancement can defeat it. A finite stamp can wrap and is not unlimited history. Garbage collection removes some raw-pointer reclamation hazards while logical A→B→A histories can still matter in object algorithms.
+
+## Revisit lost updates with familiar coordination
+
+<JavaExample file="SafePublicationLab.java" output={"42\nlost update=1"} />
+
+The first half publishes an immutable snapshot through a volatile reference. The second deliberately separates read/write and uses a CyclicBarrier so both workers read zero before either stores one. It guarantees this chosen lost-update schedule; an uncontrolled count++ merely permits it. Joining owns final observation. The polling publication part is a small finite-writer experiment, not an application waiting API or a universal termination bound.
+
+<JavaExample file="CounterComparisonLab.java" output={"2000\n2000"} />
+
+The locked and AtomicInteger counters each receive two thousand requested increments. Both updates are protected; joins ensure completed observation. Identical totals establish neither equal intermediate snapshots across the two counters nor a performance ranking. An ordinary single-writer field after join is already sufficient for that narrower access pattern; the earlier `MemoryVisibility` example below illustrates that an atomic type and completion still address different responsibilities.
+
+<JavaExample file="MemoryVisibility.java" output={"1"} />
+
+<span id="memory-effects-progress-and-representation"></span>
+## Memory effects, progress and counter choice
+
+Familiar AtomicInteger get/set/CAS operations have their documented ordering effects. Additional plain/opaque/acquire/release methods have weaker contracts; do not substitute them into a stronger proof mechanically. Exact API availability and implementation should be labeled when studying those modes.
+
+Lock-free means algorithm-wide progress, not a guarantee that each caller completes within a bounded number of steps. Wait-free is stronger. Using an atomic variable does not make an entire algorithm lock-free if it blocks elsewhere.
+
+AtomicLong can return the exact value assigned by one increment, useful for sequences with an overflow policy. LongAdder spreads contention over cells; concurrent sum is not one linearizable snapshot. It suits statistics rather than hard resource limits or unique IDs. False sharing describes independent hot writes sharing coherence granularity; investigate a real profile/benchmark before padding or weakening an exact invariant.
 
 <span id="common-mistakes"></span>
-## Memory effects, progress and representation
-
-Atomic APIs have specified access modes. Familiar AtomicInteger get/set and compareAndSet provide their documented volatile-like ordering; modern APIs additionally expose acquire/release/plain/opaque variants with weaker contracts. Do not apply a proof written for strong ordering after mechanically substituting a weaker operation. Java 8 teaching examples here intentionally use the familiar strong operations.
-
-Lock-free is a progress property of an entire algorithm, not a claim that no retry can starve. A successful contender can cause others to retry repeatedly. An algorithm may be lock-free while one particular caller has unbounded completion delay. Wait-free is stronger and requires a bounded per-operation progress argument. Merely using AtomicInteger does not prove the whole application lock-free if it calls blocking code elsewhere.
-
-For relationships spanning several fields, store one immutable combined state in an AtomicReference and CAS the complete state, or use a common lock. CAS on one balance and another CAS on a second does not form an atomic transfer; readers can observe a partial result.
-
-## AtomicLong, LongAdder and false sharing
-
-AtomicLong can return the exact value assigned by an increment, which supports sequence-style uses until overflow policy becomes relevant. LongAdder distributes contention across cells and sums them for observation. Its concurrent sum is not a single linearizable snapshot of all updates. Use it for statistics, not a hard concurrent admission limit or unique sequence allocation.
-
-False sharing occurs when independent frequently written state shares coherence granularity and causes interference. A high-level race fix can be correct yet have contention/locality costs. Diagnose with an appropriate benchmark/profile before adding padding or replacing an exact counter with an approximate observation contract.
-
 <span id="exercises-and-interview-questions"></span>
-## Interview exercises with worked reasoning
-<details>
-<summary>Why is get then set not equivalent to compareAndSet?</summary>
+## Exercise and complete reference solution
 
-Another writer can change state between the calls. CAS makes the expected-value check and update one atomic transition; an unsuccessful check must not report reservation success.
+Implement the nonnegative budget and reject invalid/oversized requests without mutation. `AtomicCounterLab` is the complete solution. Under contention, successful one-unit reservations plus remaining must equal initial capacity after completion. Do not assert how many retries one thread happened to perform.
 
-</details>
+## Combine an atomic counter with completion coordination
 
-<details>
-<summary>Where should a successful-reservation side effect occur?</summary>
+<JavaExample file="LatchCoordination.java" output={"2"} />
 
-After successful CAS, under an explicit failure/transaction policy. CAS protects the in-memory transition, not atomic delivery of an external side effect. If external delivery can fail, define recovery rather than hiding that second consistency problem.
-
-</details>
-
-<details>
-<summary>Is LongAdder a drop-in stock counter?</summary>
-
-No. Its concurrent sum is a statistics-oriented observation, not a hard limit operation. The budget requires an indivisible validate-and-decrement, which the CAS loop supplies.
-
-</details>
-
-<details>
-<summary>How would you test contention meaningfully?</summary>
-
-Start several callers against a fixed budget, count successful one-unit reservations, wait for all callers and assert successes plus remaining equals capacity and remaining never becomes negative. Also test invalid units and oversized requests. Do not assert how many retries any individual thread happened to perform.
-
-</details>
+Each worker atomically increments one shared counter and decrements a completion latch in finally. The atomic operation protects the update; the latch establishes that both task bodies ended before the owner reads. The latch does not itself combine a separate get and set into one increment, and it does not collect worker failure causes. Retain task result handles when success/failure matters as well as completion.
 
 <span id="references"></span>
 ## Primary references
 
-- [AtomicInteger access and CAS methods](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/AtomicInteger.java)
-- [AtomicStampedReference reference/stamp pairing](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/AtomicStampedReference.java)
-- [LongAdder observation contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/LongAdder.java)
-- [jcstress outcome experiments](https://github.com/openjdk/jcstress)
+- [AtomicInteger operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/AtomicInteger.html)
+- [AtomicStampedReference](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/AtomicStampedReference.html)
+- [LongAdder](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/LongAdder.html)
+- [OpenJDK jcstress outcome experiments](https://github.com/openjdk/jcstress)

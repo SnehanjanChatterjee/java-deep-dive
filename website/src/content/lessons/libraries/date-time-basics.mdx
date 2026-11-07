@@ -1,0 +1,69 @@
+---
+title: "Create, parse and calculate dates and times"
+module: "libraries"
+group: "Date and time fundamentals"
+summary: "Choose a calendar value or a timeline value"
+order: 630
+version: "Java 8+"
+prerequisites: ["objects/equality-and-immutability", "reliability/exceptions-and-resources"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Choose a calendar value or a timeline value
+
+A birthday is a date, not a timestamp at midnight UTC. An event observed at a global instant needs timeline meaning. java.time supplies immutable types for these different questions. Selecting the meaning first avoids silently supplying missing zone information from the host machine.
+
+| Type | Represents | Typical example |
+| --- | --- | --- |
+| LocalDate | Calendar year, month, day | Birthday or billing date |
+| LocalTime | Wall-clock time without date/zone | Shop opening time |
+| LocalDateTime | Date and wall-clock label without offset | A proposed local appointment |
+| Instant | Point on the UTC timeline | Recorded event timestamp |
+| Duration | Seconds/nanoseconds amount | Elapsed interval |
+| Period | Years/months/days amount | Calendar recurrence |
+
+OffsetDateTime and ZonedDateTime add offset/region information; the next chapter explains why those are not interchangeable.
+
+## Create and change immutable values
+
+<JavaExample file="DateTimeBasics.java" output={"2024-02-29\n2024-02-28\n2024-02-29\n2024-02-28\n2024-02-28T13:30:00Z"} />
+
+parseDate creates 2024-02-28. plusDays(1) returns leap day but leaves original unchanged, demonstrated by the second output. LocalDate.of(2024,1,31).plusMonths(1) resolves to the valid last day of February. A month is a calendar unit; it does not mean a fixed 30-day elapsed interval.
+
+Use isBefore/isAfter/isEqual or compareTo on compatible temporal types to compare values. Comparing display strings from different localized formats is not a temporal comparison. LocalDateTime is not enough to order global events until its offset/zone ambiguity has been resolved.
+
+## Parse fields under an explicit strictness policy
+
+The formatter pattern uuuu-MM-dd means proleptic year, numeric month and day. Locale.ROOT prevents accidental locale dependence in this machine format. ResolverStyle.STRICT requires parsed fields to form a valid date: 2024-02-29 succeeds, 2023-02-29 and 2024-02-30 fail with DateTimeParseException.
+
+Year-of-era y and week-based year Y have different meanings from u. A pattern is an API grammar, not a loose natural-language description. A readable-looking date string can still be invalid, and a successfully parsed local date-time can still lack the offset needed to identify an instant.
+
+DateTimeFormatter is immutable/shareable. Legacy SimpleDateFormat is mutable and needs different ownership/coordination. format produces presentation text; parse reconstructs temporal fields. Neither supplies absent domain meaning automatically.
+
+## Calculate elapsed timeline amounts
+
+The final example starts at 2024-02-28T12:00:00Z and adds a Duration of 90 minutes, producing 13:30Z. Z denotes UTC. Instant parsing includes timeline information; LocalDateTime parsing by itself does not.
+
+Period applies calendar years/months/days. Duration applies seconds/nanoseconds. When applied to a regional zoned value across a transition, one day and 24 hours can lead to different wall-clock results. Ordinary arithmetic is the foundation; the next chapter traces those transitions explicitly.
+
+## Current time is an input
+
+Calling now() without arguments uses environmental clock/zone policy. Code with a business time boundary should accept Clock or another explicit time source. Clock.fixed supplies reproducible instants for tests. A region still determines which local date contains that instant; there can be different dates at the same instant in two zones.
+
+Do not sleep until a calendar boundary to test it. The zone-boundary chapter completes a Clock-injected expiry policy and exact before/equal/after tests.
+
+## Completed parsing exercise
+
+<JavaExample file="DateTimeBasicsTest.java" />
+
+The parser accepts a valid leap date, rejects impossible dates/months and rejects a null input. To format a different display style, supply a separate display formatter rather than loosening the machine-input contract. For a user-facing month name, choose the user's intended locale.
+
+## References
+
+- [Date/time learning sequence](https://dev.java/learn/date-time/)
+- [LocalDate creation and arithmetic](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/LocalDate.html)
+- [Parsing and formatting](https://dev.java/learn/date-time/parsing-formatting/index.html)
+- [Strict date resolution](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/time/format/ResolverStyle.html)

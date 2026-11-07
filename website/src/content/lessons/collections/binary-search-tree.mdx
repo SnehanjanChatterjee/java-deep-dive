@@ -1,0 +1,65 @@
+---
+title: "Implement an unbalanced binary search tree"
+module: "collections"
+group: "Maps and search trees"
+summary: "Locate a key by discarding a subtree"
+order: 430
+version: "Java 8+"
+prerequisites: ["collections/ordering", "collections/hashmap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Locate a key by discarding a subtree
+
+A hash table uses a hash to narrow candidates. A binary search tree uses order: every key in a node's left subtree is smaller, and every key in its right subtree is larger. Compare a query with the current node; equality finds the mapping, while a negative or positive result chooses one subtree.
+
+For keys inserted as 20,10,30,25,40, searching for 25 compares with 20, then 30, then 25. Searching for 27 follows the same first two edges, goes right from 25 and reaches an empty child. No later scan is needed: the ordering invariant excludes every discarded subtree.
+
+<Diagram client:visible definition={"flowchart TD\n A[20] --> B[10]\n A --> C[30]\n C --> D[25]\n C --> E[40]\n Q[Query 25: right from 20, left from 30] -.-> D"} caption="Each decision discards a whole key range. This diagram shows search ordering, not a balance guarantee." />
+
+## Complete ordered-map implementation
+
+<JavaExample file="SimpleBinarySearchTree.java" output={"v25\nv20\n[10, 25, 30, 40]\nchain height=4"} />
+
+The generic bound says K can compare itself with K or a suitable supertype. This teaching map uses natural order, rejects null keys and permits null values. containsKey distinguishes absence from a stored null. Comparison zero replaces an existing value without growing size. It supplies no balancing, views, iterators, serialization or synchronization.
+
+## Read search and insertion before deletion
+
+find compares the same query key with the current node's key. It ends at a match or null. put follows that path until a missing child can receive one new node. Root insertion and ordinary child insertion increment size once; replacement returns the old value without allocating another node. Every operation uses the same stable comparison relation.
+
+keysInOrder recursively visits left, current key, then right. This produces sorted keys because every left key precedes the current key and every right key follows it. The returned ArrayList is a new container; clearing it does not clear the tree. It still shares key objects, so stable key state remains required.
+
+## Delete a leaf, one-child node and two-child node
+
+| Removed node | Replacement at its parent link | Why ordering survives |
+| --- | --- | --- |
+| Leaf | null | No surviving subtree must be attached |
+| Only left child | Its left child | All retained keys already fit the old node's range |
+| Only right child | Its right child | The same range argument applies |
+| Two children | Successor key/value, then delete the old successor position | The least right-subtree key is the next in-order key |
+
+To delete 20, find the minimum of its right subtree: 25. Copy 25's key/value into the root node, then remove the original successor-position node beneath 30. The mapping 20 disappears; 25 survives once. If that successor has a right child, the one-child case reconnects it. A minimum node cannot have a left child.
+
+remove saves the original result before rewriting keys. Its call to find establishes that the recursive delete path exists. The helper returns the new subtree root on every branch; callers must assign it back to their left/right field, and the public method assigns it back to root. Size decreases only in the public method, so moving the successor is not a second logical removal.
+
+## Height determines the cost
+
+Let h be height measured in nodes. Search/insertion/removal take O(h) comparisons; the extra search before deletion is still O(h). Traversal takes O(n) visits and O(h) recursive stack space. Ascending insertion 10,20,30,40 creates a chain of height four. In general h can be n, so core operations can be O(n), and sufficiently deep recursive operations can exhaust the stack.
+
+A sorted output does not establish balance: the chain traverses correctly too. TreeMap adds red-black invariants and repair to bound height; its chapter develops that additional obligation.
+
+## Worked deletion exercise and tests
+
+Start with 20,10,30,5,15,25,40,27. Remove leaf 5; remove 25, reconnecting its right child 27; remove two-child root 20 using successor 27. The result is [10,15,27,30,40], size five. Removing a missing key leaves it unchanged. Remove a singleton and insert again to check root reuse.
+
+<JavaExample file="SimpleBinarySearchTreeTest.java" />
+
+The tests cover replacement, null values/keys, both one-child directions, detached traversal results and degenerate height. They protect the search-tree subset; they do not prove red-black behavior that this class does not implement.
+
+## References
+
+- [TreeMap ordering and balanced-tree contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/TreeMap.html)
+- [OpenJDK search, successor and deletion mechanics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/TreeMap.java)

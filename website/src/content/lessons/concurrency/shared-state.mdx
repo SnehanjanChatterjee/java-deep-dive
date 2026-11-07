@@ -1,0 +1,67 @@
+---
+title: "Shared state, lost updates and synchronized repair"
+module: "concurrency"
+group: "Shared state and synchronization"
+summary: "Decompose an increment, follow an overwriting schedule, and protect the whole operation."
+order: 720
+version: "Java 8+"
+prerequisites: ["concurrency/first-thread"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import InterleavingLab from '../../../components/InterleavingLab.astro';
+
+## Two increments can produce one update
+
+Two workers receive the same counter object. Each intends to increment it once. A source expression such as `count++` looks like one action, but it reads a value, computes a new value, then stores that value. The complete read–modify–write must be protected if the workers can overlap.
+
+For initial count zero, choose this schedule:
+
+| Step | Worker A | Worker B | Shared count |
+| --- | --- | --- | --- |
+| 1 | Read zero into A's local | | 0 |
+| 2 | | Read zero into B's local | 0 |
+| 3 | Compute and store one | | 1 |
+| 4 | | Compute from its earlier zero and store one | 1 |
+
+B's write overwrites A's update. Neither worker added to the other worker's local value. This is an atomicity problem, even if each individual read and write is visible. The intended result depends on an uncontrolled relative timing: a race condition.
+
+<InterleavingLab />
+
+## Protect the complete operation with one monitor
+
+A synchronized instance method acquires its receiver object's monitor before entering its body. Only one thread can own that monitor at a time. A competitor waits to acquire it. Normal return and exceptional exit both release the monitor.
+
+<JavaExample file="SharedStateLesson.java" output={"chosen interleaving=1\nsynchronized=2000"} />
+
+`chosenLostUpdate` executes the table's chosen schedule on one thread. It is an explicit model, not a claim that a real racy program always prints one. Using a model lets us examine the bug without waiting for a random schedule to expose it.
+
+`countSafely` creates one Counter and passes the same task to two real threads. Both calls to `increment` lock that same Counter. While A performs read/add/write, B cannot enter the protected method. After A releases, B can read the updated value. Each successful call contributes exactly one increment.
+
+The getter uses the same monitor protocol. All participating accesses must agree on the lock identity: synchronizing on two unrelated objects would allow simultaneous mutation of the shared counter. A static synchronized method instead uses its declaring Class object's monitor; it does not acquire every instance's monitor.
+
+## Completion and exclusion solve separate problems
+
+The owner starts both workers before joining them. The monitor prevents lost updates; the joins ensure the final read occurs after all requested work finished. A correct counter read performed too early can still see an intermediate count. The next chapter derives the corresponding visibility guarantees rather than relying on how fast a worker usually runs.
+
+The input check rejects negative work and rejects an expected result that cannot fit in int before starting workers. Zero work is valid and gives zero. The loop index belongs to each invocation; only the counter is shared. The finite example propagates an interrupted owner join, while its workers finish their bounded loops independently. It does not claim that join interruption stops them.
+
+Two workers with n increments each perform O(n) total arithmetic work and use O(1) counter state, apart from execution resources. Mutual exclusion introduces contention. This example proves a result contract; it is not a speed comparison.
+
+## Avoid sharing when the problem permits it
+
+Another design gives each worker its own counter and combines completed results after join. Read-only immutable input can also be shared without coordinating later mutation. Choose state ownership before choosing a lock. A lock becomes necessary only for the shared invariant the program actually requires.
+
+## Exercise and complete reference solution
+
+Implement two workers performing the requested number of increments and require exactly twice that number after both finish. Include empty work and reject a total exceeding int range. `SharedStateLesson.countSafely` is the complete solution.
+
+Explain why replacing only the getter with a synchronized method would fail. The increment still exposes a read/write interference interval: locking the final observation cannot reconstruct an increment already overwritten. Conversely, fixing increments without waiting for completion permits a correctly read intermediate total.
+
+## Primary references
+
+- [A decomposed thread-interference example](https://docs.oracle.com/javase/tutorial/essential/concurrency/interfere.html)
+- [Intrinsic locks and synchronization](https://docs.oracle.com/javase/tutorial/essential/concurrency/locksync.html)
+- [JLS monitor synchronization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.1)

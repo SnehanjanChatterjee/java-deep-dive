@@ -1,0 +1,84 @@
+---
+title: "Decisions, loops and execution traces"
+module: "language"
+group: "Decisions and loops"
+summary: "Choose branches and follow initialization, conditions, updates and loop termination."
+order: 40
+version: "Java 8+"
+prerequisites: ["language/variables-and-expressions"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+
+## Choose which statements run
+
+An if statement executes its body only when its boolean condition is true. An else supplies the other path. An else-if chain stops at its first true condition: a score of 76 satisfies `score >= 50`, so the example prints pass and skips retry. Braces make the controlled block explicit.
+
+<JavaExample file="BranchAndLoopLesson.java" output={"pass\n10\n3\n2\n1\n1"} />
+
+All statements are inside main, the entry method introduced in the first program. The sum loop visits 1, 2, 3 and 4, then prints 10. The next methods chapter packages repeated behavior into named operations; no additional method declaration is needed here.
+
+The conditional operator chooses between two expression values: `score >= 50 ? "pass" : "retry"`. Only the selected alternative is evaluated. Use an if/else block when the branches are sequences of statements; use this compact form when choosing one value. Numeric alternatives can trigger conversions, developed in the numeric-boundaries chapter.
+
+## Follow initialization, condition, body and update
+
+In `for (int number = 1; number <= 4; number++)`, initialization happens once. Before every iteration, evaluate the condition. If true, execute the body and then the update. If false, continue after the loop. `number++` adds one after yielding its old value; here the yielded value is unused.
+
+| Check | number | total before body | total after body |
+| --- | --- | --- | --- |
+| `1 <= 4` | 1 | 0 | 1 |
+| `2 <= 4` | 2 | 1 | 3 |
+| `3 <= 4` | 3 | 3 | 6 |
+| `4 <= 4` | 4 | 6 | 10 |
+| `5 <= 4` is false | 5 | 10 | No body execution |
+
+Before each iteration, total is the sum of the integers already visited. This is a **loop invariant**, a statement that helps explain correctness. Each update makes progress toward termination. Replacing the upper limit 4 with 0 makes the first condition false and leaves total at zero. A loop can therefore execute no body at all.
+
+<ConceptAnimation client:visible model="loop" />
+
+Use the limit control to compare three iterations with none. Follow initialization, each repeated condition, the body, the update and the final exit; compare those operations with the limit-4 program above.
+
+## Choose a loop by its stopping rule
+
+Use a for loop for a clear progression through a range. A while loop checks a condition before its body, so it can run zero times. The countdown prints 3, 2, 1 and stops when remaining reaches zero. Forgetting `remaining--` prevents progress.
+
+A do-while checks after the body, so it executes at least once:
+
+```java
+int attempts = 0;
+do {
+    attempts++;
+} while (attempts < 1);
+// attempts is 1, even though there was no initial test
+```
+
+`break` exits the nearest loop or switch. `continue` skips the remainder of the current loop body; a for loop still performs its update before testing again. A nested loop has its own iterations: do not assume its inner break exits both loops. Labeled branching exists, but extracting a clear method is often easier to read.
+
+## Practice: repair a boundary and explain its effect
+
+Change `number <= 4` to `number < 4`. What total is printed? How would you print only even numbers from 1 through 6?
+
+<details>
+<summary>Answers</summary>
+
+It computes 1 + 2 + 3 = 6; 4 is excluded. For even numbers, a complete loop body is:
+
+```java
+for (int number = 1; number <= 6; number++) {
+    if (number % 2 != 0) {
+        continue;
+    }
+    System.out.println(number);
+}
+```
+
+Output is 2, 4, 6 on separate lines. The continue skips printing odd numbers, but the for update still advances. A `while` variant must ensure every path advances, including a continue path. Increasing the sum loop's upper limit increases its number of body executions proportionally. The complexity lesson later formalizes this growth.
+
+</details>
+
+## Control-flow references
+
+- [Dev.java: branching and loops](https://dev.java/learn/language/constructs/basics/controlling-flow/)
+- [JLS: statements and normal/abrupt completion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html)

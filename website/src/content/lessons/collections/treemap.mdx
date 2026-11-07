@@ -1,11 +1,11 @@
 ---
-title: "TreeMap"
+title: "TreeMap and red-black balancing"
 module: "collections"
-group: "Maps"
-summary: "Study sorted lookup, neighbor queries, range views and red-black tree invariants."
-order: 160
-version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/choosing-collections"]
+group: "Maps and search trees"
+summary: "Maintain sorted keys while supporting range queries"
+order: 440
+version: "Java 8+"
+prerequisites: ["collections/binary-search-tree", "collections/ordering"]
 advanced: true
 ---
 
@@ -14,129 +14,84 @@ import Diagram from '../../../components/Diagram.jsx';
 import CollectionTrace from '../../../components/CollectionTrace.astro';
 
 <span id="concepts"></span>
-## Ordered key-value lookup
+## Maintain sorted keys while supporting range queries
 
-TreeMap associates unique ordered keys with values and supports neighbor and range queries. It implements NavigableMap using natural ordering or a supplied Comparator. Choose it when a problem needs floor/ceiling, sorted traversal, or bounded key ranges. A HashMap can locate exact keys efficiently but does not supply these ordering operations.
+A binary search tree locates keys by comparison, but ascending insertion can make it a chain. TreeMap provides the ordered Map/NavigableMap contract and maintains a red-black tree so its core key operations take O(log n) comparison steps. Start with its ordinary sorted lookup and navigation before studying the balancing mechanism.
 
-Comparison result zero identifies an existing key. Equality should normally agree with that relation if callers expect the general Map contract. A comparator is part of the data structure's meaning, not just a display preference. Values need not be comparable because navigation orders keys.
+Natural order or a supplied Comparator defines placement and comparison-zero membership. Values need not be comparable because only keys are ordered. A comparator is part of the map's meaning, not a display-only preference.
 
 <span id="worked-example"></span>
-## Neighbor queries and backed ranges
+## Find neighbors and modify a range
 
 <JavaExample file="TreeMapExample.java" />
 
-Sorted keys are `[10, 20, 30]`. The floor of 25 is 20, while its ceiling is 30. Neither query requires key 25 to exist. The range includes 10 and excludes 30. Removing 20 through it removes the same backing mapping, leaving `[10, 30]`.
+The keys traverse as [10,20,30]. floorKey(25) returns 20; ceilingKey(25) returns 30. floor/ceiling include equal keys, while lower/higher are strict. None requires the queried key to exist. The range includes 10 and excludes 30; removing 20 through it removes the backing mapping.
 
-A range map is a backed view with bounds, not a separate copied map. Inserting an out-of-range key through that view is rejected. To create an independent sorted snapshot, copy it into a new TreeMap, while remembering that key/value objects themselves remain shared unless separately copied.
+A subMap is a backed bounded view, not an independent container. An out-of-range insertion through it fails. Copying into a new TreeMap detaches container mutation while sharing key/value objects. Natural ordering rejects null keys; an explicit comparator can support a consistent null policy.
 
-<span id="mechanics-and-tradeoffs"></span>
-## Search, rotations and balance
+## Search a neighbor without scanning every entry
 
-### Search paths
-
-At a node, compare the query with its key. Negative goes left, positive goes right and zero matches. A missing search ends at an empty child. For floor, remember a smaller candidate while descending; for ceiling, remember a larger candidate. Navigating by comparison enables these operations without scanning every entry.
-
-### Red-black invariants
-
-The tree maintains a black root, no adjacent red parent/child pair, and equal black height on paths to empty leaves. These constraints bound height logarithmically. Insertion first attaches a node in binary-search order, then repairs color/shape. Recoloring changes black-height relationships; rotations rearrange local pointers while preserving in-order key order. Deletion can require repair because removing black state changes path black height.
-
-A left rotation promotes a node's right child, moves that child's left subtree to the old node's right side, and repairs parent links/root where needed. It does not sort the entire tree again. A rotation must preserve every subtree and parent reference.
-
-### Cost model
-
-Get, put, remove and key containment take O(log n) comparison steps. The comparator itself can be expensive; string comparisons can depend on key length. Iterating all entries is O(n). Range traversal costs include finding the boundary plus the number of visited results, rather than a hash-table bucket scan. No concurrency or snapshot guarantee follows from balanced structure.
-
-<Diagram client:visible definition={"flowchart TD\n R[20] --> L[10]\n R --> H[30]\n Q[Query 25] --> R\n R -. greater .-> H\n H -. smaller: floor candidate remains 20 .-> F[No left child: return floor 20]"} caption={"TreeMap: representation and state transitions described in the accompanying trace."} />
+At 20, query 25 is greater, so remember 20 as a floor candidate and go right. At 30, the query is smaller, so search left without replacing the candidate. Reaching null proves no eligible closer key exists on that remaining path; return 20. Ceiling remembers the corresponding larger candidate.
 
 <CollectionTrace kind="treemap" />
 
-## Red-black insertion and deletion repair cases
+<span id="mechanics-and-tradeoffs"></span>
+## Add balance constraints to search ordering
 
-### Preserve ordering separately from balance
+A red-black representation uses red/black node colors and conceptual black empty leaves. The root is black, no red node has a red child, and every path from a node to an empty leaf has the same black count. These constraints bound height logarithmically. Sorted traversal by itself proves none of them.
 
-An ordinary search-tree insertion first follows comparisons to find a missing child position. Balance repair must preserve that ordering. A left rotation promotes a node's right child and reconnects the promoted child's left subtree beneath the old node; all keys still appear in the same in-order sequence. Updating only child links without parent/root links loses the representation invariant.
+A rotation preserves established key ranges. For a left rotation at X with right child Y, move Y's left subtree to X.right, make X the left child of Y, then repair parents/root. Every moved middle-subtree key was greater than X and less than Y, so in-order traversal is unchanged. A right rotation is the mirror. Recoloring changes balance state, not key identity.
 
-### Insertion repair reasoning
+## Work through outer and inner insertion cases
 
-A newly attached red node avoids adding an extra black count to one path, but can create a red-parent/red-child conflict. If the parent is black, no such conflict exists. If the uncle is red, recolor parent/uncle black and the grandparent red, then continue the check upward. If the uncle is black, an inner configuration is first rotated into an outer configuration; a rotation/recolor then repairs the local red conflict. The root is finally black.
+Insert 30 into an empty tree and make it black. Insert 20 as its red left child: no red-red conflict. Insert 10 red below 20: the parent is red and the uncle is a black empty leaf. This is an outer left-left configuration. Rotate right at 30 and recolor: 20 becomes black, with red children 10 and 30.
 
-For insertion order 30, 20, 10, the initial search shape is a descending chain. The outer-case repair can promote 20, leaving 10 and 30 beneath it. Sorted traversal alone cannot establish the balancing proof because the unbalanced chain also traverses in sorted order.
+<Diagram client:visible definition={"flowchart LR\n A[Before: 30 black] --> B[20 red]\n B --> C[10 red: conflict]\n A -. right rotation and recoloring .-> D[After: 20 black]\n D --> E[10 red]\n D --> F[30 red]"} caption="The shape changes from a chain to a branching tree, while the in-order sequence stays 10,20,30." />
 
-### Deletion repair reasoning
+For 30,10,20, the new 20 is the right child of red 10: an inner left-right configuration. First rotate left at 10 to obtain the outer shape 30→20→10, then perform the same right rotation/recolor at 30. Mirror directions handle right-left and right-right cases.
 
-Removing a node with two children can reduce to removing its successor-position node, after transferring the appropriate key/value state under the implementation's rules. Removing black state can create a black-height deficit. Repair considers the sibling's color and its near/far children. A red sibling can first be rotated/recolored into a black-sibling case. A black sibling with black children can propagate the deficit upward. Other cases rotate/recolor to restore black height and terminate. These are more obligations than simply splicing a binary-search-tree node out.
+New nodes start red so insertion does not immediately add a black count to just one path. If a red parent has a red uncle, recolor both black and the grandparent red, then continue upward. For the balanced 20-black with 10/30-red, inserting 5 triggers this recoloring; making the root black finishes the repair. A local repair can create a conflict above it, which is why the loop continues.
 
-### Comparator effects remain part of the algorithm
+## Work through deletion's black-height deficit
 
-Every search and insertion must use the same comparison policy. If compare(a,b) is zero for logically distinct IDs, a put can update the existing mapping rather than add a node. A comparator consulting mutable external state can make a previously valid tree placement inconsistent without any tree method running. Use a stable, coherent relation and include tie-breakers only where the domain requires distinct values.
+An ordinary BST deletion first removes a leaf/one-child position, using the successor reduction for a two-child key. Deleting a red leaf changes no black count. Removing black state can leave one path short; the “deficit” is a reasoning device, not an ordinary extra key stored in the tree.
 
-### Source-reading exercise
+Start with 20-black and children 10-black/30-black. Delete 10. The missing left path now has one fewer black node. Its sibling 30 is black with black empty children, so recolor 30 red and propagate the deficit to 20. At the root it is absorbed; the final 20-black with right 30-red has equal black counts again.
 
-Follow getEntry, put, fixAfterInsertion, rotations, deleteEntry and fixAfterDeletion in the versioned source. Annotate which methods preserve search ordering and which restore color/height properties. A handwritten unbalanced BST is a useful exercise with its own O(n) worst case, but it is not the complete production TreeMap algorithm.
+| Sibling situation for a left-side deficit | Repair idea | What happens next |
+| --- | --- | --- |
+| Red sibling | Rotate left at parent; exchange relevant colors | Converts to a black-sibling case |
+| Black sibling, both children black | Recolor sibling red | Move deficit upward; red parent can absorb it |
+| Black sibling, near child red, far child black | Rotate sibling toward the deficit; recolor | Converts to a far-red case |
+| Black sibling, far child red | Rotate parent away from deficit; recolor parent/sibling/far child | Restores black height locally and finishes |
+
+Near/far are relative to the deficient side, not fixed “left/right” names. For an explicit near-red example, start at 20-black, left 10-black, right 30-black with 25-red as 30's left child. Delete 10. Rotate right at 30 to make 25 the black sibling, then rotate left at 20 and finish with 25-black over 20-black/30-black. The surviving key order is 20,25,30. The right-deficit cases are mirrored.
 
 <span id="java-implementation"></span>
-## TreeMap Java usage and source walkthrough
+## Connect the complete BST to production TreeMap
 
-The complete executable example above demonstrates the library contract. To study production internals, follow TreeMap.getEntry, put, rotateLeft/rotateRight, fixAfterInsertion, deleteEntry and fixAfterDeletion in the versioned source.
+The preceding SimpleBinarySearchTree is the complete unbalanced implementation for insertion/search/traversal/deletion. It cannot promise TreeMap's height bound. The complete TreeMapExample above uses the library contract. Production TreeMap adds parent/color bookkeeping, rotations, insertion/deletion repair, iterators, views and other Map operations.
 
-For an interview asking only for a binary search tree, implement a class with a nested node, key comparison, insertion, lookup and deletion, and explicitly state that an unbalanced tree can degrade to O(n). Do not label that implementation a complete TreeMap. If a red-black tree is requested, color invariants and repair cases are required in addition to ordinary search.
+When reading versioned OpenJDK source, follow getEntry/put for comparison placement, rotations for pointer repair, fixAfterInsertion for the cases just traced, deleteEntry for successor reduction and fixAfterDeletion for deficit repair. Annotate the invariant each branch preserves instead of memorizing method names without the states.
 
-Trace insertion 30, 20, 10: an unbalanced representation becomes a chain. Balancing can rotate/recolor so 20 becomes the local root with 10 and 30 as children. Verify sorted traversal and logarithmic height reasoning separately; sorted traversal alone would also pass for the chain.
+## Costs include comparison and result size
+
+get/put/remove/containsKey take O(log n) comparison steps. Comparing long Strings can cost more than comparing ints. Full traversal is O(n); a bounded range query includes locating its boundary plus visiting its results. Balancing gives no concurrency or snapshot guarantee.
 
 <span id="common-mistakes"></span>
-## Comparator and range failure cases
+## Keep key identity and ordering stable
 
-Avoid subtraction-based comparators, mutable ordering fields and null-policy assumptions. Natural ordering rejects null keys; a comparator can define a supported null ordering. A comparator returning zero for different IDs can replace a mapping unexpectedly. Backed views do not isolate concurrent mutations.
+A comparator returning zero for distinct IDs can replace an existing mapping. Changing ordering fields or mutable external comparator state after insertion can invalidate search paths. Avoid subtraction-based comparators. BigDecimal illustrates comparison/equality disagreement: numeric compareTo ignores scale, while equals includes it; choose a deliberate normalized key policy when those distinctions matter.
 
 <span id="exercises-and-interview-questions"></span>
-## TreeMap interview questions and exercises
+## Completed repair reasoning exercise
 
-<details>
-<summary>Why do TreeMap and HashMap disagree for some BigDecimal keys?</summary>
+For 30,20,10, write the search path, identify parent/uncle colors, rotate right at 30 and recolor. Check three independent results: sorted traversal remains 10,20,30; there is no adjacent red pair; every root-to-empty path has equal black count. Checking only sorted output would also accept the original chain.
 
-BigDecimal compareTo ignores representation scale for numeric comparison, while equals includes it. TreeMap uses comparison-zero key equivalence; HashMap uses equality plus hashing. Choose a deliberate key policy rather than assuming both maps always retain the same entries.
+For deletion of black 10 under 20-black/30-black, perform the sibling-black/both-children-black case above. Explain why recoloring 30 is allowed only while also propagating/absorbing the deficit; simply splicing out 10 leaves unequal black paths.
 
-</details>
+## References
 
-<details>
-<summary>How does floor differ from lower?</summary>
-
-Floor permits an equal key; lower requires a strictly smaller key. Ceiling permits equal while higher requires strictly greater. State inclusive/exclusive boundaries before coding range algorithms.
-
-</details>
-
-<details>
-<summary>Why is a sorted tree not automatically a balanced tree?</summary>
-
-Binary-search ordering constrains relative keys but not height. A chain can satisfy ordering. Balance invariants constrain path lengths, which establish logarithmic search steps.
-
-</details>
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Why start an inserted red-black node red?</summary>
-
-It avoids immediately increasing black height along only one path. The remaining possible red-parent conflict can be repaired through local recoloring/rotations while preserving ordering. The root still needs its black-root condition.
-
-</details>
-
-<details>
-<summary>Does rotating a tree require comparing every key again?</summary>
-
-No. A correctly chosen local rotation rearranges established subtrees whose relative ranges are already known. It preserves their in-order sequence while changing shape and parent relationships.
-
-</details>
-
-<details>
-<summary>Why can removal need more repair than ordinary BST splicing?</summary>
-
-The balanced representation also constrains colors and black heights. Removing black state can violate those path conditions even when the remaining keys are still in correct search order.
-
-</details>
-
-<span id="references"></span>
-## Primary ordered-map references
-
-- [TreeMap search, rotations and repair](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/TreeMap.java)
-- [NavigableMap neighbor and range contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/NavigableMap.java)
+- [TreeMap contract and complexity](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/TreeMap.html)
+- [NavigableMap neighbors and ranges](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/NavigableMap.html)
+- [Versioned rotations and repair implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/TreeMap.java)

@@ -1,158 +1,86 @@
 ---
-title: "Executors, futures and asynchronous composition"
+title: "Executors, Callable and a first Future"
 module: "concurrency"
 group: "Tasks and executors"
-summary: "Define capacity, cancellation and failure behavior for asynchronous work."
-order: 420
+summary: "Submit one task, retrieve its result, and own the execution service through shutdown."
+order: 830
 version: "Java 8+"
-prerequisites: ["concurrency/locks-interruption"]
-advanced: true
+prerequisites: ["concurrency/first-thread", "concurrency/thread-lifecycle", "concurrency/countdown-latch"]
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
 
 <span id="concepts"></span>
-## Executor contracts and ownership
-
-An Executor separates task submission from thread creation. ExecutorService adds lifecycle and result-bearing task operations. Runnable models work without a result; Callable returns a value and can throw checked exceptions. A Future represents a pending computation, not a promise that the task has started or that cancellation can forcibly stop it.
-
-Thread-pool design includes worker count, queue capacity, rejection policy, task duration and downstream limits. An unbounded queue can hide overload until memory pressure grows. A caller waiting on a Future may still be blocked even though task execution is asynchronous.
-
 <span id="worked-example"></span>
+<span id="mechanics-and-tradeoffs"></span>
+<span id="java-implementation"></span>
+<span id="executor-contracts-and-ownership"></span>
+<span id="capacity-and-completion-policies"></span>
+<span id="threadpoolexecutor-admission-order"></span>
+<span id="rejection-policy-is-externally-visible-behavior"></span>
+<span id="execute-submit-and-future-failures"></span>
+<span id="completionstage-operators-by-responsibility"></span>
+<span id="forkjoin-and-dependency-starvation"></span>
+<span id="executable-executor-examples"></span>
+<span id="deterministic-executor-admission-trace"></span>
+<span id="dependent-stages-and-independent-results"></span>
+<span id="introductory-example"></span>
+<span id="task-ownership-mistakes"></span>
+<span id="executor-interview-practice"></span>
+<span id="how-do-thenapply-and-thencompose-differ"></span>
+<span id="additional-interview-questions"></span>
+<span id="continue-with-focused-task-chapters"></span>
+## Keep the task while changing how it executes
+
+Creating a Thread for every activity couples the task description to execution management. An Executor accepts work through a common interface. Its implementation decides whether to use an existing worker, a new execution, or even the calling thread. ExecutorService adds result-bearing submission and lifecycle management.
+
+Runnable describes work without a returned value. Callable describes work returning a value and may throw a checked exception. A Future is a handle through which the caller later observes that computation's result or failure. Receiving the handle does not establish that the task has started.
+
 ## A first submitted result
 
-The example submits a Callable and retrieves its result. CompletableFuture then composes an already completed value with a transformation. The executor lifecycle is explicit and no task uses an unspecified shared pool.
+<JavaExample file="ExecutorBasicsLesson.java" output={"42"} />
 
-<span id="mechanics-and-tradeoffs"></span>
-## Capacity and completion policies
+1. The service owns one worker, which it can reuse for later submissions.
+2. The Callable describes multiplying 21 by two. Describing it does not execute it.
+3. Submit accepts the description and returns a Future. Submission and completion are separate events.
+4. Get returns the successful value, waiting if it is still pending. This main thread can therefore block even though the computation is asynchronous to submission.
+5. Finally calls shutdown on the service this method created, including when get fails or the owner is interrupted.
 
-CompletableFuture distinguishes transformation from flattening: thenApply wraps a function result, while thenCompose chains a function that already returns a future. allOf represents combined completion but does not collect typed results automatically. Failure propagation must be designed using appropriate completion handlers rather than silently replacing every failure with an arbitrary default.
+The completed task's actions are published through successful Future.get. As with join, result retrieval supplies a completion boundary. Neither get nor join reconstructs an update lost by an incorrectly shared algorithm inside the task.
 
-Timeouts bound waiting but do not necessarily stop underlying work. CompletableFuture cancellation does not provide the same interrupt behavior as every ExecutorService Future implementation. CPU-bound pools, blocking workloads and nested task dependencies have different starvation risks. Preserve context and ownership explicitly across asynchronous boundaries.
+<Diagram client:visible definition={"flowchart LR\n S[Submit Callable] --> Q[Accepted task]\n Q --> W[Worker invokes call]\n W --> F[Future selects value or failure]\n F --> G[Owner retrieves through get]"} caption="A task description, an execution service and a result handle have different responsibilities." />
 
-<Diagram client:visible definition={"flowchart LR\n S[Submit task] --> Q[Executor queue]\n Q --> W[Worker executes]\n W --> F[Future completes with result or failure]\n F --> C[Caller obtains or composes result]"} caption={"Submission, execution, completion and waiting are separate stages with distinct capacity and failure behavior."} />
+## Know which outcome get reports
 
-### ThreadPoolExecutor admission order
+A successful get returns the value. ExecutionException means the task threw; its cause is the original failure. CancellationException means the handle was cancelled. InterruptedException means the **waiting caller** was interrupted. A timed get can throw TimeoutException without changing the underlying task. The next chapters work through these outcomes separately.
 
-For an ordinary running pool, submission first tries to create a worker if fewer than corePoolSize workers exist. Otherwise it tries to queue the task. Only when queuing cannot accept it does the executor try to grow toward maximumPoolSize. If that also fails, it rejects the task. Shutdown races require additional state rechecks; the simplified decision diagram expresses capacity policy, not the entire source implementation.
+`execute` accepts a Runnable and has no result handle. `submit` wraps work so failures can be observed through its Future. Discarding that Future can discard the only intended failure observation path; a lack of an exception on the submitting thread does not establish task success.
 
-<Diagram client:visible definition={"flowchart TD\n S[Task submitted to running pool] --> C{Below core workers?}\n C -->|yes| W[Try new worker]\n C -->|no| Q{Queue accepts?}\n Q -->|yes| E[Enqueue and recheck pool state]\n Q -->|no| M{Below maximum workers?}\n M -->|yes| W\n M -->|no| R[Reject]\n W --> F{Worker creation succeeds?}\n F -->|no| R\n F -->|yes| X[Execute task]"} caption={"Queue admission normally precedes growth beyond core size. An unbounded queue can make maximumPoolSize irrelevant to overload control."} />
+## Own the service lifetime
 
-With core 1, max 2 and a queue of capacity 1: the first blocked task occupies the core worker, the second queues, the third starts the second worker, and the fourth is rejected. ExecutorSaturationLab coordinates both workers with latches so the demonstration does not depend on arbitrary sleeps.
+`shutdown` stops accepting new submissions while allowing accepted work to finish. It returns without waiting for all workers. `awaitTermination` can then wait with a chosen bound. `shutdownNow` requests interruption and returns queued work that never commenced; it does not safely kill arbitrary code. A caller using a shared service supplied by another owner should not shut it down as if it had created it.
 
-The complete `ExecutorSaturationLab.java` source appears in the Java implementation section below.
+In this tiny successful program get observes its only result before normal shutdown. A real service needs the failure, cancellation and termination policy developed next. Avoid creating a new pool for each request; define an owner with the appropriate lifetime.
 
-### Rejection policy is externally visible behavior
+## Continue from one result to coordination and graphs
 
-| Policy | Behavior | Risk to explain |
-| --- | --- | --- |
-| AbortPolicy | Throws RejectedExecutionException | Caller must handle refusal |
-| CallerRunsPolicy | Submitting caller executes task if pool is not shut down | Adds caller latency; can run work on an unsuitable thread |
-| DiscardPolicy | Silently discards | Lost work; a submit Future can remain incomplete |
-| DiscardOldestPolicy | Drops queued oldest and retries when appropriate | Breaks queued-work expectations; poor fit for some queues |
-
-Prefer explicit failure to accidental silent loss. Fixed-thread-pool factory executors use an unbounded work queue; a bounded worker count alone is not a bound on accepted work. Cached-thread pools can grow many workers. Define an overall in-flight-work budget, not just a pool name.
-
-### execute, submit and Future failures
-
-An exception escaping a Runnable passed to execute can reach the worker thread's uncaught-exception handler. submit normally wraps work in a FutureTask, which captures the failure and exposes it through ExecutionException from get. Ignoring that Future can hide failures. `get(timeout, unit)` times out the caller's wait; it does not by itself cancel the operation. `cancel(true)` requests interruption when the implementation owns a running thread, but the task must cooperate. Future.get can also throw CancellationException for cancellation.
-
-`shutdown` refuses new work while allowing accepted work to complete. `awaitTermination` waits for termination after shutdown. `shutdownNow` requests interruption and returns queued tasks that never commenced; it does not forcibly kill workers or guarantee every returned Future is completed/cancelled. On an interrupted shutdown wait, request cancellation, preserve interruption and give cleanup ownership a clear boundary.
-
-### CompletionStage operators by responsibility
-
-| Operation | Purpose |
-| --- | --- |
-| thenApply | Transform a successful value |
-| thenCompose | Chain a dependent stage without nesting |
-| thenCombine | Combine two successful independent results |
-| allOf | Represent completion of all supplied futures, without typed result collection |
-| exceptionally | Recover from exceptional completion |
-| handle | Map either success or failure into a new result |
-| whenComplete | Observe either outcome while normally preserving it; observer failure can affect the dependent stage |
-
-Non-async continuations may run in a completing thread or immediately in the attaching caller when the source is already complete. Async methods use their configured/default executor; pass one when ownership and capacity matter. `join` reports CompletionException and is not the interruptible checked-exception equivalent of get. CompletableFuture.cancel treats cancellation as exceptional completion and does not interrupt its underlying computation through the mayInterrupt flag. `orTimeout` (9+) completes the future exceptionally but does not automatically stop remote or background work.
-
-### Fork/join and dependency starvation
-
-ForkJoinPool uses work-stealing and supports divide-and-conquer tasks; it is not a magic fix for blocking dependencies. A single worker that submits another task to its own queue and waits for it can deadlock progress. RecursiveTask algorithms need a sequential threshold and an associative combination strategy. Pool scheduling policy, completion dependencies and scarce external resources must be reasoned about together.
-
-<span id="java-implementation"></span>
-## Executable executor examples
-
-### Deterministic executor admission trace
-
-<JavaExample file="ExecutorSaturationLab.java" output={"rejected\ncompleted=3"} />
-
-### Dependent stages and independent results
-
-<JavaExample file="CompletableFutureLab.java" output={"score=43\nrecovered\ntrue"} />
-
-The userId stage publishes 42. thenCompose starts a dependent score stage and flattens it to one future. The label task is independent, so thenCombine waits for both successful values. Only the main thread blocks on the final get; workers do not wait on a queued sibling. The failure example shows that handle creates a recovered dependent result while the original stage remains exceptional. Every async operation names its executor, and finally owns shutdown and interruption handling.
-
-### Introductory example
-
-The following program is a complete executable example. Compile with `javac AsyncComposition.java` and run with `java AsyncComposition`.
-
-<JavaExample file="AsyncComposition.java" output={"42\n15"} />
+The next lessons develop task failures, cancellation and pool capacity from this submitted-result model. Completion graphs follow once each Future outcome is understood. A counter shared by several workers additionally needs the atomic-update protocol taught in the atomics chapter; completion waiting alone does not supply that update.
 
 <span id="common-mistakes"></span>
-## Task ownership mistakes
-
-Do not create a thread pool per request, block a single-worker pool while waiting for work queued to that same pool, or assume timeout means cancellation succeeded. Async suffixes may use a common pool unless an executor is supplied.
-
-<KnowledgeCheck client:visible question={"Which continuation flattens a function that already returns a CompletionStage?"} options={["thenApply", "thenCompose", "Calling get before submission"]} correct={1} explanations={["thenApply treats the returned stage as the transformed value, producing nesting.", "thenCompose chains a stage-returning function and exposes the dependent result without an extra future layer.", "Blocking retrieval is not a composition operator and cannot fix a nested return type."]} />
-
 <span id="exercises-and-interview-questions"></span>
-## Executor interview practice
+<span id="coding-exercise"></span>
+## Exercise and complete solution
 
-### How do thenApply and thenCompose differ?
+Submit a Callable returning 42 and ensure the owner releases its service on success, failure or interruption. `ExecutorBasicsLesson` is the complete minimal solution. Explain why placing get before submit is impossible, why submit returning is not completion, and why shutdown belongs to the component that owns the executor.
 
-<details>
-<summary>Explanation</summary>
-
-thenApply transforms T into U. If U itself is a CompletableFuture, the result is nested. thenCompose accepts a function returning a CompletionStage&lt;U&gt; and exposes a flattened future for the dependent computation. Choose based on the function's return type, not whether its body seems asynchronous.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Why might increasing maximumPoolSize have no effect?</summary>
-
-With an accepting unbounded queue, submissions beyond the core size keep queuing instead of triggering extra workers. Queue admission precedes growth beyond core size. Choose worker and queue bounds together.
-
-</details>
-
-<details>
-<summary>Why can submit hide an exception if its returned Future is ignored?</summary>
-
-The task wrapper records the exception as exceptional completion rather than necessarily letting it reach an uncaught-exception handler. A result/failure-consumption policy is part of task ownership. Ignoring the Future can leave failures unreported.
-
-</details>
-
-<details>
-<summary>Does a CompletableFuture timeout stop the remote request?</summary>
-
-Not automatically. Completing a stage exceptionally or timing out a wait does not prove the underlying operation was cancelled or that a remote side effect never happened. Coordinate operation-specific cancellation and overall deadlines explicitly.
-
-</details>
-
-### Coding exercise
-
-Create two dependent asynchronous operations using thenCompose. Add a failure handler and explain which thread executes each continuation for already-completed and incomplete inputs.
-
-### Continue with focused task chapters
-
-Study Future cancellation before interpreting executor shutdown as task termination. ThreadPoolExecutor internals develops the worker/queue/rejection algorithm, while ForkJoinPool covers disjoint recursive work. CompletableFuture then examines a completion dependency graph and branch-specific failure policies. These chapters share the memory-model and interruption prerequisites, but they solve different ownership problems.
+Capacity, queue admission, rejection, fork/join and completion graphs have focused chapters. Start by being able to follow this single submitted result through its lifetime.
 
 <span id="references"></span>
-## Executor source references
+<span id="executor-source-references"></span>
+## Primary references
 
-- [ThreadPoolExecutor admission and rejection](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java)
-- [Executor factory configuration](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Executors.java)
-- [FutureTask failure and cancellation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/FutureTask.java)
-- [CompletableFuture policies](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CompletableFuture.java)
-- [ForkJoinPool work-stealing](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ForkJoinPool.java)
+- [ExecutorService lifecycle and memory effects](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ExecutorService.html)
+- [Callable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Callable.html)
+- [Future outcomes](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Future.html)

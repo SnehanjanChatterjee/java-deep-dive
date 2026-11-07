@@ -1,0 +1,61 @@
+---
+title: "CountDownLatch: one-time completion and startup signals"
+module: "concurrency"
+group: "Coordination utilities"
+summary: "Count durable signals, publish independent results, and add an explicit startup milestone to cancellation."
+order: 790
+version: "Java 8+"
+prerequisites: ["concurrency/synchronizers"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Wait for two results without guessing when they finish
+
+Main starts two finite computations. Each worker owns a different array element. Reading the array immediately after start could occur before either computation. Sleeping would guess a duration. A CountDownLatch initialized to two represents the actual condition: two completion signals must happen before main continues.
+
+`countDown` decreases a positive count and returns immediately. `await` waits until zero; once zero, current and future awaits can pass. Extra countDown calls do not make the count negative. The count cannot be reset for another batch.
+
+## Run the independent-result program
+
+<JavaExample file="LatchLesson.java" output={"total=42\nremaining=0"} />
+
+The first worker writes slot zero, the second writes slot one. These are distinct variables; neither worker modifies the other's slot. Each finally reports termination. Main's successful await orders actions before the corresponding countdowns before its later result reads. The array elements do not need to become atomic merely to be read after this completion boundary.
+
+| Event | Count | Main may combine results? |
+| --- | --- | --- |
+| Latch constructed | 2 | No |
+| Either worker signals | 1 | No |
+| Other worker signals | 0 | Yes, after await returns |
+| A later await | 0 | Yes; the latch stays open |
+
+Main joins both thread lifetimes in finally. Countdown can occur just before a worker's run method returns; a completion signal describing one milestone is not automatically a universal thread-termination observation.
+
+## Completion does not carry a failure value
+
+Finally ensures a failing worker does not leave the latch stuck. That does not mean a failed result slot is valid. In this first arithmetic program the assignments are finite and cannot fail under their fixed inputs. A general operation needs separate failure observation through a Future or an explicit holder/result type. Combining a default zero after a task failed could silently manufacture a successful report.
+
+A bounded await returns false if the waiting budget expires. That is not permission to combine unfinished slots. An interrupted await throws InterruptedException and clears status when reporting it; propagate the request or apply the owner's cancellation policy.
+
+## Add an explicit startup milestone to cancellation
+
+<JavaExample file="ThreadLifecycleLab.java" output={"NEW\nTERMINATED\ntrue"} />
+
+This is the detailed lifecycle experiment postponed until the latch API is familiar. `started` begins at one and opens when Worker.run enters. `gate` begins at one and stays closed, creating an interruptible waiting point. The two latches serve different predicates; opening started does not open gate.
+
+The owner waits for the startup signal with a guard, then requests interruption and joins. Interruption before or during gate.await is handled by its interruption contract. The catch restores status, and the worker records that status before returning. Main prints it only after join. Finally also owns interruption/join if the startup guard fails.
+
+A real task that ignores interruption can delay termination despite the startup signal. The example's worker has a known interruptible waiting point; it is not an adapter that can safely terminate arbitrary code.
+
+## Exercise and complete solution
+
+Use two signals: one proving run entered, another holding work until cancellation. Observe NEW before start and TERMINATED after join; do not assert a sampled intermediate state. `ThreadLifecycleLab` is the complete solution. Explain why the startup count reaches zero once and why join, rather than the startup latch, publishes the final status field.
+
+For an ordinary completion count, put countDown in finally and transport failures separately. The later task-failure chapter connects those responsibilities using result handles.
+
+## Primary references
+
+- [CountDownLatch API and memory effects](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CountDownLatch.html)
+- [OpenJDK CountDownLatch implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CountDownLatch.java)

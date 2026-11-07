@@ -1,107 +1,80 @@
 ---
-title: "Latches, barriers, phasers and semaphores"
+title: "Choosing a coordination utility"
 module: "concurrency"
-group: "Locks and coordination"
-summary: "Choose a synchronizer by completion, phase and permit semantics, while preserving failure and interruption ownership."
-order: 400
-version: "Java 8+ · source analysis OpenJDK 25"
+group: "Coordination utilities"
+summary: "Distinguish completion signals, reusable phases and scarce-resource permits before studying their implementations."
+order: 780
+version: "Java 8+"
 prerequisites: ["concurrency/locks-interruption"]
-advanced: true
+advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Choose the question being synchronized
+<span id="mechanics-and-tradeoffs"></span>
+<span id="completion-publication-is-not-failure-propagation"></span>
+<span id="complete-latch-and-permit-example"></span>
+<span id="cyclicbarrier-generation-behavior"></span>
+<span id="phaser-registration-and-arrival"></span>
+<span id="semaphore-permits-fairness-and-over-release"></span>
+<span id="interview-questions-with-worked-answers"></span>
+## Ask what must become true before a thread continues
 
-A lock protects state ownership. A latch answers whether a one-time count of signals has completed. A barrier aligns a fixed group at a reusable phase boundary. A phaser generalizes phase participation with registration/deregistration. A semaphore limits concurrent admission to a resource. Calling all of them locks hides the differences that determine correctness.
+A lock answers who may access protected state now. Other coordination problems need a different question: have all results arrived, has every participant finished this phase, or is capacity available for one more resource user? An API name alone does not establish that it represents the required condition.
 
-| Primitive | Core state | Typical task | Important limitation |
-| --- | --- | --- | --- |
-| CountDownLatch | Count monotonically reaches zero | Wait for N tasks' completion signals | Cannot reset |
-| CyclicBarrier | Fixed parties and reusable generation | Repeated parallel computation phases | One broken participant can break a generation |
-| Phaser | Registered/unarrived parties and phase | Dynamic multi-phase participation | Registration and arrival are a protocol |
-| Semaphore | Available permits | Bound simultaneous use of a resource | No automatic ownership or release tracking |
+Consider two report workers and a service with two connections. Main may need both report results; workers may synchronize at repeated calculation phases; each service call may need one connection. Those are three distinct protocols, even when the same program uses all of them.
 
-Begin with the invariant. Is work allowed after all results exist, after every party reaches a phase, or only when a permit is held? A construct selected by a familiar name can express a different condition from the required one.
+<span id="choose-the-question-being-synchronized"></span>
+## Choose the smallest matching contract
+
+| Required condition | Utility | State change that permits progress |
+| --- | --- | --- |
+| N one-time signals have occurred | CountDownLatch | Count reaches zero and stays there |
+| Every fixed participant reached this round | CyclicBarrier | Current generation trips; a new one begins |
+| The currently registered participants reached a phase | Phaser | Phase advances as registrations/arrivals permit |
+| One of a fixed number of resource slots is available | Semaphore | Successful acquisition consumes a permit |
+
+The following chapters teach each through a complete program. A comparison table is useful only after you can state the underlying predicate. A semaphore does not collect results. A latch does not limit how many calls run simultaneously. A barrier does not create missing executor workers.
 
 <span id="worked-example"></span>
-## Completion publication is not failure propagation
-
-A CountDownLatch signal after writing a result can publish that write to a successful await observing completion. The latch does not collect exceptions. If countDown means task termination, put it in finally, and preserve failure through a Future, an explicit result type or a separate failure holder. Otherwise a task can fail and either leave await stuck forever or be mistaken for successful completion.
-
-A fixed pool can deadlock progress if its running tasks wait at a barrier whose remaining parties are still queued behind them. The synchronization primitive cannot manufacture an available worker. Count admitted parties and execution capacity together. Likewise, a latch's initial count must match actual signals on every success/failure path.
-
-<Diagram client:visible definition={"flowchart TD\n A[Worker A obtains permit] --> B[Write independent result slot]\n B --> C[Release acquired permit in finally]\n C --> D[Count down completion in outer finally]\n D --> E[Owner awaits all signals]\n E --> F[Check failures before using results]"} caption="Resource admission, completion publication and failure reporting are three distinct responsibilities." />
-
 <span id="java-implementation"></span>
-## Complete latch and permit example
+## Trace a combined operation before combining APIs
 
-<JavaExample file="SynchronizerLab.java" output={"41"} />
+A worker first acquires a connection permit, writes its own result slot, releases the permit, then reports completion. Main waits for all completion signals and checks failures before combining results.
 
-Each worker owns one array slot, so workers do not race on the same element. A Semaphore with one permit bounds the illustrative resource region. acquire happens before entering its release-owning try/finally: an interrupted acquisition therefore does not create an extra permit. The outer finally always signals task termination. The owner waits with a bound, checks recorded worker failures, then combines the published slots.
+<Diagram client:visible definition={"flowchart TD\n A[Acquire resource permit] --> B[Perform resource work]\n B --> C[Release acquired permit in finally]\n C --> D[Signal task completion in outer finally]\n D --> E[Owner observes every result or failure]"} caption="Admission, completion and failure reporting are separate responsibilities. An acquired permit must be released even when work fails." />
 
-The AtomicReference holds an interruption failure independently of the latch. It is not needed to make the ordinary array slot writes visible after successful await; the latch's publication contract handles those. The owner interrupts and joins its owned workers in cleanup. This program's resource work is finite and its wait is interruptible; arbitrary child code would need its own termination policy.
+If the task throws after acquiring, releasing the permit remains necessary. If it is interrupted before acquisition succeeds, releasing would create an extra permit. If a completion count means termination, every termination path must count down; successful completion is still a separate outcome.
 
-<span id="mechanics-and-tradeoffs"></span>
-## CyclicBarrier generation behavior
+## Avoid a dependency that cannot be scheduled
 
-A barrier's await registers arrival and waits for other parties in that generation. The last arrival can run a barrier action before releasing the others. A failed action or an interrupted/timed-out participant can break the generation, causing peers to receive BrokenBarrierException. Do not catch that exception and proceed as though the coordinated phase succeeded.
+With two workers and a barrier requiring three tasks, the first two tasks can occupy the pool while the third stays queued. The barrier cannot advance because no worker is available for that third participant. Increasing a wait timeout does not create execution capacity.
 
-Resetting a barrier is not equivalent to repairing all application state. Parties from different logical iterations can be mixed if the reset/retry protocol is uncontrolled. Prefer cancelling and recreating the whole computation when that gives a clearer recovery boundary. A barrier action must not wait for work that requires a party still held at the same barrier.
-
-## Phaser registration and arrival
-
-Register parties before they can cause a phase to advance unexpectedly. arrive records arrival without waiting. arriveAndAwaitAdvance combines arrival with waiting for phase change; arriveAndDeregister also reduces future participation. A missed deregistration can leave future phases waiting for a party that will never arrive, while premature deregistration can advance before its promised work completes.
-
-Not all waiting forms are interruptible. awaitAdvanceInterruptibly supplies an interruptible phase-wait API; a method's name and contract must be read rather than assuming every wait throws InterruptedException. Terminating a phaser releases relevant waits with termination state, but does not forcibly stop application threads or release their other resources.
+Likewise, a worker retaining the only permit while waiting for a child that needs the same permit creates a resource dependency. Draw the work and resources together. Coordination utilities do not remove liveness reasoning.
 
 <span id="common-mistakes"></span>
-## Semaphore permits, fairness and over-release
-
-A permit is not tied to the acquiring thread like a ReentrantLock's ownership. Releasing from another thread can be part of a legitimate handoff protocol. The semaphore does not automatically detect an extra release, however, so an unconditional finally release after failed acquire can exceed the intended concurrency limit.
-
-Fair semaphores favor established queue order under the documented acquisition rules; untimed tryAcquire can still barge. Fairness does not promise equal CPU scheduling or exact end-to-end response times. A binary semaphore differs from a reentrant owner-tracked lock: recursively acquiring its only permit can block the same thread rather than increase a hold count.
-
-### Coding exercise: bound a simulated downloader
-
-Use a fixed permit count around actual resource use, acquire before entering the release-owning finally, and propagate interruption. Collect task failures explicitly. A correct solution does not keep a scarce permit while waiting for unrelated child work that itself needs a permit. Decide whether timeout includes waiting for a permit, the resource action, or the entire operation.
-
 <span id="exercises-and-interview-questions"></span>
-## Interview questions with worked answers
-<details>
-<summary>Why does countDown belong in finally?</summary>
+<span id="coding-exercise-bound-a-simulated-downloader"></span>
+## Exercise with explained selection
 
-When the count means task termination, every completion path must signal. Success needs separate result validation. If the count instead deliberately means successful tasks, a failure/cancellation path must still prevent the owner from waiting forever under a mistaken initial count.
+Choose a utility for each problem: wait for four file-check tasks once; combine two array partitions after every iteration; accept a changing number of child activities; allow at most three simultaneous remote calls.
+
+<details>
+<summary>Worked answer</summary>
+
+Use a latch initialized to four for the one-time signals, a two-party barrier for the repeated fixed phases, a phaser with explicit registration/deregistration for changing participants, and a semaphore with three permits around actual remote resource use. Give every case a failure/termination policy. A plain semaphore bounds concurrency, not calls per second; rate limits also need time/replenishment semantics.
 
 </details>
 
-<details>
-<summary>Can a semaphore implement a rate limit?</summary>
-
-A plain permit count bounds concurrent admission, not operations per time interval. A rate policy also needs time/replenishment semantics. Returning a permit immediately after a fast action does not enforce an hourly or per-second quota.
-
-</details>
-
-<details>
-<summary>Why can a barrier hang in a correctly sized task group?</summary>
-
-The executor may have fewer available workers than parties, or another dependency may occupy them. Some parties can remain queued while running parties wait for them. Analyze execution capacity as well as barrier count.
-
-</details>
-
-<details>
-<summary>Why does forceTermination not stop worker computation?</summary>
-
-It changes the phaser coordination state and releases relevant waiters. Threads still own their execution and external resources; cancellation and cleanup remain cooperative responsibilities.
-
-</details>
+Study the complete solutions in the next four chapters, then revisit their shared machinery in AQS. No custom synchronizer is needed to use these library contracts correctly.
 
 <span id="references"></span>
 ## Primary references
 
-- [CountDownLatch completion and publication](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CountDownLatch.java)
-- [CyclicBarrier broken-generation rules](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CyclicBarrier.java)
-- [Phaser registration and waiting modes](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Phaser.java)
-- [Semaphore permit and fairness contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Semaphore.java)
+- [Concurrency utility families](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/package-summary.html)
+- [CountDownLatch](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CountDownLatch.html)
+- [CyclicBarrier](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CyclicBarrier.html)
+- [Phaser](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Phaser.html)
+- [Semaphore](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/Semaphore.html)

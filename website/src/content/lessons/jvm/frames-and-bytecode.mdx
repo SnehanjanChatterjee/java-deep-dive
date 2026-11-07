@@ -1,0 +1,113 @@
+---
+title: "Method frames, local variables and bytecode"
+module: "jvm"
+group: "Frames and bytecode"
+summary: "Follow a method call from its arguments through stack operations to a returned value."
+order: 1050
+version: "Java 8+"
+prerequisites: ["language/methods-and-recursion", "objects/classes-and-instances"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A call creates an execution frame
+
+A method invocation needs somewhere to keep its arguments, local variables and intermediate calculations. The JVM describes that state as a **frame**. Calling another method creates another frame on the calling thread's JVM stack. Returning completes that invocation and gives control, and possibly a result, back to its caller.
+
+An object and a frame have different lifetimes. A frame belongs to one invocation; an object can remain reachable after the method that created it returns. Two calls to the same method have independent local variables. Two threads can call the same method while sharing references to some of the same objects.
+
+Start with an operation already familiar from Java methods:
+
+<JavaExample file="ExecutionFramesDemo.java" output={"6"} />
+
+`main` passes the value 3. `twice` computes 3 × 2 and returns 6. The caller then passes that result to `println`. At the Java level, this is ordinary argument passing and return. Bytecode makes the intermediate operations explicit.
+
+## Compile and inspect the artifact you actually run
+
+Save the source as ExecutionFramesDemo.java and use:
+
+```bash
+mkdir -p out
+javac -d out ExecutionFramesDemo.java
+java -cp out ExecutionFramesDemo
+javap -classpath out -c -p ExecutionFramesDemo
+```
+
+`javac` produces a class file. `javap -c` prints its bytecode instructions; `-p` includes private members if present. Inspection does not execute the method. Inspecting the class in `out` avoids accidentally reading another version from an IDE output directory.
+
+For this method, the important instruction sequence is:
+
+```text
+0: iload_0
+1: iconst_2
+2: imul
+3: ireturn
+```
+
+The number before each instruction is its bytecode offset, not a source line number. A compiler can generate different instruction choices for other source expressions. The specification defines what an instruction means; it does not require every compiler to emit one preferred source-to-bytecode translation.
+
+## Trace the local array and operand stack
+
+A frame contains a local-variable array and an operand stack. In this static method the first int argument occupies local slot 0. `iload_0` copies that int onto the operand stack. It does not remove or change the local.
+
+| After operation | Local slot 0 | Operand stack, bottom → top | Reason |
+| --- | --- | --- | --- |
+| Enter method | 3 | empty | Argument is available as a local |
+| iload_0 | 3 | 3 | Copy the argument onto the stack |
+| iconst_2 | 3 | 3, 2 | Push the constant |
+| imul | 3 | 6 | Consume two ints and push their product |
+| ireturn | completed frame | result travels to caller | Return the top int |
+
+<ConceptAnimation client:visible model="bytecode" />
+
+The stack is last-in-first-out. Instructions state which operand types they consume and produce. `imul` expects ints; `lmul` works with longs. Verification and other class-file constraints prevent arbitrary mixtures of incompatible stack states from behaving as a valid typed method.
+
+Local slots are a bytecode model, not a promise of fixed physical memory addresses. Instance methods additionally receive `this` in slot 0, so their explicit arguments begin later. Long and double locals use two slots. A compiler can reuse a local slot after a previous variable's live range ends.
+
+## Understand calls, return and exception unwinding
+
+In the caller, a static call uses an instruction such as `invokestatic`. Other invocation families include `invokevirtual`, `invokeinterface` and `invokespecial`. Constructor invocation and ordinary overriding do not use identical rules. `invokedynamic` links a call site through a bootstrap mechanism; it is not a general instruction to choose Java overloads dynamically.
+
+<Diagram client:visible definition={"flowchart TD\n M[Caller frame] -->|argument 3| T[twice frame: local 0 is 3]\n T --> S[Operand operations produce 6]\n S -->|ireturn| R[Caller receives 6]\n R --> P[Caller invokes println]"} caption="The callee has its own invocation state. The returned value becomes available to the suspended caller." />
+
+A normal return supplies a result of the declared return kind, or no result for void. If an exception leaves the method, normal return does not occur. The JVM searches for an applicable handler and can unwind frames; a caller's statement after the failed call is skipped unless control later reaches it by a valid path. This is the runtime view of the exception-flow lesson.
+
+Recursion creates another invocation with another frame. A base case stops further calls. Excessively deep invocation can exhaust the thread's stack and produce StackOverflowError. Increasing a heap limit does not directly increase that stack's capacity. Conversely, a small recursive depth does not prevent retaining a large heap graph.
+
+## Connect the abstract machine to optimized execution
+
+A JVM can interpret bytecode and can compile methods to machine code. Inlining may remove the physical call boundary from optimized code. Escape analysis may remove an allocation while preserving observable behavior. These implementation techniques must honor the language and VM contracts, including correct observable results and exception behavior.
+
+The frame picture is therefore an explanation of execution semantics. It is not a promise that every invocation always corresponds to one permanently materialized native stack record. Detailed compilation profiles and deoptimization are developed after memory and class loading.
+
+## Bytecode exercises and explained answers
+
+<details>
+<summary>What does twice(-3) return, and which local is changed?</summary>
+
+It returns -6. The argument local remains -3 while the operand stack computes the product. Returning a result does not assign that result back into the caller's argument variable.
+
+</details>
+
+<details>
+<summary>What changes if multiplication exceeds the int range?</summary>
+
+Ordinary Java int multiplication uses the specified wrapping integer behavior. For example, twice(1 &lt;&lt; 30) produces Integer.MIN_VALUE. Replacing the operation with Math.multiplyExact adds an overflow exception contract and changes the program being inspected.
+
+</details>
+
+<details>
+<summary>Why does a debugger sometimes show fewer locals in optimized execution?</summary>
+
+Source names, bytecode slots and optimized machine state are different representations. Debug information, live ranges and optimizations determine which values can be reconstructed. That observation does not change Java's argument-passing rules.
+
+</details>
+
+## References for execution semantics
+
+- [JVM specification: runtime areas, frames and operand stacks](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html)
+- [JVM specification: instruction definitions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html)
+- [The javap class-file disassembler](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javap.html)

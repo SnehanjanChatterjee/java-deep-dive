@@ -3,9 +3,9 @@ title: "LinkedHashSet"
 module: "collections"
 group: "Sets"
 summary: "Remove duplicates while preserving encounter order and maintaining stable membership."
-order: 180
+order: 460
 version: "Java 8+ · internals OpenJDK 25"
-prerequisites: ["collections/hashset","collections/linkedhashmap"]
+prerequisites: ["collections/hashset", "collections/linkedhashmap", "collections/linkedlist"]
 advanced: true
 ---
 
@@ -83,9 +83,17 @@ Given token input, normalize each token according to the declared domain policy,
 <span id="java-implementation"></span>
 ## Implement ordered membership
 
-The complete usage source above demonstrates observable ordering without inspecting private table storage. To implement the abstraction manually, compose a membership index with a doubly linked sequence and preserve one indexed node per ordered live entry. The full LinkedLruCache example demonstrates index/link coordination; insertion-order set logic should omit access-driven movement and keep only marker values.
+<JavaExample file="SimpleLinkedHashSet.java" output={"[B, A, C]\n[B, C, A]"} />
 
-Trace duplicate insertion, absent removal and reinsertion before implementing. Duplicate insertion changes neither size nor order. Removing an absent key is a no-op. Reinsertion after removal appends one new live membership. A custom implementation must also choose iterator/concurrent-modification behavior explicitly rather than inheriting undocumented assumptions from its index.
+The complete class uses a permitted HashMap index and handwritten doubly linked nodes. It does not delegate ordering to LinkedHashMap. The index maps each element to its one live order node; first/last identify the encounter endpoints. Null elements are supported because every stored index value is a non-null node.
+
+Read add as two branches. An existing equal key returns false without changing links. A new key creates one node, enters it in the index and appends it after last; an initially empty set also assigns first. Remove obtains that exact node from the index, reconnects its two neighbors or endpoints, clears detached links and returns true. Removing an absent key changes nothing. Removing a singleton clears first and last, permitting later reuse.
+
+asList traverses encounter links and copies references into a new list. It is a detached container, not a deep copy. The implementation omits the full Set/Iterator/SequencedSet contracts, concurrency and failure recovery from arbitrary throwing key methods. Its mutation model assumes stable, well-behaved hashCode/equals. If library hash storage is forbidden, substitute the preceding handwritten map under that additional constraint.
+
+<JavaExample file="SimpleLinkedHashSetTest.java" />
+
+The completed exercise tests duplicates, interior/endpoint/singleton removal, reinsertion, null membership and unequal hash collisions. A size-only assertion cannot establish encounter order. The later LRU exercise adds access-driven movement to this index/list foundation.
 
 <span id="common-mistakes"></span>
 ## Ordered-set pitfalls and ownership

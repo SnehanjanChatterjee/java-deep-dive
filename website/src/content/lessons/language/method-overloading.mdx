@@ -1,0 +1,48 @@
+---
+title: "Overloading and variable arguments"
+module: "language"
+group: "Conversions and numeric boundaries"
+summary: "Resolve overloads from declared types and compare fixed arguments, boxing and varargs."
+order: 130
+version: "Java 8+"
+prerequisites: ["language/methods-and-recursion", "language/arrays", "language/types-and-conversions"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Choose a signature at compile time
+
+Overloading gives methods the same name but different parameter lists. A method's return type alone cannot distinguish overloads. A simple useful pair might format one number or format a number with a width. The declared argument types decide which signature the compiler chooses; the runtime class of a reference argument does not start a new overload search.
+
+<JavaExample file="OverloadChoice.java" output={"long\nInteger\nvarargs"} />
+
+Save as OverloadChoice.java, compile with javac and run with java. Output is long, Integer, varargs on separate lines.
+
+## Apply the first successful applicability phase
+
+For ordinary calls, first consider fixed-arity methods without boxing/unboxing. Next permit boxing/unboxing. Finally consider variable-arity invocation. Within the first successful phase, choose a most-specific applicable method.
+
+For `pick(1)`, int widens to long in the first phase; boxing is unnecessary. An existing Integer reference matches Integer without unboxing. An empty argument list needs varargs, which supplies an empty int array. This is more reliable than a slogan about widening always beating boxing in every possible context.
+
+## A varargs parameter is an array
+
+`int... values` must be last and its body treats values as int[]. Passing an explicit array uses the declaration in fixed-arity form. `pick((int[]) null)` therefore passes a null array; `pick()` passes an empty array. A body that iterates must distinguish them.
+
+An incoming varargs array can be caller-owned. Keeping it in object state can expose later mutations; copy when snapshot ownership is required. Generic varargs have additional erased-type restrictions, taught after generics. Do not introduce several unrelated varargs overloads merely to avoid choosing clear method names.
+
+## Practice: resolve a null call
+
+Does `pick(null)` select Integer or int[]? What changes with overloads `show(Object)` and `show(String)`?
+
+<details>
+<summary>Answer</summary>
+
+Pick is ambiguous because Integer and int[] are unrelated reference types, both accept null, and neither is more specific. A cast communicates which contract the caller intends, without making dereferencing null safe. For show, String is more specific than Object and wins. Adding an unrelated overload can break recompilation even while existing class files continue to reference their originally chosen signature. Inheritance adds a separate runtime dispatch step; it is taught after classes and interfaces.
+
+</details>
+
+## Overload references
+
+- [JLS: method invocation and overload resolution](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12)
+- [Dev.java: method parameters and varargs](https://dev.java/learn/language/oop/classes-objects/calling-methods-constructors/)

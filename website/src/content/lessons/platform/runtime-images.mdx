@@ -1,0 +1,51 @@
+---
+title: "Dependency analysis and custom runtime images"
+module: "platform"
+group: "Modules and runtime images"
+summary: "Dependency analysis and custom runtime images with focused examples, failure traces and solved practice."
+order: 1190
+version: "Java 9+"
+prerequisites: ["platform/modules-and-interop"]
+advanced: true
+---
+
+## Package the resolved runtime graph
+
+A full JDK contains tools and runtime modules that one application may not need. Jlink creates a custom runtime image from explicit root modules and their resolved dependencies. It packages the Java runtime for a chosen application graph; it does not turn every Java application into one portable native executable.
+
+Use the compiled study.client/study.service modules from the previous chapter. From the same directory, with a full JDK selected:
+
+```bash
+jdeps --module-path out --module study.client
+jlink --module-path out --add-modules study.client --output study-runtime
+study-runtime/bin/java -m study.client/study.client.Main
+```
+
+Choose an output location that does not already exist. The final command prints Hello Mira using the image's own launcher. It no longer needs the development JDK launcher on PATH to execute this example. The image is platform-specific and needs an update policy when its runtime receives fixes.
+
+## Inspect dependencies before assuming completeness
+
+Jdeps analyzes static bytecode dependencies. It helps explain references to study.service and java.base, but configuration-driven reflection, provider discovery and native resources can require additional review. A successful development classpath run does not prove an image contains every runtime-selected feature.
+
+Jlink requires linkable explicit modules; automatic modules are a migration bridge, not a completed image graph. Service binding can be requested with --bind-services when the intended providers and dependencies should be linked. Optional modules and externally supplied providers need an explicit deployment policy rather than assuming every discovered implementation appears automatically.
+
+## Separate an image from an installer
+
+A runtime image contains modules and launch machinery. Jpackage (Java 16+) can arrange an application image or platform installer around an application/runtime. Packaging is a distribution concern: it does not establish the application's authorization model, change module exports or eliminate dynamic configuration. A binary that starts successfully still needs feature-level validation for every packaged capability it claims to support.
+
+## Practice: investigate a provider that disappeared
+
+A ServiceLoader-based feature works on the development JDK but discovers no provider in the image. What evidence should you collect before changing application code?
+
+<details>
+<summary>Answer</summary>
+
+Compare module roots, the image's module list, uses/provides declarations, provider packaging and class-loader/module-layer visibility. Determine whether the provider was statically required, included through service binding or intentionally external. Do not convert an invalid provider configuration into an empty result. Add the required provider/module through the intended image policy, rebuild into a new output location and test that feature with the image's own launcher.
+
+</details>
+
+## Runtime-image references
+
+- [jlink options and service binding](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jlink.html)
+- [jdeps static dependency analysis](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jdeps.html)
+- [jpackage application packaging](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jpackage.html)

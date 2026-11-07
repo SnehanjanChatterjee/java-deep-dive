@@ -1,0 +1,68 @@
+---
+title: "Parse length-prefixed UTF-8 messages"
+module: "libraries"
+group: "Buffers and channels"
+summary: "Separate transport reads from application messages"
+order: 680
+version: "Java 8+"
+prerequisites: ["libraries/nio-buffers"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+
+## Separate transport reads from application messages
+
+TCP and stream reads can split a header or a UTF-8 sequence anywhere. The application protocol must define message boundaries. This example uses a four-byte big-endian nonnegative byte length followed by exactly that many UTF-8 bytes, with at most 1,024 payload bytes.
+
+The parser receives a buffer already flipped for reading. It consumes complete frames and leaves an incomplete frame wholly unread for a later attempt. It does not own a socket or decide when EOF occurs.
+
+## Complete parser, encoder and EOF boundary
+
+<JavaExample file="CoreFramedText.java" output={"0\n1\n8364\n0"} />
+
+The demonstration writes length three and E2, the first UTF-8 byte of the euro sign. extract emits zero frames and restores position. After compact, it appends 82 AC, flips, and extracts one complete String. Its first code point is 8364 and no bytes remain.
+
+<ConceptAnimation client:visible model="buffer" />
+
+The eight-byte illustrative model shows the same header/payload preservation as the source's 32-byte demonstration buffer. Capacity changes do not change the protocol. Its shorter code sketch consumes a payload array; the canonical parser uses a bounded slice and advances its parent only after successful strict decoding. Neither model executes a real channel or JVM.
+
+## Read each branch against the invariant
+
+If fewer than four bytes remain, do not consume a header. Otherwise mark the prefix position and read the length. Reject negative/oversized lengths immediately. If the body is incomplete, reset to the mark before breaking, so the next attempt begins with a coherent header.
+
+For a complete body, slice creates a shared bounded view and limit(length) restricts decoding to this payload. The strict decoder reports invalid UTF-8 rather than replacing it. Its own position changes independently; after success, the parent advances by the body byte length. Earlier decoded frames may already have advanced input if a later frame fails; extract does not promise batch rollback.
+
+<Diagram client:visible definition={"flowchart TD\n H{Complete four-byte header?} -->|no| W[Leave input untouched]\n H -->|yes| L[Validate length]\n L --> B{Complete body?}\n B -->|no| R[Reset before prefix]\n B -->|yes| D[Decode bounded payload strictly]\n D --> A[Advance parent and emit frame]\n A --> H\n R --> C[Compact and append later input]"} caption="Retaining the whole incomplete frame avoids a second parser state that would remember an already consumed header." />
+
+## Encode bytes before writing a length
+
+encode converts the String through a strict UTF-8 encoder. It checks encoded payload length, allocates header plus payload, writes the byte count and body, then flips the completed output. For the euro sign it writes length three, not String.length's one. A malformed UTF-16 input such as an unpaired surrogate is rejected.
+
+The bounded decoder view avoids a payload copy, but does not create independent storage/lifetime. Retaining a view and mutating an alias can change the same bytes. The parser's caller owns the input buffer.
+
+## Decide when incomplete becomes truncated
+
+While more input is expected, an incomplete frame is normal. After the source reports EOF, finish first extracts all complete frames, then rejects any remaining bytes as a truncated header/body. Empty remaining input is valid. A shorter final frame is not silently invented.
+
+finish shares extract's failure boundary: already consumed earlier frames are not rolled back. A session owner must decide whether malformed/truncated input closes the connection or invokes an explicit recovery protocol. Retrying indefinitely against the same invalid bytes is not recovery.
+
+## Capacity and admission remain separate
+
+The demonstration's 32-byte buffer fits its short frame. A real accumulator must hold an accepted frame or grow within the declared bound after validating its length. compact cannot create capacity. A full buffer with an incomplete body needs a bounded growth/rejection policy, not another read into zero writable space.
+
+Nonblocking zero progress also needs readiness/backpressure coordination. This parser isolates protocol correctness from that transport/lifetime design rather than pretending a memory example is a complete server.
+
+## Completed exercise tests
+
+<JavaExample file="CoreFramedTextTest.java" />
+
+Tests cover split headers/bodies, multiple frames, empty payloads, malformed text, lengths, byte order, nulls, strict encoding, exact byte length and EOF truncation. Encoding a euro sign then finish-decoding it checks the complete output path. Distinguish several frames in one read from one frame across several reads; both segmentations must preserve the same message meaning.
+
+## References
+
+- [Buffer mark/reset/compact contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/Buffer.html)
+- [CharsetDecoder and CharsetEncoder](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/charset/package-summary.html)
+- [ByteBuffer shared slices](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/ByteBuffer.html#slice())

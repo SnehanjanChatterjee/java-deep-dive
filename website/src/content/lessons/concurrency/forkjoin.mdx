@@ -2,9 +2,9 @@
 title: "ForkJoinPool and divide-and-conquer"
 module: "concurrency"
 group: "Tasks and executors"
-summary: "Partition disjoint work, steal tasks and combine lawful results without shared accumulation."
-order: 450
-version: "Java 8+ · internals OpenJDK 25"
+summary: "Partition disjoint ranges, compute independent results and then examine work-stealing."
+order: 870
+version: "Java 8+"
 prerequisites: ["concurrency/thread-pool-internals"]
 advanced: true
 ---
@@ -13,109 +13,62 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts"></span>
-## Partition work before scheduling
+<span id="mechanics-and-tradeoffs"></span>
+<span id="partition-work-before-scheduling"></span>
+<span id="base-cases-and-complexity"></span>
+<span id="fork-and-join-mistakes"></span>
+## Split the calculation before choosing a scheduler
 
-Fork/join expresses a computation as smaller related computations. A RecursiveTask returns a value; RecursiveAction represents work without one. ForkJoinPool schedules these tasks using work-stealing, enabling idle workers to help execute queued work created by other workers.
+To sum an array, workers can accumulate into one shared counter, but then every addition needs coordination. A different design gives each task a disjoint range, computes a local sum, then combines completed results. Parallelism is possible because the data ownership and combination are explicit.
 
-Choose a workload that can be partitioned, has enough independent work, and has a valid combination rule. Splitting a tiny arithmetic operation into thousands of tasks increases scheduling/allocation overhead rather than useful parallelism. Parallel execution is a design hypothesis, not a performance result.
+A RecursiveTask returns a value; RecursiveAction represents work without one. ForkJoinPool supplies scheduling for these related tasks. The algorithm still needs a base case, a lawful partition and a combination operation.
 
 <span id="worked-example"></span>
+<span id="java-implementation"></span>
 ## Trace disjoint range sums
 
-For input `[1,2,3,4,-5]` and threshold 2, the range [0,5) splits at 2 into [0,2) and [2,5). The left leaf sums 1+2. The right range splits further, obtaining sums 3 and −1. Combining gives 5. Empty input has the additive identity zero.
+For `[1,2,3,4,-5]` and threshold two, range [0,5) splits at two. The left [0,2) sums one plus two. The right [2,5) splits into [2,3), sum three, and [3,5), sum minus one. Three plus two is the final five.
 
-Half-open ranges make the partition proof simple: [from,middle) and [middle,to) do not overlap and together cover the parent’s range. Every input is counted once. The source reads a caller-stable array and accumulates into task-local long variables rather than a shared atomic counter.
+<Diagram client:visible definition={"flowchart TD\n R[Range 0 to 5] --> L[0 to 2: sum 3]\n R --> Q[2 to 5]\n Q --> A[2 to 3: sum 3]\n Q --> B[3 to 5: sum minus 1]\n A --> C[Right total 2]\n B --> C\n L --> T[Combined total 5]\n C --> T"} caption="Half-open child ranges are disjoint and cover the parent. Every input contributes exactly once." />
 
-<span id="mechanics-and-tradeoffs"></span>
-## Work-stealing and combination laws
-
-### Work-stealing representation
-
-The implementation maintains work queues associated with workers and external submissions. Typical worker-local scheduling and stealing use different ends of a work queue, which supports locality for local nested work while making older work available to thieves. Exact queue mechanics are implementation detail; work-stealing is not a guarantee that every fork starts on another worker.
-
-A fork makes work available for execution. A join obtains its completion, potentially with pool-specific helping mechanisms rather than behaving exactly like arbitrary blocking Future.get. The caller can also compute part of the work directly: fork left, compute right, join left. Forking both halves and immediately joining both often creates unnecessary task handling compared with retaining one branch locally.
-
-### Base cases and complexity
-
-For a sequential leaf threshold k and n values, useful arithmetic is O(n); the task tree contains roughly O(n/k) leaves for balanced splitting. Available parallelism, task overhead and memory bandwidth limit actual speedup. A positive threshold ensures termination: when length exceeds it, a split produces smaller ranges. Reject zero/negative thresholds at the public boundary rather than allowing a malformed recursive base case.
-
-Bottom-up combination must agree with the operation. Integer addition in long has defined finite-width behavior; this example’s int-array sum fits long for realizable ordinary Java arrays. Floating-point addition can vary with grouping because of rounding. Subtraction is not associative and cannot be regrouped as an arbitrary reduction.
-
-### Blocking and shared pool concerns
-
-A fork/join worker blocked on an unrelated socket or lock cannot necessarily execute useful queued tasks. ManagedBlocker can cooperate with pool management for supported blocking designs, but is not a generic solution for arbitrary I/O. Do not assume compensation makes resource use unlimited. A common pool also serves other facilities, so blocking work can interfere with unrelated tasks.
-
-The example creates an explicit pool to make ownership visible, then shuts it down after invoke completes. A reusable application service would normally own and reuse its executor instead of constructing one for each small sum. That lifecycle variation should not be confused with changing the recursive algorithm.
-
-### Failure and cancellation
-
-An exception in a subtask is observed through its completion/join path. Arbitrary sibling work is not automatically an application-level structured cancellation policy merely because the tasks used fork/join. ForkJoinTask cancellation does not promise interruption of running computation; long-running algorithms need explicit cooperation where cancellation is required. Keep shared mutation out of combination paths unless its invariant and synchronization are deliberately designed.
-
-<Diagram client:visible definition={"flowchart TD\n R[Range 0 to 5] --> L[0 to 2: sum 3]\n R --> Q[2 to 5]\n Q --> A[2 to 3: sum 3]\n Q --> B[3 to 5: sum minus 1]\n A --> C[Right total 2]\n B --> C\n L --> T[Combined total 5]\n C --> T"} caption={"Partition disjoint work, steal tasks and combine lawful results without shared accumulation."} />
-
-<span id="java-implementation"></span>
 ## Implement a recursive range sum
 
 <JavaExample file="ForkJoinRangeSum.java" output={"5\n0"} />
 
-`sum` validates null and threshold, creates the owned pool and invokes the root task. The nested Sum stores one immutable range description. `compute` handles the base case with a simple loop, otherwise calculates an overflow-conscious midpoint, forks the left task, directly computes the right task and joins the left before combining.
+Sum validates null input and a positive threshold, creates an explicitly owned pool and invokes the root. Compute loops sequentially when the range fits the threshold. Otherwise it calculates a midpoint, forks the left task, computes the right directly, joins left and combines.
 
-The array reference is shared read-only by contract; no task writes its elements. Sharing a final reference does not make concurrent caller mutation safe, so the caller must keep the input stable until completion. An alternative API could snapshot the input, trading copying cost for stronger ownership.
+Forking makes work available; it does not guarantee another worker starts it immediately. Computing one branch locally avoids creating unnecessary task handling for both halves. An empty input returns the additive identity zero. Every recursive child is smaller, so a positive threshold ensures the base case is reached.
 
-Every recursive task covers a strictly smaller half-open range. No worker waits on an application latch or dependent request inside the algorithm. The explicit threshold is a tuning parameter whose performance must be measured for representative inputs, not guessed from the demonstration output.
+The input array is shared read-only by contract. A final array reference does not prevent a caller from mutating its elements; keep the input stable until completion or design a snapshotting API. Each task's accumulator is local, avoiding a shared mutable total.
+
+<span id="work-stealing-representation"></span>
+## Work-stealing and combination laws
+
+On the selected OpenJDK implementation, workers have associated work queues and can steal available tasks from others. Typical local processing and stealing use different queue ends, supporting local nested work and exposing older tasks. Exact queue mechanics are implementation details. Join can involve pool-specific helping, rather than behaving exactly like an arbitrary blocking Future.get.
+
+Useful arithmetic is O(n). With balanced splitting and leaf threshold k, the tree has roughly O(n/k) leaves. Scheduling/allocation overhead, processors and memory bandwidth limit speedup. Splitting tiny work into many tasks can cost more than it saves; threshold choice needs measurement.
+
+The combination must match the operation. Integer-array sums into long fit the source's supported domain. Floating-point addition can vary with grouping through rounding, while subtraction is not an associative reduction. A legal task tree does not make an unlawful regrouping correct.
+
+<span id="blocking-and-shared-pool-concerns"></span>
+<span id="failure-and-cancellation"></span>
+## Blocking, failure and ownership
+
+A fork/join worker blocked on an unrelated socket or application lock cannot necessarily execute available work. ManagedBlocker can cooperate with pool management in suitable designs; it is not unlimited capacity or a generic I/O adapter. The common pool also serves other facilities. The source uses an owned pool and closes its lifetime after invocation; a reusable service would usually reuse an owned pool across calls.
+
+A subtask's failure is observed through its completion/join path. ForkJoinTask cancellation does not promise interruption of running computation, and arbitrary siblings do not gain structured cancellation merely because their tasks form a recursion tree. Long-running algorithms need deliberate cancellation checks. Do not shut down the common pool as though the application alone owns it.
 
 <span id="common-mistakes"></span>
-## Fork and join mistakes
-
-Do not fork without a base case, divide into overlapping ranges, mutate one shared total from every task, or assume CPU parallelism accelerates blocking I/O. Do not call shutdown on the common pool as though it were an owned dedicated pool.
-
 <span id="exercises-and-interview-questions"></span>
-## ForkJoin interview questions
+<span id="coding-exercise-and-solution"></span>
+## Exercise and complete reference solution
 
-<details>
-<summary>Why fork only one child before computing the other?</summary>
-
-It exposes parallel work while doing useful local computation immediately. The forked task can be stolen; joining later waits only when needed. This avoids scheduling both branches unnecessarily.
-
-</details>
-
-<details>
-<summary>What makes a good threshold?</summary>
-
-Enough work per leaf to amortize task costs, while retaining sufficient independent leaves for workers. The answer depends on operation cost, input size, runtime and hardware; profile/benchmark the relevant workload.
-
-</details>
-
-<details>
-<summary>What invariant avoids double counting?</summary>
-
-Sibling ranges are disjoint half-open intervals whose union is the parent range. Each leaf visits only its own indexes, and parent combination adds each child result once.
-
-</details>
-
-<details>
-<summary>Does work-stealing guarantee no starvation?</summary>
-
-No scheduling mechanism guarantees arbitrary application dependencies will progress. Blocking dependencies and resource cycles can still prevent useful work.
-
-</details>
-
-<details>
-<summary>Why not use a shared AtomicLong sum?</summary>
-
-It adds contention and obscures the reduction proof. Independent task-local results with a valid combination operation match the problem more directly.
-
-</details>
-
-### Coding exercise and solution
-
-Implement a recursive sum with a positive threshold, disjoint half-open ranges and no shared mutable accumulator. The complete ForkJoinRangeSum source is the reference solution. Check empty input, negative values, a split at an odd length and a threshold larger than the input. The accompanying ForkJoinRangeSumTest covers these boundaries.
-
-As a follow-up, change each leaf to count values satisfying a predicate and combine by addition. If the predicate has mutable state, give it a separate thread-safety contract rather than assuming parallel calls are harmless.
+Implement the half-open range sum with a positive sequential threshold, no overlapping ranges and no shared accumulator. `ForkJoinRangeSum` is the complete solution. Prove coverage, disjointness, termination and combination separately. Then compare plausible thresholds with a representative benchmark; the deterministic output establishes correctness, not a speed ranking.
 
 <span id="references"></span>
+<span id="forkjoin-interview-questions"></span>
 ## Primary ForkJoin contracts
 
-- [ForkJoinPool work queues and scheduling](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ForkJoinPool.java)
-- [ForkJoinTask join/cancellation contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ForkJoinTask.java)
-- [RecursiveTask result model](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/RecursiveTask.java)
+- [ForkJoinPool](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ForkJoinPool.html)
+- [RecursiveTask](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/RecursiveTask.html)
+- [Dev.java parallel work decomposition](https://dev.java/learn/parallelizing-streams/)

@@ -1,0 +1,49 @@
+---
+title: "Authenticated encryption and nonce ownership"
+module: "platform"
+group: "Security APIs"
+summary: "Authenticated encryption and nonce ownership with focused examples, failure traces and solved practice."
+order: 1240
+version: "Java 8+"
+prerequisites: ["platform/security-apis", "reliability/exceptions-and-resources"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Protect confidentiality and reject modified ciphertext
+
+Encryption hides plaintext, while an authenticated-encryption construction also detects unauthorized modifications under its key and protocol. AES-GCM supplies authenticated encryption with associated data. Java's Cipher API expresses the transformation as AES/GCM/NoPadding; specifying the mode avoids relying on a provider's unspecified default choice.
+
+<JavaExample file="CoreAuthenticatedEncryption.java" output={"message\ntamper rejected"} />
+
+Main creates a fresh ephemeral AES key and one 12-byte nonce from SecureRandom. Transform creates a Cipher, initializes encryption or decryption with that key and GCM parameters, and performs doFinal. Decrypting the original ciphertext reproduces message. Flipping the final ciphertext/tag byte makes authentication fail with AEADBadTagException.
+
+## Read the parameters as protocol obligations
+
+GCMParameterSpec's 128 here is the tag length in **bits**. The nonce array is 12 bytes. These values serve different roles; neither is the plaintext length. Ciphertext includes authentication information and is not expected to equal the plaintext's byte length. Use the agreed charset only at the text/byte boundary; ciphertext is arbitrary bytes, not a String.
+
+A nonce must not repeat for encryption with the same key. This demo encrypts once under its newly generated key, so it does not need a long-lived allocation service. A persistent service does: design key ownership, nonce uniqueness, storage/rotation, message versioning and failure policy. Random-looking bytes alone are not a proof of a correct nonce protocol.
+
+## Bind public context deliberately
+
+Associated data can authenticate context without encrypting it, such as a protocol version or record identifier. Supply the agreed AAD before processing ciphertext through update/doFinal. AAD is not automatically inferred from Java object fields; sender and receiver must use the same defined bytes. This example uses no AAD and demonstrates one message, rather than a complete storage/wire format.
+
+Do not use unauthenticated decrypted data as trusted application state before authentication succeeds. Keep the original authentication failure visible at the boundary owning the operation. An encrypted, authenticated message still needs domain validation and an authorized purpose; cryptography does not decide whether a caller may perform an action.
+
+## Practice: reuse a nonce after restart?
+
+A service persists its AES key but resets an incrementing nonce counter to zero after every restart. Why does passing a round-trip test fail to establish security?
+
+<details>
+<summary>Answer</summary>
+
+The same key/nonce pairs can repeat across process lifetimes, violating GCM's uniqueness requirement even though encryption and decryption still round-trip. Preserve a safe allocation state or adopt an established protocol that guarantees uniqueness across the key's lifetime. Test tampering and malformed inputs as failure paths, and review key/nonce ownership separately from ordinary functional output. Prefer established protocols and reviewed libraries over adding a custom checksum or home-made cipher composition.
+
+</details>
+
+## Authenticated-encryption references
+
+- [Cipher AEAD, AAD and GCM uniqueness contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/javax/crypto/Cipher.html)
+- [GCMParameterSpec tag/IV parameters](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/javax/crypto/spec/GCMParameterSpec.html)
+- [SecureRandom security-sensitive randomness](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/security/SecureRandom.html)

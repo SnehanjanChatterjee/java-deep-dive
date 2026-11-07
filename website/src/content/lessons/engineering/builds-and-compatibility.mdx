@@ -1,194 +1,150 @@
 ---
-title: "Build tools, dependencies and compatibility"
+title: "Source, binary and behavioral compatibility"
 module: "engineering"
-group: "Builds and compatibility"
-summary: "Separate reproducible builds, dependency resolution and API evolution."
-order: 660
-version: "Java 8+"
-prerequisites: ["execution/compile-and-run"]
+group: "Compatibility and migration"
+summary: "Keep a separately compiled client fixed while changing its library, then compare source, binary and behavioral compatibility."
+order: 1270
+version: "Java 8+; modern compiler targeting notes"
+prerequisites: ["engineering/dependency-management", "engineering/api-design-testing", "execution/compile-and-run"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts" aria-hidden="true"></span>
+## Keep the client binary fixed while changing the library
 
-## Build inputs and compatibility contracts
+A library can compile successfully while breaking a program that was compiled against its previous version. Source compatibility asks whether client source still compiles. Binary compatibility asks whether an already compiled client can link. Behavioral compatibility asks whether the operation still means what the caller expects.
 
-A build defines how source becomes an artifact, including compiler settings, resources, tests and packaging. Maven's lifecycle and plugin executions are different from dependency declarations. Dependency management controls version selection but does not itself add every managed dependency to the classpath.
+This lab separates those questions with one greeting method. The original accepts String. Version two accepts CharSequence, a broader source parameter, but removes the original method descriptor. A third library retains the old descriptor and delegates to the broader overload.
 
-Transitive dependencies can introduce version conflicts. Understand the resolved graph rather than assuming the nearest declaration always supplies the desired behavior. Pin appropriate versions and use reproducible inputs; avoid changing a global build configuration merely to make one unrelated project work.
+<a href={lessonUrl('examples/binary-compatibility.zip')} download>Download the complete separately compiled client lab</a>. Extract it and run commands from its root directory. It contains all three library versions and the client source; no external library is required.
 
 <span id="worked-example" aria-hidden="true"></span>
+## Read the first library and compile its client once
 
-## Evolve an API through delegation
+<JavaExample file="projects/binary-compatibility/api-v1/study/api/Greeter.java" label="Version 1: Greeter.java" />
 
-The example illustrates backward-compatible overload addition: the original method delegates to a more explicit method while preserving its behavior. Compatibility still needs analysis at source, binary and semantic levels. An overload can introduce ambiguity for previously valid source calls even when old binaries still link.
-
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Maven lifecycles and resolved dependency graphs
-
-<Diagram client:visible definition={"flowchart TD\n S[Source and dependency graph] --> C[Compiler and API target]\n C --> A[Artifact]\n A --> R[Intended runtime]\n R --> T[Behavioral verification]"} caption={"Source compilation, binary linkage and runtime behavior are separate compatibility concerns."} />
-
-### Read a Maven build in execution order
-
-The default lifecycle includes validate, compile, test, package, verify, install and deploy. Invoking package runs its preceding phases. A phase is a lifecycle checkpoint; a plugin goal performs work bound to it. Clean belongs to a separate lifecycle. Install places an artifact in the local repository; deploy publishes to a configured remote artifact repository and is not a synonym for running an application.
-
-Use conventional `src/main/java`, `src/main/resources`, `src/test/java` and `src/test/resources` layouts unless there is a justified alternative. GAV coordinates identify groupId, artifactId and version. A POM can define compiler release, plugins, dependencies and metadata. Pin relevant plugin/dependency versions rather than relying on moving machine defaults. A Maven wrapper can pin the Maven distribution; a toolchain selects a JDK independently of the JVM running Maven.
-
-### Dependency scopes and resolution
-
-| Scope | Compile | Test | Runtime | Typical role |
-| --- | --- | --- | --- | --- |
-| compile | Yes | Yes | Yes | Application/library API dependency |
-| provided | Yes | Yes | No | Supplied by execution environment |
-| runtime | No | Yes | Yes | Runtime implementation |
-| test | No | Yes | No | Test framework |
-
-Maven normally mediates conflicting transitive versions by nearest definition, with declaration order breaking equal-depth ties. Explicit dependencyManagement can control selected versions for participating dependencies. An imported BOM centralizes a set of managed coordinates; it does not add those libraries as direct dependencies. Exclusions remove specific transitive paths and must be reviewed for whether the library is still required elsewhere.
+<JavaExample file="projects/binary-compatibility/client/study/client/Main.java" label="Separately compiled Main.java" />
 
 ```bash
-mvn dependency:tree
-mvn help:effective-pom
-mvn test
-mvn verify
+mkdir -p out/v1 out/client out/v2 out/compatible
+javac -d out/v1 api-v1/study/api/Greeter.java
+javac -cp out/v1 -d out/client client/study/client/Main.java
+java -cp out/client:out/v1 study.client.Main
 ```
 
-Use the resolved tree and effective POM to explain what actually runs. A dependency visible only during tests cannot fix a missing runtime class in a packaged application. Annotation processors need explicit compiler/build configuration on the modern baseline; source annotations alone do not install a processor.
+The launch prints Hello Mira. The client source passes a String, and its class file records a reference to Greeter.greet with a String parameter and String result. Keep out/client unchanged for the next launch. Commands use : between classpath roots; use ; on Windows.
 
-### A concrete dependency conflict
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+## Replace the runtime library without recompiling the client
 
-If A depends on B→D version 2 and C→E→D version 1, the shorter path through B selects D version 2 under normal mediation. If paths have equal length, declaration order can matter. If the application needs D's API directly, declare that dependency explicitly and verify the selected version is compatible with both consumers. A newer version number is not proof of behavioral compatibility.
+<JavaExample file="projects/binary-compatibility/api-v2/study/api/Greeter.java" label="Version 2: Greeter.java" />
 
-### Source, binary and behavioral change examples
+```bash
+javac -d out/v2 api-v2/study/api/Greeter.java
+java -cp out/client:out/v2 study.client.Main
+```
 
-| Change | Existing source | Existing binary | Behavioral concern |
-| --- | --- | --- | --- |
-| Add overload accepting an unrelated reference type | A null call can become ambiguous | Old descriptor can still link | Recompiled calls may select differently |
-| Remove a public method | Compilation fails for callers | NoSuchMethodError can occur | Operation no longer available |
-| Change a method's return descriptor | Caller source may adapt | Old method descriptor can be absent | API meaning may also change |
-| Tighten validation | Source may compile | Binary may link | Previously accepted input now fails |
-| Change a constant variable's value | Recompiled caller sees new constant | Existing caller may keep inlined old value | Mixed versions can disagree |
+This launch fails with NoSuchMethodError for the original String method. Broadening a parameter in source did not preserve the method descriptor that the old binary requests. The launcher finds Greeter's class, but linkage cannot find the required member.
 
-Binary compatibility is more nuanced than visibility alone. Adding abstract interface requirements or changing inheritance can affect old implementations. New default methods can introduce source conflicts. Evaluate representative consumers and the actual compiled descriptors, not only the library's own tests.
+Inspect the two library descriptors:
 
-### Runtime targeting and migration
+```bash
+javap -s -classpath out/v1 study.api.Greeter
+javap -s -classpath out/v2 study.api.Greeter
+```
 
-On a modern compiler use `--release` to constrain language syntax, class-file target and supported platform API together. Source/target alone can accidentally compile newer library calls into older-format classes. The exercise JMH project deliberately targets release 17, while baseline examples stay Java 8-compatible and modern examples target 25. Preview code is tied to its matching release and flags; keep it separate from stable distributable examples.
+The relevant descriptors are:
 
-For migration: inventory dependencies, run jdeps for JDK-internal usage, review removed/deprecated APIs, configure processors explicitly, compare compiler warnings, then run behavior checks on supported JDKs. Retest serialization, locales/charsets, timing and concurrency assumptions where relevant. Do not modify a machine-wide Maven/Git/JDK setting merely to make one project build; repository-local settings and toolchain commands make assumptions reviewable.
+```text
+v1 greet(String):
+(Ljava/lang/String;)Ljava/lang/String;
 
-### Interview exercise
+v2 greet(CharSequence):
+(Ljava/lang/CharSequence;)Ljava/lang/String;
+```
 
-Given a NoSuchMethodError after a dependency upgrade, identify the requesting caller's compiled descriptor and the actual loaded library version. Explain why the compiler may have succeeded earlier and why adding a random import cannot fix that binary mismatch. Then identify how to reproduce the resolved graph in a clean build.
+The descriptor includes parameter and return types. A String argument can be passed to CharSequence in newly compiled Java source, but the runtime does not rerun overload resolution on the old invocation to choose a different descriptor.
 
-## Artifact contracts and dependency experiments
+## Recompile separately to test source compatibility
 
-### Compile/runtime/test graphs are distinct
+```bash
+mkdir -p out/recompiled
+javac -cp out/v2 -d out/recompiled client/study/client/Main.java
+java -cp out/recompiled:out/v2 study.client.Main
+```
 
-A dependency available during tests can be absent from the delivered runtime. A dependencyManagement entry can supply a version without adding the artifact itself. An annotation processor can run during compilation even though application code never calls it at runtime. Inspect the graph and plugin configuration actually used for each phase, rather than treating the POM as one undifferentiated list of libraries.
-
-### Reproduce a conflict deliberately
-
-If two transitive paths request versions of one library, inspect dependency:tree before changing anything. Normal mediation considers path depth and equal-depth declaration order, while explicit dependency management can override applicable selections. An exclusion removes one path, not necessarily every occurrence or requirement. Declare libraries whose APIs the application directly uses rather than depending accidentally on an unrelated transitive path to keep them present.
-
-### Packaging is not deployment or license selection
-
-Package creates an artifact according to configured plugins. Install puts it in the local artifact repository. Deploy publishes to a configured remote artifact repository and can be an external write; it is not the same as launching an application. A shaded JAR can combine dependencies but must preserve required notices and handle overlapping resources/services deliberately. No public source repository automatically establishes a source license.
-
-### Compatibility experiment with separate clients
-
-Compile a client against library version A. Change the library to B without recompiling the client, then launch that old binary against B. Separately recompile the client against B. These experiments distinguish binary linkage from source compatibility. Adding an unrelated overload can break null-call recompilation while old bytecode continues to call A's descriptor. Changing validation can preserve linkage while breaking behavioral expectations.
-
-### Release targeting is necessary but not sufficient
-
-A modern javac --release target constrains supported syntax, class-file target and platform API. Third-party JARs still need compatible bytecode/APIs, and preview features remain release-bound. A runtime image also needs the actual dynamically discovered modules/resources. Verify the artifact on the intended runtime and record the toolchain instead of editing machine-wide configuration to make a local build silently select a different JDK.
+This source still compiles and the new client prints Welcome Mira. It now records the CharSequence descriptor. That successful recompilation does not repair the unchanged old out/client binary; they are different artifacts.
 
 <span id="java-implementation" aria-hidden="true"></span>
+## Retain the old descriptor through an overload
 
-## Preserve a method contract in Java
+<JavaExample file="projects/binary-compatibility/api-compatible/study/api/Greeter.java" label="Descriptor-preserving Greeter.java" />
 
-The following program is a complete executable example. Compile with `javac CompatibleApi.java` and run with `java CompatibleApi`.
+```bash
+javac -d out/compatible api-compatible/study/api/Greeter.java
+java -cp out/client:out/compatible study.client.Main
+```
+
+The original client now links and prints Welcome Mira. greet(String) still exists and delegates to greet(CharSequence). Its cast selects that broader overload; calling greet(name) with the unchanged String expression inside the String overload would select itself recursively.
+
+Preserved linkage does not imply unchanged behavior: the greeting changed from Hello to Welcome. A caller requiring the original text can still be behaviorally broken. Name the specific compatibility property demonstrated, rather than calling every successful launch “fully backward compatible.”
+
+## Compare another ordinary overload addition
 
 <JavaExample file="CompatibleApi.java" output={"Hello Mira\nWelcome Mira"} />
 
+This smaller source keeps the one-argument method's Hello behavior while adding a two-argument prefix variation. It demonstrates delegation inside one version. The separately compiled lab above is required to investigate what happens to old binaries.
+
+Adding an unrelated same-arity reference overload can break source calls such as greet(null): String and Integer overloads are both applicable and neither is more specific. Existing binaries can still reference their old String descriptor. Adding a broader CharSequence overload alongside String does not create that particular ambiguity because String is more specific.
+
+## Classify API changes precisely
+
+| Change | Source question | Binary question | Behavioral question |
+| --- | --- | --- | --- |
+| Remove public method | Does caller compile? | Does old descriptor exist? | Is the operation still provided? |
+| Change parameter/return descriptor | Can source adapt/recompile? | Can the old member reference link? | Does it mean the same thing? |
+| Tighten input validation | Source may compile | Binary may link | Previously accepted inputs can now fail |
+| Change a constant variable | Recompiled callers can see new value | Old callers can retain inlined value | Mixed versions can disagree |
+| Add interface requirements/defaults | Existing implementations can conflict | Old implementations need analysis | Defaults can alter dispatch/meaning |
+
+Binary compatibility is more nuanced than public visibility. Inheritance, erased generic descriptors, interface defaults and static/instance changes can matter. Evaluate representative consumers as separate compiled artifacts, not only the library's clean test run.
+
+## Package the artifact actually intended for its runtime
+
+The first project chapter establishes compile/test/package; dependency management explains the selected library graph. package creates an artifact according to plugins, install copies it into the local repository, and deploy publishes remotely. Packaging is not launching an application.
+
+A shaded JAR can combine dependencies, but overlapping resources such as META-INF/services may require merging. Otherwise the program can compile while provider discovery changes. Preserve required dependency notices and make any source licensing choice deliberately; publication visibility is not a build setting.
+
+A linked runtime image also needs dynamically discovered modules/resources. Static dependency analysis does not prove every reflected class, service provider or native resource is present. The module and service chapters establish those additional ownership/discovery requirements.
+
+## Target older releases explicitly when distributing
+
+A modern javac --release target constrains supported language syntax, class-file target and platform API together. Source/target alone can allow newer library calls into an older-format class file. On an actual older JDK, only its installed platform API is available, but third-party dependencies still need compatible bytecode/APIs.
+
+The lab commands work with a Java 8+ JDK, using the same selected toolchain for compilation and launch. For distribution, choose the intended release and run the artifact on supported runtimes. Preview features need their matching release and flags; keep preview examples separate from stable distributable code.
+
 <span id="common-mistakes" aria-hidden="true"></span>
+## Diagnose the actual loaded code before changing declarations
 
-## Build and compatibility pitfalls
+For NoSuchMethodError, identify the caller's descriptor, actual loaded library version and runtime classpath order. A dependency tree explains resolution, but a custom launch can still supply a different JAR. A missing class and a missing method are different failures. Imports only affect source naming; they cannot fix already compiled linkage.
 
-Do not assume a successful local build proves runtime compatibility, commit credentials in build settings, or change a dependency and claim every consumer remains behaviorally compatible. Public visibility does not itself grant a source license.
+For migration, inventory dependencies and toolchains, use jdeps to inspect static/internal JDK usage, review removed/deprecated APIs, configure processors explicitly and compare warnings. Recheck serialization, charset/locale, time and concurrency assumptions where the domain depends on them. Use project-local settings instead of silently changing machine-wide configuration.
 
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+## Completed compatibility exercise
 
-## Build and migration interview practice
+The supplied reference artifacts demonstrate four outcomes: old client with v1 prints Hello Mira; old client with v2 fails at its absent String descriptor; old client with the retained overload prints Welcome Mira; recompiled client with v2 also prints Welcome Mira. The difference is which client binary is held fixed.
 
-### Can adding an overload break source compatibility?
+A migration note should state source/API target, actual runtime/toolchain, resolved dependency changes, removed/internal API use, processor configuration and observed behavior checks. Record unsupported or unrun combinations honestly. A library's successful clean build cannot establish compatibility for client/runtime combinations it never exercised.
 
-<details>
-<summary>Explanation</summary>
+## References
 
-Yes. A new overload can make a call such as a null argument ambiguous between unrelated reference types. Already compiled clients may still call the original descriptor, so binary and source compatibility can diverge. Evaluate representative client code rather than using one broad compatibility label.
-
-</details>
-
-### Additional interview questions
-
-<details>
-<summary>Does importing a BOM add its libraries?</summary>
-
-No. It supplies dependency-management versions/policies for participating declarations. Dependencies still need to enter the graph through direct or transitive declarations. Inspect the effective POM and dependency tree to see what actually resolves.
-
-</details>
-
-<details>
-<summary>How can source compatibility fail while binary compatibility remains?</summary>
-
-Adding an unrelated overload can make an existing null call ambiguous on recompilation, while an already compiled caller still references the original descriptor. The two compatibility questions concern different artifacts and must be assessed separately.
-
-</details>
-
-<details>
-<summary>Why can a test-scoped dependency hide a runtime packaging problem?</summary>
-
-The test classpath includes it while the production runtime classpath normally does not. Tests may pass using a class absent from the delivered artifact's runtime environment. Verify the intended artifact and runtime dependency graph.
-
-</details>
-
-### Coding exercise
-
-Inspect a Maven dependency tree, introduce a controlled conflicting transitive version in a sample project and resolve it explicitly. Then compile an example with an appropriate release target and check whether newer API use is rejected.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Does a clean package prove an old client still links?</summary>
-
-No. The library's own clean build does not launch representative separately compiled old clients against the new binary. Test that combination explicitly when binary compatibility matters.
-
-</details>
-
-<details>
-<summary>Why can shading break service discovery?</summary>
-
-META-INF/services resources from several dependencies can require merging rather than one archive entry overwriting another. The packaging plugin must preserve the intended provider metadata and notices.
-
-</details>
-
-<details>
-<summary>What should a migration note record?</summary>
-
-Source/API target, actual runtime/toolchain, dependency graph changes, removed/internal API usage, processor configuration and observed behavioral checks. Do not report an unrun runtime combination as verified.
-
-</details>
-
-<span id="references" aria-hidden="true"></span>
-
-## Build-tool and compatibility references
-
-- [Maven build lifecycle and plugin goals](https://maven.apache.org/guides/introduction/introduction-to-the-lifecycle.html)
-- [Maven scopes, mediation and dependency management](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html)
-- [Maven toolchains](https://maven.apache.org/guides/mini/guide-using-toolchains.html)
-- [Compiler release targeting](https://maven.apache.org/plugins/maven-compiler-plugin/examples/set-compiler-release.html)
-- [JDK dependency analysis](https://dev.java/learn/security/app-integrity-tools/)
+- [JLS binary compatibility](https://docs.oracle.com/javase/specs/jls/se25/html/jls-13.html)
+- [JVM method descriptors](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html#jvms-4.3.3)
+- [javac release targeting](https://docs.oracle.com/en/java/javase/25/docs/specs/man/javac.html)
+- [Maven dependency resolution](https://maven.apache.org/guides/introduction/introduction-to-dependency-mechanism.html)
+- [JDK integrity/dependency analysis tools](https://dev.java/learn/security/app-integrity-tools/)

@@ -32,4 +32,20 @@ public final class SimpleArrayListTest {
         assertThrows(IndexOutOfBoundsException.class, () -> values.set(-1, 9));
         assertEquals(1, values.size()); assertEquals(Integer.valueOf(7), values.get(0));
     }
+    @Test public void testBulkCompactionAndFailure() {
+        final SimpleArrayList<Integer> values = new SimpleArrayList<>();
+        values.add(1); values.add(2); values.add(3); values.add(4);
+        assertEquals(2, values.removeAllMatching(value -> value % 2 == 0));
+        assertEquals(Integer.valueOf(1), values.get(0)); assertEquals(Integer.valueOf(3), values.get(1));
+        assertThrows(IllegalStateException.class, () -> values.removeAllMatching(value -> {
+            if (value == 3) { throw new IllegalStateException("deliberate rule failure"); }
+            return true;
+        }));
+        assertEquals(2, values.size()); assertEquals(Integer.valueOf(1), values.get(0));
+        assertEquals(0, values.removeAllMatching(value -> false));
+        assertEquals(2, values.removeAllMatching(value -> true));
+        assertEquals(0, values.removeAllMatching(value -> true));
+        assertThrows(NullPointerException.class, () -> values.removeAllMatching(null));
+        values.add(null); assertEquals(1, values.removeAllMatching(value -> value == null));
+    }
 }

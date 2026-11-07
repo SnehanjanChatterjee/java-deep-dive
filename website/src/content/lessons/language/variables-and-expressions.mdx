@@ -1,0 +1,50 @@
+---
+title: "Variables, expressions and blocks"
+module: "language"
+group: "Variables and expressions"
+summary: "Declare values, evaluate expressions and track assignments and scope inside blocks."
+order: 30
+version: "Java 8+"
+prerequisites: ["execution/compile-and-run"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Store a value, then compute another
+
+A variable has a name and a declared type. `int quantity = 3;` declares an integer variable and initializes it. `quantity = 4;` assigns another value to that existing variable. Assignment uses `=`; testing equality uses `==`. A String stores text, and a boolean is either true or false.
+
+<JavaExample file="ExpressionBasics.java" output={"15\n20\ntrue"} />
+
+`quantity * unitPrice` is an expression: it computes a value. The declaration of firstTotal stores 15. Changing quantity afterward does not recalculate firstTotal; nextTotal is a separate computation using 4. The comparison `nextTotal <= 20` produces a boolean, rather than another price.
+
+## Read statements and scope
+
+A statement is a unit of execution. Braces group statements into a block; main executes its statements in order. A local variable is usable from its declaration through the enclosing block's end. A variable declared inside an inner block is unavailable outside that block. Locals must be assigned before a read. Fields and array components instead receive default initialization, taught with objects and arrays.
+
+`final` means this variable cannot be assigned again after initialization. It does not mean a calculation updates automatically or that a referenced object is immutable. Use names that express meaning, such as unitPrice; types begin the declaration, and semicolons end these statements. Java distinguishes upper and lower case.
+
+## Build expressions intentionally
+
+Arithmetic operators include `+`, `-`, `*`, `/` and `%`. For integer operands, `5 / 2` produces 2. Multiplication groups more tightly than addition, so `2 + 3 * 4` is 14; `(2 + 3) * 4` is 20. Parentheses make intended grouping visible. String `+` concatenates: `"total=" + nextTotal` produces text.
+
+Comparisons `<`, `<=`, `>`, `>=`, `==` and `!=` produce booleans. Combine conditions with `&&` (both), `||` (either) and `!` (negation). `&&` skips its right operand when the left is false; `||` skips its right operand when the left is true. Boolean `&` and `|` evaluate both operands, unlike their short-circuit forms. Do not use a numeric zero as a boolean: Java has no implicit number-to-boolean conversion.
+
+Java's primitives are byte, short, int, long, char, float, double and boolean. Choose int for these small counts. Long literals can use `L`; decimal floating-point literals normally have type double. A char literal uses single quotes, such as `'A'`; String literals use double quotes. Reference types such as String can also hold null, meaning no object. Numeric boundaries and conversions have a later dedicated chapter.
+
+## Practice: distinguish a saved result from a formula
+
+Predict `int x = 2; int y = x + 3; x = 10;` and then print y. Is it 5 or 13?
+
+<details>
+<summary>Answer</summary>
+
+It is 5. `x + 3` was evaluated when y was initialized. To recompute, execute `y = x + 3;` after assigning 10. If y were final, that second assignment would be rejected. A later statement cannot use a local declared only inside a completed inner block.
+
+</details>
+
+## Language references
+
+- [Dev.java: expressions, statements and blocks](https://dev.java/learn/language/constructs/basics/expressions-statements-blocks/)
+- [JLS: scope of declarations](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3)

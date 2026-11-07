@@ -1,0 +1,48 @@
+---
+title: "StampedLock and validated optimistic reads"
+module: "concurrency"
+group: "Advanced synchronization"
+summary: "Copy a tiny invariant, validate its observation interval and retry under a real read lock when needed."
+order: 1000
+version: "Java 8+"
+prerequisites: ["concurrency/read-write-locks", "concurrency/volatile-publication"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Read two coordinates that a writer changes together
+
+A point stores x and y. A reader wants a distance from one consistent pair. A read/write lock can exclude writers during the copy. StampedLock additionally offers an optimistic read: obtain a stamp, copy the small state, then ask whether a write invalidated that observation.
+
+Optimistic reading is permitted to race with a writer. The copied fields are tentative until validation. This mechanism needs a carefully limited read operation, not arbitrary traversal through inconsistent mutable objects.
+
+## Implement copy, validate and fallback
+
+<JavaExample file="OptimisticPoint.java" output={"5.0\n10.0"} />
+
+Move obtains an exclusive write stamp, updates both fields and unlocks that stamp in finally. Distance obtains an optimistic stamp, copies x/y into locals, then validates. If validation fails, it discards those tentative values, acquires a real read stamp, rereads both fields and releases read ownership. Only then does it calculate distance from the chosen local pair.
+
+The sequential output demonstrates the arithmetic and API paths without claiming it forced a racing validation failure. For the concurrency argument, consider a writer between the two tentative reads: validation must reject that interrupted interval and the fallback rereads a consistent pair. A successfully validated observation supplies the documented consistency relationship for that interval.
+
+<Diagram client:visible definition={"flowchart TD\n O[Obtain optimistic stamp] --> C[Copy x and y into locals]\n C --> V{Validate stamp}\n V -->|valid| R[Use copied pair]\n V -->|invalid| L[Acquire read lock]\n L --> N[Reread both fields]\n N --> U[Unlock read stamp]\n U --> R"} caption="An invalid tentative observation is discarded. Validation is a decision point before the data is trusted." />
+
+## A stamp is not reentrant thread ownership
+
+StampedLock has a different ownership model from ReentrantLock and is not reentrant. Holding a write stamp and calling a method that tries to acquire another incompatible stamp can prevent progress. Unlock requires the matching valid stamp/mode. Do not transfer familiar reentrant-lock assumptions mechanically.
+
+Conversion APIs can try to change modes, but a failed conversion must be handled without using an invalidated assumption. Releasing and reacquiring allows intervening writers, so recheck the protected predicate. An optimistic stamp of zero cannot authorize a successful optimistic observation.
+
+Avoid callbacks, inconsistent graph traversal or externally visible side effects before validation. If the tentative operation throws or already acts on inconsistent data, validating afterward cannot undo that behavior. Primitive-field copying is a deliberately small example with a clear fallback.
+
+## Exercise and complete reference solution
+
+Implement distance by copying the pair, validating and rereading under a real read lock on failure. `OptimisticPoint` supplies the complete solution. Explain why `Math.hypot` uses the chosen locals after the protocol, and why a final reference to the point would not coordinate its mutable x/y fields.
+
+Optimistic reads trade potential retries and design restrictions for avoiding read ownership on successful paths. They are not a universal faster replacement for synchronized or read/write locks. Measure the real workload after the correctness argument is explicit.
+
+## Primary references
+
+- [StampedLock optimistic reading and conversions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/locks/StampedLock.html)
+- [OpenJDK StampedLock implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/StampedLock.java)

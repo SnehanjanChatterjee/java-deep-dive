@@ -1,0 +1,55 @@
+---
+title: "Comparable, Comparator and ordering policies"
+module: "collections"
+group: "Ordering"
+summary: "Decide what \u201ccomes before\u201d means"
+order: 370
+version: "Java 8+"
+prerequisites: ["collections/iteration-and-views", "objects/equality-and-immutability"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Decide what “comes before” means
+
+Sorting names alphabetically and ranking scores numerically are different policies. An ordering compares two values and returns a negative number, zero or a positive number. Only the sign matters; a result of 7 does not mean seven positions apart.
+
+Comparable puts a natural ordering on the type itself through `left.compareTo(right)`. Comparator is a separate object with `compare(left, right)`, useful when several orders are needed or the type is not under your control. Neither interface is the same as equals.
+
+## Use named policies before shorthand
+
+<JavaExample file="CollectionOrdering.java" output={"[A:20, B:10, C:10]\n[B:10, C:10, A:20]"} />
+
+Read Score's compareTo first: the identifier is the primary order, with points breaking an identifier tie. Collections.sort(scores) uses that natural order. ByPointsThenId instead compares points first; only a zero result causes a second comparison by ID. Sorting the same objects with that external policy produces B:10, C:10, A:20. No lambda syntax is needed to understand the comparison contract.
+
+Integer.compare(left.points, right.points) handles extreme ints correctly. Subtracting them can overflow and reverse the sign. The test uses Integer.MIN_VALUE and Integer.MAX_VALUE to expose that defect. String.compareTo supplies a defined lexicographic order, not locale-sensitive human collation.
+
+## Order, equality and uniqueness
+
+An ordering must be coherent: reversing operands reverses the sign, comparison is transitive, and comparison-equivalent values compare consistently against every third value. A comparator consulting mutable external state can violate placement in a tree or heap even when no collection method runs.
+
+Score equality in this example includes ID and points. Both shown orders compare to zero exactly when those fields match. Comparing points alone would make B:10 and C:10 equivalent under comparison, even though they are unequal values. A List sorted by that comparator can retain both. A TreeSet using it would retain one, because comparison zero defines sorted-set membership. HashSet uses equals/hashCode instead.
+
+A tie-breaker is part of domain meaning. If IDs represent identity independently of points, choose a value model that enforces that identity policy rather than expecting an arbitrary comparator to reconcile conflicting models.
+
+## Apply the policy to different operations
+
+Sorting rearranges a sequence. A TreeMap maintains keys in comparison order for every insertion and lookup. A PriorityQueue maintains only the parent/child relation needed to expose the least element. These structures accept ordering policies, but promise different traversals and membership semantics.
+
+A reverse comparator reverses “least” and “greatest”; it does not mutate the stored values. Natural ordering usually rejects null. A comparator may intentionally define null handling, but every operation must follow the same policy. Mutating an ordering field after insertion does not automatically reposition an object.
+
+## Worked exercise: rank equal scores
+
+To retain every distinct score sorted by points then ID, use the named ByPointsThenId comparator. For B:10 and C:10, the primary result is zero, then B compares before C. For two A:20 values, both comparisons are zero. This is suitable for sorted membership because the example's equals definition uses the same fields.
+
+<JavaExample file="CollectionOrderingTest.java" />
+
+Later, functional Java expresses the same comparator with lambdas and composing factories. That is a shorter spelling of an already understood policy, not a new definition of ordering.
+
+## References
+
+- [Comparable natural ordering](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Comparable.html)
+- [Comparator laws and composition](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Comparator.html)
+- [Writing and combining comparators](https://dev.java/learn/writing-and-combining-comparators/)

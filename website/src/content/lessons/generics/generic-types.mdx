@@ -1,0 +1,50 @@
+---
+title: "From Object storage to generic types"
+module: "generics"
+group: "Generic types and methods"
+summary: "Replace unsafe Object storage with a class that preserves the type of stored and returned values."
+order: 290
+version: "Java 8+"
+prerequisites: ["objects/equality-and-immutability", "reliability/exception-contracts"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## See the missing relationship in an Object API
+
+An Object parameter accepts any reference value. That flexibility loses information when a caller needs the **same specific type** back. An ObjectBox can store a String and later an Integer; the API cannot connect a writer's intended type to a reader's cast.
+
+<JavaExample file="ObjectBoxLesson.java" output={"4\nwrong value type"} />
+
+The first cast succeeds because the current value is String. After storing Integer, the second cast fails at runtime. Neither the variable name nor a caller's expectation constrains set(Object). A generic type moves this relationship into the compiler's contract.
+
+## Declare a type parameter, supply a type argument
+
+<JavaExample file="GenericBox.java" output={"second\n7"} />
+
+In `GenericBox<T>`, T is a **type parameter**, used for the field, constructor parameter, setter parameter and getter result. In `GenericBox<String>`, String is the **type argument** supplied for that parameter. Read it as a box of String. Set now accepts String values and get returns String without a caller cast. A separate GenericBox of Integer has an independent static contract.
+
+Try `text.set(Integer.valueOf(7));`: compilation rejects it. Do not keep that rejected statement in the runnable file. It demonstrates an error prevented at the write boundary, rather than a ClassCastException delayed until a read. Null is explicitly permitted by this box; generics themselves do not prohibit null.
+
+## Instantiate the type instead of only naming it
+
+`GenericBox<String> text;` declares a reference variable and creates no object. `new GenericBox<String>("first")` constructs one. Diamond `new GenericBox<>("first")` lets the compiler infer the constructor's type argument from context; it does not create a dynamically typed box. Type arguments must be reference types, so use Integer rather than int. Autoboxing supplies Integer when a primitive value is passed.
+
+Multiple parameters can describe several relationships, such as `Pair<K,V>`. Conventional names include T for a general type, E for an element, and K/V for keys/values. They are names, not special keywords. A class's static state is shared across parameterizations; a static method cannot use the enclosing T without declaring its own independent parameter.
+
+## Practice: identify the rejected change
+
+After constructing `GenericBox<String>`, can `text = new GenericBox<Integer>(7)` or `text.set(7)` work? Can another variable refer to the same String box?
+
+<details>
+<summary>Answer</summary>
+
+Both Integer changes are rejected by the declared String relationship, regardless of the first stored value. Another `GenericBox<String>` reference can alias the same box and observe replacements through set. Type safety does not make the box immutable or thread-safe. Keep raw types and unchecked casts out of this initial API; their migration and runtime implications are taught later.
+
+</details>
+
+## Generic-type references
+
+- [Dev.java: Object box to generic box](https://dev.java/learn/language/fp/generics/intro/)
+- [JLS: parameterized types](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.5)

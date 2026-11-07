@@ -1,0 +1,95 @@
+---
+title: "Runtime memory and object reachability"
+module: "jvm"
+group: "Runtime memory"
+summary: "Distinguish invocation state, shared objects and the paths that keep objects alive."
+order: 1070
+version: "Java 8+"
+prerequisites: ["jvm/frames-and-bytecode", "objects/equality-and-immutability"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Separate a variable from the object it identifies
+
+Consider a method that creates a list, stores two objects in it and returns the list. The method's invocation ends. The returned list and its elements can continue to exist because another live part of the program can reach them. A reference is a value that identifies an object; assigning null to one variable changes one reference, not every reference to that object.
+
+The JVM defines several runtime areas. A thread has its own execution state, including its JVM stack and current instruction position. The heap holds class instances and arrays shared through references. Class-related runtime structures describe types and their code. A particular JVM adds implementation-specific areas and allocation policies.
+
+| Area | What to associate with it | Useful distinction |
+| --- | --- | --- |
+| JVM stack/frame | Invocation locals and intermediate execution | Another call has another frame |
+| Heap | Class instances and arrays | Objects can outlive the creating invocation |
+| Class metadata | Loaded types and related structures | A growing loader population can retain metadata |
+| Code cache in HotSpot | Compiled machine code | It is separate from ordinary object storage |
+| Native/direct storage | Native allocations, direct buffers, thread/runtime machinery | A Java heap limit is not a whole-process limit |
+
+The VM specification's method area and HotSpot's Metaspace are related explanatory layers, not interchangeable names for every detail of every JVM. Likewise, source-level allocation is not proof of one particular object layout or a physical allocation after optimization.
+
+## Trace a list and an alias
+
+Start with a list that reaches A and B. Store a second reference to A in `alias`. Removing A from the list leaves the alias intact. Only after that additional reference is gone does A have no path from the roots in this small model.
+
+<ConceptAnimation client:visible model="memory" />
+
+A **root** is a starting point from which a collector establishes reachability. The actual roots depend on VM execution state and include categories such as live thread references, relevant class/static state and native handles. The drawing chooses a small root set to explain the rule; it does not inspect a real process's roots or assign physical addresses to objects.
+
+## Implement a tracing walk over an explicit graph
+
+<JavaExample file="ReachabilityWalkDemo.java" output={"[list, A, B]\n[list, A, B]\n[list, B]\n[C, D]"} />
+
+Each Node represents a conceptual object. Its edges represent strong references. `reachable` receives the model's roots, visits them breadth first and records each object identity once. It uses an identity-based visited set because graph membership concerns which Node object was encountered, not whether two nodes have equal display names.
+
+The pending deque contains work discovered but not yet processed. Mark an identity when it is first enqueued, so repeated roots and repeated edges cannot queue it again. Remove one node, record its name and inspect its outgoing edges, adding only newly discovered targets. This visited check handles cycles. For V reachable nodes and E traversed edges, the traversal takes O(V + E) work under ordinary constant-cost identity operations and uses O(V) auxiliary bookkeeping.
+
+The first output follows list → A and list → B. The program then removes list → A while supplying A as another root: the reachable names remain the same. Removing that supplied root leaves only list and B. Finally, supplying C as a root reaches both C and D exactly once despite their cycle.
+
+This program models reachability over the roots passed to it. Its own Java locals, graph nodes and collections are ordinary live objects managed by the host JVM. The returned list is not a live-heap query, and its output is not evidence that a particular JVM collection occurred.
+
+## Why a cycle does not require reference counting
+
+Two objects can refer to each other without either being reachable from any root. A tracing collector starts with roots and follows paths; an isolated cycle is not discovered through those paths. Internal references inside that isolated component do not by themselves make it live.
+
+<Diagram client:visible definition={"flowchart TD\n R[Live root] --> L[List]\n L --> B[Object B]\n A[Object A: no root path]\n C[Object C] --> D[Object D]\n D --> C"} caption="B has a root path through the list. A and the isolated C–D cycle do not. This is a conceptual reachability graph, not a heap-layout diagram." />
+
+Unreachable means eligible for reclamation under the applicable mechanism. It does not promise immediate cleanup, zero process memory usage or a predictable moment when weak references will be cleared. The garbage-collection chapter develops how tracing, moving and concurrent work can be implemented.
+
+## Reference strengths and external resources
+
+A strong reference participates in ordinary reachability. Weak references allow a reference relationship that does not keep an otherwise weakly reachable referent alive under the collector's rules. Soft references are cleared under memory-pressure policies and should not be treated as a precise cache budget. Phantom references and ReferenceQueue support notification/cleanup designs with additional rules; `get` does not expose a phantom referent.
+
+These APIs do not turn file handles or sockets into timely self-closing resources. Use deterministic ownership and try-with-resources for resources that require prompt release. A wrapper can be reachable while its external resource has been closed; a Java object can be unreachable while external effects still need an explicit lifecycle policy.
+
+A weak-key structure may still retain values, and values can indirectly refer back to keys. A class loader can remain reachable through a static registry, a live thread's context or a cached object graph. Inspect the actual path instead of inferring absence of retention from one weak reference in the design.
+
+## Exercises on aliases, roots and cycles
+
+<details>
+<summary>Why does removing a list element not prove that its object was freed?</summary>
+
+Removal deletes that list's reference. Another local, field, container or runtime root may still reach the same object. Even when no strong path remains, collection and process-memory behavior are separate questions.
+
+</details>
+
+<details>
+<summary>How does the graph walker distinguish two nodes named A?</summary>
+
+It tracks identities with IdentityHashMap. Equal display names do not merge separate objects. A normal value-based set could be inappropriate if Node later defined equality only by its name.
+
+</details>
+
+<details>
+<summary>Implement and test cycle-safe traversal.</summary>
+
+The complete implementation above uses a deque plus a visited identity set. Test no roots, a null root slot, repeated roots, two nodes with the same name, a two-node cycle and an edge removed while another root remains. The provided ReachabilityWalkDemoTest covers these representative cases. A production concurrent graph would need an additional mutation/snapshot protocol; this exercise assumes the graph does not change during traversal.
+
+</details>
+
+## References for runtime memory and reachability
+
+- [JVM runtime areas and representation freedom](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html)
+- [Reference strengths and notification APIs](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ref/package-info.java)
+- [Identity-based map semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/IdentityHashMap.java)

@@ -1,221 +1,92 @@
 ---
-title: "Records, sealed types and pattern matching"
+title: "Records and validated value components"
 module: "objects"
-group: "Modern modeling"
-summary: "Use modern type modeling without confusing syntax with immutability."
-order: 70
-version: "Java 25 · Java 8 comparison"
-prerequisites: ["objects/equality-and-immutability"]
+group: "Nested and domain types"
+summary: "Model a value with record components, generated members and explicit construction validation."
+order: 230
+version: "Java 16+"
+prerequisites: ["objects/immutable-design", "objects/constructors-and-access"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
-import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+<span id="records-and-closed-alternatives" aria-hidden="true"></span>
 
-## Records and closed alternatives
+<span id="switch-dominance-and-null" aria-hidden="true"></span>
+<span id="trace-the-executable-example" aria-hidden="true"></span>
+<span id="interview-exercise" aria-hidden="true"></span>
+<span id="exhaustiveness-is-checked-against-a-particular-world" aria-hidden="true"></span>
+<span id="when-an-enum-is-the-right-closed-model" aria-hidden="true"></span>
+<span id="coding-solution-outline" aria-hidden="true"></span>
+<span id="java-25-executable-examples" aria-hidden="true"></span>
+<span id="additional-interview-questions" aria-hidden="true"></span>
+<span id="coding-exercise" aria-hidden="true"></span>
 
-A record declares a fixed set of components and supplies component accessors, equality, hashing and a descriptive string representation. Records are useful for transparent data carriers. A record component can still reference a mutable object, so records provide shallow rather than automatic deep immutability.
+## Declare a transparent data carrier
 
-Sealed classes and interfaces restrict the direct permitted subtype set. They support modeling a deliberately closed family of alternatives. Pattern matching can combine a runtime type test with a scoped binding, and modern switch forms can express exhaustive handling of appropriate alternatives. These features solve different problems and should not be grouped as interchangeable boilerplate reduction.
+A record declares a fixed set of components. `record Range(int start, int end)` supplies private final component fields, start()/end() accessors, a canonical constructor, equality, hashing and a descriptive string representation. Unlike a conventional mutable class, its declaration directly publishes the component structure of its value.
+
+Records are final and extend Record; they can implement interfaces but cannot extend another class or add instance fields. Static fields and ordinary methods are allowed. Records became final in Java 16. The Java 8-compatible immutable class from the previous chapter teaches the same ownership concerns without requiring record syntax.
 
 <span id="worked-example" aria-hidden="true"></span>
+<span id="compare-a-legacy-outcome-model" aria-hidden="true"></span>
+<span id="java-implementation" aria-hidden="true"></span>
+<span id="implement-validated-record-and-sealed-models" aria-hidden="true"></span>
 
-## Compare a legacy outcome model
+<JavaExample file="modern/RecordValueLesson.java" output={"2:5\n1\ntrue"} />
 
-The Java 8-compatible program below illustrates a closed outcome model using an enum and a final value class. Modern code could express a data carrier as a record and model alternative outcomes with a sealed hierarchy. The executable example makes the invariant visible without requiring a newer local runtime.
+Compile and run this example on Java 16 or later. Its Range compact constructor rejects start greater than end before generated field assignments occur. No explicit assignment to this.start is needed in that compact form. A normal canonical constructor instead declares every component and assigns the fields itself. Additional constructors delegate to another record constructor. Canonical visibility must be at least as accessible as the record.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+<span id="record-constructors-and-exhaustive-patterns" aria-hidden="true"></span>
 
-## Record constructors and exhaustive patterns
+<span id="mutable-components-and-generated-equality" aria-hidden="true"></span>
+<span id="record-patterns-inspect-the-published-component-api" aria-hidden="true"></span>
 
-Feature availability must be tied to a JDK: records are final from Java 16, sealed types from 17, and record patterns/pattern-switch features from 21. Use the target language specification rather than assuming every pattern form is supported because one related feature is available.
+## Generated methods follow component semantics
 
-<Diagram client:visible definition={"flowchart TD\n R[Record component] --> F[Final reference]\n F --> M[Possibly mutable object]\n S[Sealed family] --> A[Permitted alternative A]\n S --> B[Permitted alternative B]"} caption={"Records constrain component reassignment; sealed types constrain permitted subtypes. Neither automatically supplies deep immutability."} />
+A record is shallowly immutable: fixed references can still identify mutable objects. Sample clones its array on input and output, protecting the stored values from aliases. Generated record equality would compare arrays by ordinary array identity, so Sample explicitly pairs Arrays.equals with Arrays.hashCode.
 
-### Read a record declaration as an API
+The input and output mutation attempts therefore leave its first component equal to one. A new Sample created from equal component contents compares equal. This preserves the reconstruction expectation: creating a new record from an existing record's accessor values should normally represent the same value. An accessor inventing unrelated values undermines transparent value semantics.
 
-`record Range(int start, int end)` declares a final data-carrier class with private final component fields, `start()` and `end()` accessors, a canonical constructor, and generated equality, hashing and string representation. It extends Record and can implement interfaces. It cannot extend another class or declare additional instance fields. Static fields and ordinary methods are allowed.
+Record validation is a local invariant boundary, not a replacement for external authorization or I/O policy. A generated canonical constructor needs no custom body when ordinary component assignment is exactly the intended contract.
 
-```java
-record Range(int start, int end) {
-    Range {
-        if (start > end) {
-            throw new IllegalArgumentException("start exceeds end");
-        }
-    }
-}
-```
+<span id="closed-alternatives-and-invalid-state-prevention" aria-hidden="true"></span>
 
-This compact constructor validates the parameters before generated assignments. It does not assign component fields explicitly. A normal canonical constructor declares all components and assigns the fields itself. Additional constructors must delegate to another constructor of the record. The canonical constructor's visibility must be at least as accessible as the record.
+<span id="a-sealed-family-expresses-alternatives" aria-hidden="true"></span>
+<span id="choose-a-product-or-a-sum-of-alternatives" aria-hidden="true"></span>
+<span id="defensive-record-components-and-exhaustive-alternatives" aria-hidden="true"></span>
 
-### Mutable components and generated equality
+## Separate a product of components from alternatives
 
-A record containing a list can normalize its component with `items = List.copyOf(items)` in a compact constructor (Java 10+ API). The copy rejects null elements and provides an unmodifiable snapshot of references; mutable elements remain mutable. An array component needs a copy on input and output when snapshots are required. Generated equality of array components uses the arrays' ordinary identity equality, not `Arrays.equals`. If array-content value semantics are required, explicitly design matching equals/hashCode implementations or use an appropriate immutable representation.
-
-### A sealed family expresses alternatives
-
-```java
-sealed interface Reply permits Found, Missing { }
-record Found(String value) implements Reply { }
-record Missing(String key) implements Reply { }
-```
-
-A direct permitted subtype must be final, sealed or non-sealed; records are implicitly final. Permitted types must be in the same named module, or the same package when in the unnamed module. A non-sealed branch intentionally reopens extension beneath that branch. Choose a sealed family when enumerating alternatives makes domain reasoning clearer, not merely to prevent all extension.
-
-### Switch, dominance and null
-
-In Java 21+, a pattern switch can destructure record components and cover a sealed family:
-
-```java
-static String describe(final Reply reply) {
-    return switch (reply) {
-        case null -> "no reply";
-        case Found(final String value) -> "found: " + value;
-        case Missing(final String key) -> "missing: " + key;
-    };
-}
-```
-
-Without an applicable null label, a null selector in this pattern switch throws NullPointerException; an ordinary default does not automatically make it null-safe. A broad earlier type pattern can dominate a later narrower pattern and cause a compilation error. A guard such as `case Found f when f.value().isEmpty()` refines an alternative but does not normally cover all Found values, so include an unguarded branch where needed.
-
-Exhaustiveness is checked against the compile-time hierarchy. Adding an alternative can require recompiling and extending switches. Separate compilation with evolved hierarchies can expose runtime mismatch paths; do not assume a previously exhaustive binary handles newly introduced data meaningfully.
-
-### Trace the executable example
-
-ModernTypesDemo creates Success(42), which passes validation and matches the Success record pattern. Failure("missing") matches the other alternative. Success(-1) fails during construction, before any switch is reached. These are separate responsibilities: constructors preserve local invariants; pattern matching chooses behavior for an already constructed value.
-
-### Interview exercise
-
-Model a payment result with accepted and declined alternatives, where only accepted carries a positive confirmation number. Explain why a single record with a boolean and several nullable fields permits invalid combinations. Implement constructor validation, an exhaustive switch and an explicit null policy. Keep external authorization or payment processing outside the value model.
-
-## Closed alternatives and invalid-state prevention
-
-### Choose a product or a sum of alternatives
-
-A record groups components that are all present together: a Range has both start and end. A sealed family models alternatives: a lookup is Found with a value or Missing with a key. A single record carrying a boolean plus several nullable fields can admit contradictory states that a small alternative family excludes structurally.
-
-The constructor is the local validation boundary. Normalize/copy record inputs there, but preserve the reconstruction expectation: building a new record from an existing record's accessor values should normally represent the same value. An accessor that invents unrelated values or exposes mutable internals undermines transparent value semantics.
-
-### Exhaustiveness is checked against a particular world
-
-A switch over a sealed family can cover its known alternatives without a catch-all. That makes a newly added alternative visible during recompilation. Separate compilation still matters: an older client can encounter a hierarchy evolved after it was compiled. Do not treat exhaustiveness as proof that every future binary combination is semantically supported.
-
-A guarded pattern such as `case Found f when f.value().isEmpty()` covers only a subset. Include the remaining unguarded Found case where required. A broad earlier type pattern can dominate a narrower later one and make the latter illegal. Null handling is a separate policy: an ordinary default is not automatically an applicable null case.
-
-### Record patterns inspect the published component API
-
-A record pattern uses component accessors rather than bypassing the type's API to read arbitrary private fields. Nested patterns fail to match when a required nested component is null; they do not silently fabricate a default record. Keep patterns small when deep nesting obscures business cases, and name intermediate values when it improves explanation.
-
-### When an enum is the right closed model
-
-An enum suits a fixed set of named instances such as directions or lifecycle labels. It can implement an interface, hold immutable metadata and provide constant-specific behavior. Records suit per-instance data carriers; sealed subtypes suit alternatives with different component shapes. Using one of these features does not imply the others are always required.
-
-### Coding solution outline
-
-For a lookup result, define a sealed root, a Found record whose constructor rejects null and a Missing record with its own validated key. Write an exhaustive switch with explicit null policy. Test each alternative and invalid construction separately. Do not encode a failed infrastructure request as Missing unless that is truly the contract; a closed model should clarify outcomes rather than hide failures.
-
-<span id="java-implementation" aria-hidden="true"></span>
-
-## Implement validated record and sealed models
-
-### Defensive record components and exhaustive alternatives
-
-<JavaExample file="modern/CoreRecordOwnership.java" output={"1\ntrue\nfound=2\nmissing=x\nabsent input"} />
-
-Sample copies its array in the compact constructor and again in its accessor. Input mutation and mutation of an accessor result cannot change the stored values. Because generated record equality would compare array identities, Sample explicitly pairs Arrays.equals with Arrays.hashCode. The copy-through-accessors value invariant is preserved: constructing another Sample from its published values describes an equal value.
-
-Found snapshots the list of immutable String values with List.copyOf, rejecting null list/elements. Missing validates its key. The sealed Result root restricts alternatives, and describe handles both record patterns plus null explicitly. Each constructor enforces its local invariant before the switch chooses behavior; null is not silently converted into a Missing domain outcome.
-
-The example is stable Java 25 code, not a preview exercise. It intentionally does not implement a recursive deep copier for arbitrary object graphs. An array or list with mutable nested objects would need another explicit element-ownership policy.
-
-
-The following program is a complete executable example. Compile with `javac OutcomeModel.java` and run with `java OutcomeModel`.
-
-<JavaExample file="OutcomeModel.java" output={"SUCCESS:saved"} />
-
-### Java 25 executable examples
-
-This example uses records, a sealed hierarchy and record patterns. Compile and run with Java 25; no preview flags are needed.
-
-<JavaExample file="modern/ModernTypesDemo.java" output={"value=42\nerror=missing\nrejected"} />
-
+Range groups two simultaneously present values: start **and** end. A lookup can instead be Found **or** Missing, each carrying different data. That second shape is the subject of the next sealed-types chapter. Combining records, sealed types and patterns into one syntax trick obscures their different purposes.
 
 <span id="common-mistakes" aria-hidden="true"></span>
-
-## Record and pattern-matching pitfalls
-
-Do not assume a record containing a mutable array has value equality over array contents automatically. Do not use preview flags merely to silence unexplained compilation failures. A sealed hierarchy is a domain-modeling decision, not a requirement for all interfaces.
-
+<span id="record-and-pattern-matching-pitfalls" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
+<span id="modern-type-modeling-interview-practice" aria-hidden="true"></span>
+<span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Modern type-modeling interview practice
+<span id="read-a-record-declaration-as-an-api" aria-hidden="true"></span>
+<span id="why-is-a-record-not-necessarily-deeply-immutable" aria-hidden="true"></span>
 
-### Why is a record not necessarily deeply immutable?
+## Practice: explain a record containing an array
 
-<details>
-<summary>Explanation</summary>
-
-The component references are fixed, but referenced objects may still mutate. A record containing a mutable list can expose changes through its accessor. Copy collections at construction when snapshot semantics are intended and consider the mutability of elements as well.
-
-</details>
-
-### Additional interview questions
+Would input copying alone make generated equality compare two independent Sample arrays by contents?
 
 <details>
-<summary>Why does a record containing int[] not automatically compare array contents?</summary>
+<summary>Answer</summary>
 
-Generated record equality follows the component equality semantics, and arrays use identity equality. Defensive copies protect ownership but do not change that equality rule. Define matching equals/hashCode explicitly if array contents form the value, or choose another immutable representation.
-
-</details>
-
-<details>
-<summary>Does a default label make a pattern switch accept null?</summary>
-
-Not automatically. An explicit applicable null label is needed for the intended null policy. Without it, a null selector can throw NullPointerException before ordinary default behavior applies. Exhaustiveness over non-null alternatives is distinct from null handling.
-
-</details>
-
-<details>
-<summary>Can a permitted subtype remain extensible?</summary>
-
-Yes, a direct permitted class can declare non-sealed, reopening extension beneath that branch. The sealed root still controls its direct alternatives. This is a domain decision, not a promise that every descendant is listed at the root.
-
-</details>
-
-### Coding exercise
-
-On Java 25, model Outcome as a record or sealed family, validate constructor inputs, and implement an exhaustive switch. Explain how a newly permitted subtype affects the switch. This modern rewrite is an exercise, not the Java 8 program below.
-
-## Solved interview and debugging practice
-
-<details>
-<summary>Does a record always need a compact constructor?</summary>
-
-No. The generated canonical constructor is sufficient when simple component assignment is the intended contract. Add validation/normalization/copying only when the domain requires it; do not add boilerplate without a constraint.
-
-</details>
-
-<details>
-<summary>Why might an enum be preferable to a singleton class?</summary>
-
-An enum provides a fixed named instance model with language/runtime support for its identity and serialization behavior. It does not solve initialization side effects, mutable shared state or suitability of global access.
-
-</details>
-
-<details>
-<summary>How does a guard affect exhaustiveness?</summary>
-
-A guard filters matching values, so the guarded branch generally does not cover the entire underlying type alternative. The switch still needs the remaining values handled unless another applicable rule establishes coverage.
+No. Copying changes ownership, not the array equality contract. Independent copies remain different array objects. Override equals and hashCode together for content semantics, and copy on output as well if mutable components must remain private. For a list component, a structural snapshot still does not freeze mutable elements; the generics ownership chapter supplies that separate example.
 
 </details>
 
 <span id="references" aria-hidden="true"></span>
+<span id="modern-language-references" aria-hidden="true"></span>
 
-## Modern language references
+## Record references
 
-- [Record constructors and data-carrier semantics](https://dev.java/learn/language/oop/records/)
-- [Sealed classes, final in Java 17](https://openjdk.org/jeps/409)
-- [Pattern matching for switch, final in Java 21](https://openjdk.org/jeps/441)
-- [Record patterns, final in Java 21](https://openjdk.org/jeps/440)
+- [Dev.java: records](https://dev.java/learn/language/oop/records/)
+- [JLS: record classes](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.10)

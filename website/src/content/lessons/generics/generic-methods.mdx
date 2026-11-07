@@ -1,0 +1,48 @@
+---
+title: "Generic methods and type inference"
+module: "generics"
+group: "Generic types and methods"
+summary: "Declare method type parameters and follow how arguments constrain the compiler’s inferred types."
+order: 300
+version: "Java 8+"
+prerequisites: ["generics/generic-types", "language/arrays"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Give one invocation a type relationship
+
+A generic method declares its own type parameter before its return type. In `static <T> T identity(T value)`, T connects the argument and result. Unlike a generic class's parameter, this T belongs to the method declaration and each invocation is type-checked in its own context.
+
+<JavaExample file="GenericMethods.java" output={"Java\n7\nAda"} />
+
+Identity returns the exact reference supplied, including null. Assigning identity("Java") to String needs no cast. The explicit invocation `GenericMethods.<Integer>identity(7)` spells out the type argument; ordinary calls can usually omit it. Boxing supplies an Integer reference. The syntax puts the method type argument after the qualifier and before the method name.
+
+## Preserve input/output information
+
+First receives T[] and returns its first T component. A String[] therefore produces a String result. It rejects a null array and an empty array because neither supplies a first component. A present first component can itself be null, following the stated policy. The operation takes O(1) work and storage once the array exists.
+
+Compare returning Object instead: callers would need casts even when the array's element type is already known. A named type parameter is useful when multiple positions must share a relationship. An unbounded wildcard instead represents an unknown type; later API-boundary chapters explain when that is appropriate.
+
+## Inference combines constraints
+
+The compiler uses invocation arguments, declared bounds and the target context. It does not wait for later statements to decide what an earlier variable meant. Diamond syntax on constructors follows the same static principle. With `var` on Java 10+, removing an explicit assignment target can lead to a broader inferred type; the variable still has one static type.
+
+A bound establishes operations the implementation may use. An unconstrained T supports Object's contract, not arbitrary methods that happen to exist on one caller's type. A method that calls doubleValue must declare an appropriate Number bound rather than relying on one successful Integer example.
+
+## Practice: explain a useful and a useless type parameter
+
+Would `<T> void print(T value)` need a named T if the body only calls println and the result contains no relationship? Why is T useful for first?
+
+<details>
+<summary>Answer</summary>
+
+A simple Object parameter can express that unconstrained print operation; a named type parameter adds no useful relationship there. First uses T in both its input and return type, preserving information callers need. Generic methods are a design tool for relationships, not a requirement to replace every Object with a letter. First(new String[0]) still fails according to its empty-input contract: compile-time type safety does not establish nonempty data.
+
+</details>
+
+## Inference references
+
+- [Dev.java: generic methods](https://dev.java/learn/language/fp/generics/intro/)
+- [Dev.java: type inference](https://dev.java/learn/language/fp/generics/type-inference/)
