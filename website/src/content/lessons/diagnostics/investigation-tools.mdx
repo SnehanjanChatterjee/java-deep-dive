@@ -1,0 +1,245 @@
+---
+title: "Thread dumps, heap dumps and JFR"
+module: "diagnostics"
+group: "Diagnostics"
+summary: "Select diagnostic evidence that matches the suspected failure."
+order: 600
+version: "Java 8+"
+prerequisites: ["jvm/memory-gc-jit", "concurrency/memory-model"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Choose evidence for a runtime symptom
+
+Start an investigation by defining the symptom: high CPU, latency, blocked work, growing retained heap or native-memory pressure. A thread dump describes stacks and thread states at a point in time. Several samples can reveal persistent blocking or hot paths; one sample does not prove a trend. A heap dump describes objects and retaining relationships, not the history of every allocation.
+
+Java Flight Recorder collects events about execution and runtime behavior with configurable settings. JDK Mission Control can inspect recordings. Use jcmd to discover supported commands for the actual target process and JDK; diagnostic permissions and production operating constraints matter.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Investigate a controlled contention scenario
+
+DiagnosticLab deliberately creates one monitor owner, one blocked contender and a bounded retaining collection. Its explicit prompts keep the process alive for inspection and let the investigator release the lock. The following workflow connects thread-dump identities, a heap retaining path and a completed JFR monitor event to known application behavior. This is contention with a release path, not a manufactured claim of deadlock.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Thread states, retaining paths and runtime events
+
+For lock contention, inspect blocked stacks, owners and repeated samples. For CPU, combine sampling with workload and thread information. For memory, examine retained sizes, dominators and paths to GC roots; a large shallow object count alone may not reveal the owner keeping data alive.
+
+Record the JDK, collector, workload, timestamps and sampling settings with evidence. Avoid dumping sensitive application data into public reports. A diagnostic action can consume resources, so select the smallest useful evidence for the question. Verification should distinguish observation from inference.
+
+<Diagram client:visible definition={"flowchart TD\n S[Define symptom] --> C[CPU or latency: profiles and thread samples]\n S --> H[Retention: heap dump and retaining paths]\n S --> J[Runtime events: JFR recording]\n C --> V[Correlate evidence with workload]\n H --> V\n J --> V"} caption={"Choose evidence for the suspected failure, then distinguish observations from the conclusions inferred from them."} />
+
+### A repeatable investigation lab
+
+DiagnosticLab (Java 25) deliberately keeps one worker waiting while holding a monitor and another trying to acquire that monitor. It retains a bounded set of byte arrays so heap evidence also has a known owner. It waits for Enter before releasing the lock and terminating. This is a controlled local lab, not a command to attach to an unrelated application.
+
+The complete `modern/DiagnosticLab.java` source appears in the Java implementation section below.
+
+Compile with Java 25 and enable recording before contention begins:
+
+```bash
+javac DiagnosticLab.java
+java -XX:StartFlightRecording=name=study,settings=profile DiagnosticLab
+```
+
+Record the printed PID. In another terminal, inspect that PID:
+
+```bash
+jcmd <pid> help
+jcmd <pid> Thread.print -l
+jcmd <pid> GC.class_histogram
+jcmd <pid> JFR.dump name=study filename=study.jfr
+jcmd <pid> JFR.stop name=study
+jfr summary study.jfr
+jfr print --events jdk.JavaMonitorEnter,jdk.ThreadPark study.jfr
+```
+
+Angle-bracket PID is a placeholder to replace, not literal shell syntax. Diagnostic commands and impact vary by JDK; help gives the target VM's supported commands. This program uses platform threads so Thread.print exposes the specific monitor example. For virtual-thread-heavy programs use version-appropriate dump facilities such as `Thread.dump_to_file` where supported.
+
+### Interpret contention before calling it deadlock
+
+Locate `study-owner` and `study-waiter`. The owner awaits a latch while retaining the application monitor. The waiter is BLOCKED entering that monitor. Follow the same monitor identity from waiter's “waiting to lock” line to the owner's “locked” line. The owner's latch wait is not a second ownership dependency back to the waiter: main releases it on Enter. There is contention, but no lock cycle in this design.
+
+Collect another dump before release. Similar stacks across samples establish persistent waiting during that interval. Then press Enter and observe termination. A real deadlock investigation instead needs a cycle of threads/locks and evidence that no participant can advance the dependency.
+
+### Read an actual thread-dump excerpt
+
+The following selected stack lines come from this lab on Java 25. Thread-header metadata and unrelated frames are omitted. Object identities and source line numbers vary between runs; compare the matching monitor identity within one dump.
+
+```text
+"study-owner"
+   java.lang.Thread.State: WAITING (parking)
+    at java.util.concurrent.CountDownLatch.await(java.base@25.0.5/CountDownLatch.java:230)
+    at DiagnosticLab.hold(DiagnosticLab.java:16)
+    - locked <0x0000000adc819158> (a java.lang.Object)
+
+"study-waiter"
+   java.lang.Thread.State: BLOCKED (on object monitor)
+    at DiagnosticLab.contend(DiagnosticLab.java:23)
+    - waiting to lock <0x0000000adc819158> (a java.lang.Object)
+```
+
+The matching identity connects the waiter's requested monitor to the owner. The owner is parked on a CountDownLatch while still holding that monitor. This explains the blocked waiter without inventing a circular lock dependency.
+
+### Heap histograms and retaining paths
+
+A histogram groups objects by class and shallow bytes. It cannot by itself identify why an array stays alive. For a local heap snapshot, run `jcmd <pid> GC.heap_dump study.hprof` if supported and open the result in a heap-analysis tool such as Eclipse MAT. This can request GC and pause the target. Inspect the dominator tree and paths to GC roots, then locate the static `RETAINED` list and its byte arrays.
+
+Shallow size is the object itself; retained size estimates what becomes unreachable if the dominating owner is removed. Shared references complicate ownership: an object can be reachable through several paths. In this lab, one obvious root path is the static list. In an incident, find and validate the actual application ownership before recommending a larger heap.
+
+### CPU, locks and JFR event interpretation
+
+A CPU-heavy method needs sampling evidence while the workload runs. A thread parked on a latch does not consume CPU just because it appears repeatedly in dumps. JFR execution samples indicate sampled running stacks; allocation samples identify allocation sites with sampling limitations; monitor events expose sufficiently long waits under the recording settings. Event thresholds can omit short events. An empty event listing is not proof that no event of that category ever happened.
+
+The controlled lab's waiter emits a completed monitor-enter event after the owner releases the monitor, so dump after release while preserving program lifetime if analyzing that event. A recording dumped before acquisition finishes may not yet contain it. Correlate timestamps, workload phase and event configuration before drawing a causal conclusion.
+
+### Read a completed JFR monitor event
+
+After pressing Enter to release the monitor, dump the recording while the program waits at its second prompt. These selected fields from the lab's completed event connect the same owner and waiter:
+
+```text
+jdk.JavaMonitorEnter {
+  monitorClass = java.lang.Object (classLoader = bootstrap)
+  previousOwner = "study-owner" (javaThreadId = 29)
+  eventThread = "study-waiter" (javaThreadId = 30)
+  stackTrace = [
+    DiagnosticLab.contend() line: 23
+    java.lang.Thread.run() line: 1474
+  ]
+}
+```
+
+Timestamp, duration and monitor address are omitted. The wait duration is deliberately controlled by when Enter is pressed, so it is not an application performance result. Enable recording before the waiter begins its acquisition: starting a recording midway through an already blocked operation can miss that operation's event. Press Enter at the second prompt after capturing the recording to terminate the lab.
+
+### Native memory and out-of-memory categories
+
+If process resident memory grows while heap is stable, investigate native/direct buffers, metaspace, thread count and mappings. Native Memory Tracking must be enabled at JVM startup when used, for example `-XX:NativeMemoryTracking=summary`; then `jcmd <pid> VM.native_memory summary` reports tracked categories. It does not account for every possible native-library allocation. An OutOfMemoryError detail about Java heap differs from “unable to create native thread”; both deserve category-specific evidence.
+
+### Interview answer structure
+
+State the symptom and time window, choose the smallest relevant evidence, describe what the evidence directly shows, form a hypothesis and run a discriminating experiment. For rising retained heap: compare equivalent workload phases, inspect dominators/root paths and confirm retention growth. For latency: distinguish CPU saturation, locking, downstream waits, safepoints and GC rather than treating every slow request as a memory problem.
+
+## From evidence to a discriminating experiment
+
+### Separate observation, hypothesis and conclusion
+
+A blocked stack is an observation. “Requests wait behind this lock during the latency spike” is a hypothesis requiring correlation. “Changing this lock ownership reduced the observed bottleneck under the same workload” needs an experiment. Keep those levels distinct in an interview or incident note; a plausible story is not yet evidence.
+
+For the supplied contention lab, repeated dumps connect one waiter's monitor identity to its owner. The owner can progress after main releases the latch, so the graph is contention rather than an irrecoverable lock cycle. Capture after release as well: disappearance of the blocked acquisition is the expected follow-up observation, not proof that every unrelated bottleneck is solved.
+
+### CPU and wall-clock waiting need different tools
+
+A thread parked repeatedly may contribute latency while using little CPU. CPU samples show where running time is spent under the sampling policy; they do not directly measure all waiting. A high-CPU incident should correlate operating-system/process measurements, thread samples and workload. A hot method appearing in one sample is not necessarily the dominant aggregate cost.
+
+### Heap evidence does not contain every historical allocation
+
+A heap dump captures a graph at a point in time. A histogram summarizes shallow counts/sizes. Neither alone records the complete history of which allocation sites produced every retained object. Allocation events/profiles provide complementary evidence, with their own sampling and thresholds. Use the dominator/root-path view to establish retention and an allocation profile to investigate churn.
+
+### Command impact and ownership
+
+Ask the target process which diagnostic commands it supports. Heap dumps and some histograms can pause work or request GC; recordings consume resources and may contain application data. A local controlled lab is an appropriate place to learn those effects before applying the commands to an operational process. Do not attach to an unrelated process solely because its PID appears nearby.
+
+### Worked diagnosis sequence
+
+For rising latency with stable retained heap: collect repeated thread evidence and a bounded JFR recording while the workload is active. Look for CPU saturation, lock waits, downstream I/O, GC/safepoints or queue accumulation. Select one hypothesis and vary one controlling factor. For growing retained heap: compare equivalent phases, locate a dominant owner and verify whether clearing/removing that owner changes the retained graph. Record limitations where the available data cannot distinguish alternatives.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Run the diagnostic investigation lab
+
+### Runnable contention and retention lab
+
+<JavaExample file="modern/DiagnosticLab.java" />
+
+### A minimal thread-state observation
+
+The example captures a worker's state after it has terminated. It demonstrates that a Thread object remains inspectable but does not simulate an actual thread-dump investigation. The deterministic result is TERMINATED; timing-dependent states should not be asserted without coordination.
+
+The following program is a complete executable example. Compile with `javac ThreadInspection.java` and run with `java ThreadInspection`.
+
+<JavaExample file="ThreadInspection.java" output={"TERMINATED"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Runtime-investigation pitfalls
+
+Do not infer deadlock from every WAITING thread, call a temporary allocation spike a leak without retention evidence, or compare recordings from different workloads as though only the code changed.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Diagnostic interview practice
+
+### Why collect multiple thread dumps for a latency incident?
+
+<details>
+<summary>Explanation</summary>
+
+Repeated samples distinguish a persistent state from a momentary one and can reveal whether work is progressing. A single blocked stack might be normal contention; the same owner and waiters across samples, correlated with the incident, provide stronger evidence. A true deadlock requires a dependency cycle, not merely waiting.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Does a WAITING thread prove deadlock?</summary>
+
+No. It can legitimately await a latch, task, condition or work item. Deadlock requires a dependency cycle preventing progress. Inspect owners, awaited resources, repeated samples and the workload before classifying the wait.
+
+</details>
+
+<details>
+<summary>Why does a histogram not establish a leak owner?</summary>
+
+It aggregates object classes and shallow sizes but does not show complete retaining relationships. A heap dominator/root-path analysis identifies which reachable owners retain the graph. Compare equivalent workload phases to establish growth.
+
+</details>
+
+<details>
+<summary>Why might a monitor event be absent from a recording?</summary>
+
+The event may be below its threshold, disabled, outside the recorded interval, or not yet completed. The lab's blocked acquisition completes after lock release. Missing events under one configuration do not prove no contention existed.
+
+</details>
+
+### Coding exercise
+
+Use a controlled application with a deliberately held lock. Capture repeated thread dumps, identify the owner and blocked thread, and explain why that state is contention rather than necessarily a deadlock.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why can a heap dump after forced GC look different from a live histogram?</summary>
+
+The commands can differ in which objects are included and whether collection occurred first. Record the command/JDK and compare equivalent evidence rather than treating differently obtained snapshots as the same measurement.
+
+</details>
+
+<details>
+<summary>Why does no recorded monitor event not prove no contention?</summary>
+
+The event can be disabled, below a threshold, outside the recording interval or incomplete when the recording was dumped. The controlled lab also demonstrates why recording before the acquisition begins matters.
+
+</details>
+
+<details>
+<summary>What makes a follow-up experiment useful?</summary>
+
+It should distinguish competing explanations while controlling workload/configuration. Changing heap size, collector, code and traffic together can improve a symptom without identifying which change mattered.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Diagnostic-tool references
+
+- [jcmd diagnostic commands and impact](https://dev.java/learn/jvm/monitoring-troubleshooting/troubleshooting/jcmd/)
+- [JFR command-line analysis](https://dev.java/learn/jvm/monitoring-troubleshooting/jfr/tools/)
+- [HotSpot diagnostic-command implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/services/diagnosticCommand.cpp)
+- [Eclipse Memory Analyzer concepts](https://help.eclipse.org/latest/topic/org.eclipse.mat.ui.help/concepts/dominatortree.html)

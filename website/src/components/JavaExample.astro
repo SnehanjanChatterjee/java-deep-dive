@@ -1,0 +1,9 @@
+---
+import { Code } from 'astro:components';
+import { url } from '../lib/paths';
+const { file, output } = Astro.props;
+const sources=import.meta.glob(['../../../java-examples/src/{main,test}/java/*.java','../../../java-examples/modern/**/*.java'],{query:'?raw',import:'default',eager:true});
+const source=Object.entries(sources).find(([path])=>path.endsWith('/'+file))?.[1] as string | undefined;
+if(!source)throw new Error(`Missing canonical Java source: ${file}`);
+---
+<div class="code-wrap example-code"><div class="code-head"><span>{file}</span><span><a href={url('examples/'+file)} download>Download</a><button data-copy-code aria-label={`Copy ${file}`}>Copy</button></span></div><Code code={source} lang="java" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />{output&&<div class="output"><span>OUTPUT</span><code>{output}</code></div>}</div>

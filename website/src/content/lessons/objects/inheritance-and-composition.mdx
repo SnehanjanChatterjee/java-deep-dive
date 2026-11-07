@@ -1,0 +1,178 @@
+---
+title: "Polymorphism, inheritance and composition"
+module: "objects"
+group: "Object model"
+summary: "Design behavior with interfaces and distinguish dispatch from hiding."
+order: 50
+version: "Java 8+"
+prerequisites: ["language/methods-and-references"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Classes, interfaces and substitutable behavior
+
+An interface specifies a capability or contract. A class can implement several interfaces while extending one class. An abstract class can share state and partial implementation; an interface is often preferable when unrelated classes should expose the same capability. Neither choice automatically guarantees a well-designed abstraction.
+
+Overridden instance methods use dynamic dispatch. Fields and static methods do not participate in the same overriding mechanism. Constructors are not inherited. A subclass should preserve the superclass's behavioral expectations, including valid inputs, postconditions and exceptions.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Compose a capability instead of inheriting storage
+
+A Checkout depends on a Pricing strategy rather than a concrete subclass hierarchy. The same class can delegate to different pricing behavior. An interface-typed reference invokes the implementation supplied by its concrete object.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Construction order and member resolution
+
+<Diagram client:visible definition={"flowchart LR\n C[Checkout] -->|delegates pricing| P[Pricing interface]\n P --> A[Discount strategy]\n P --> B[Regular strategy]"} caption={"Composition separates the Checkout contract from a replaceable pricing behavior."} />
+
+### Build an object model from its contract
+
+A class combines state with operations that preserve its invariants. An interface specifies a capability; an abstract class can additionally hold shared state and partial implementation. Choose inheritance when every subtype can honor the base contract. Choose composition when one object delegates a responsibility to another. Reusing a few lines is not sufficient reason to promise an “is-a” relationship.
+
+For example, a queue implemented by inheriting a general list exposes indexed insertion that can bypass queue ordering. A queue containing a private list can publish only enqueue/dequeue operations. Strategy passes an interchangeable behavior; a decorator wraps the same interface to add behavior. These are ways of organizing dependencies, not requirements to add a hierarchy to every class.
+
+### Initialization order and virtual calls
+
+Before a new instance's initialization code, its fields have default values. In a conventional constructor chain, superclass construction completes before subclass field initializers and instance initializer blocks, followed by the subclass constructor body. Initializers within a class follow textual order. Class initialization similarly processes static fields and blocks after required superclass initialization.
+
+A dangerous detail is that instance calls from a superclass constructor still dispatch to overrides. If an override reads a subclass field, that field can still hold its default value. Never assume construction disables polymorphism. Use constructors, private helpers or carefully designed final methods for invariant establishment; avoid leaking `this` before construction completes.
+
+Java 25 permits a restricted constructor prologue before an explicit `super(...)` or `this(...)` call. It can perform allowed validation/computation subject to early-construction restrictions. Therefore “super must always be the first source statement” is an older-source rule, not a universal Java 25 rule. This feature does not make arbitrary use of an incompletely initialized instance safe.
+
+### What is resolved statically and dynamically?
+
+| Member | Selection rule | Example implication |
+| --- | --- | --- |
+| Overridden instance method | Selected signature, then runtime receiver | Base reference can call subtype implementation |
+| Hidden static method | Compile-time qualifying type | Prefer `Base.utility()` rather than an instance call |
+| Hidden field | Compile-time reference type | `base.value` and `child.value` can name different fields |
+| Constructor | Explicit construction/chaining | Constructors are not inherited or overridden |
+| Private method | Not inherited for overriding | A same-named subtype method is independent |
+
+An override may return a covariant reference type, widen access and narrow checked exceptions. `final` prevents overriding a method or extending a class; a final reference prevents reassignment, not mutation of its referent. `protected` access across packages has receiver restrictions; it is not simply public access for any object seen by a subclass.
+
+### Interface defaults and nested types
+
+A concrete superclass method takes precedence over an interface default. A more specific interface default can win over an ancestor default. Unrelated competing defaults require an explicit override; where legal, `InterfaceName.super.method()` names a chosen default implementation. Static interface methods belong to the interface and are not inherited as instance behavior.
+
+A static nested class has no enclosing instance reference. A non-static inner class is associated with an outer instance and can retain it. Anonymous classes declare a new type and have their own `this`; lambdas use the enclosing `this`. Use an enum for a fixed set of named instances; enums can hold state and implement interfaces, but cannot extend an arbitrary class.
+
+### Substitution exercise
+
+A subtype that throws `UnsupportedOperationException` for a base operation promised to work may compile while violating the behavioral contract. Explain the preconditions, postconditions and invariants callers rely on, then refactor the capability into a smaller interface or compose an implementation that preserves the promise.
+
+## Access boundaries and behavioral substitution
+
+### Access is checked at the use site
+
+Public, protected, package-private and private are source/binary access policies, not statements about whether reflection can discover a member. A package-private method can be inaccessible to a subtype in another package and therefore may not participate in overriding as an ordinary inherited visible method there. Protected access outside the declaring package has receiver restrictions: a subclass cannot treat every arbitrary base-class instance as if its protected state were public.
+
+Constructors establish the initial invariant but are not inherited. An implicit no-argument super call requires an accessible matching constructor. If the superclass offers only argument-taking constructors, the subclass must supply the intended chain. On Java 25, permitted constructor prologues add controlled pre-super work; they do not allow arbitrary use of the uninitialized receiver.
+
+### Substitution is more than matching signatures
+
+A subtype can compile while strengthening preconditions or weakening postconditions callers rely on. For example, a base collection contract that accepts all permitted elements is not preserved by a subtype that rejects some elements merely because its implementation is inconvenient. Separate capabilities when one implementation cannot honor the full promise.
+
+Composition can wrap a delegate and expose a smaller, truthful contract. A stack exposing every List operation through inheritance admits calls that bypass its intended LIFO protocol. A composed stack can keep its storage private and publish push/pop/peek. The choice is about supported behaviors and future change, not a claim that inheritance is always wrong.
+
+### Defaults and explicit conflict resolution
+
+A superclass concrete method takes precedence over an interface default. A more-specific interface can override an inherited default. Unrelated competing defaults require the implementing class to resolve the conflict. `InterfaceName.super.method()` names an eligible direct-interface default; it is not a general mechanism to invoke any ancestor implementation. Static interface methods belong to their declaring interface rather than becoming instance methods on implementers.
+
+### A complete dispatch exercise
+
+<JavaExample file="CoreDispatchLab.java" output={"child-object\nchild-string\nlong\nInteger\nvarargs"} />
+
+Explain the first two outputs without referring to body execution order: compile-time member visibility chooses a signature, then runtime receiver dispatch chooses an override of that signature. Fields and hidden static methods do not use this second virtual-selection step. Keeping those mechanisms separate makes a class hierarchy easier to review than memorizing several apparently contradictory output puzzles.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Polymorphism and composition in Java
+
+The following program is a complete executable example. Compile with `javac CompositionExample.java` and run with `java CompositionExample`.
+
+<JavaExample file="CompositionExample.java" output={"90"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Inheritance and initialization pitfalls
+
+Do not confuse overloading with overriding or static method hiding with dynamic dispatch. A subclass that rejects operations promised by its base type can violate substitutability. Avoid inheriting solely to reuse a few lines of code.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Object-model interview practice
+
+### When is composition more suitable than inheritance?
+
+<details>
+<summary>Explanation</summary>
+
+When a feature is a changeable collaborator rather than an intrinsic subtype relation. Pricing, retry policy and serialization strategy can vary independently from the owning object's identity. Composition keeps those dependencies explicit and makes isolated testing easier, although it can require more delegation code.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can an override print zero when called from a superclass constructor?</summary>
+
+Dynamic dispatch can reach the subclass override before the subclass's field initializer runs. The field still has its default value. The problem is object initialization order, not a failure of polymorphism. Avoid overridable calls while establishing construction invariants.
+
+</details>
+
+<details>
+<summary>Can an override declare a broader checked exception?</summary>
+
+No. A caller compiled against the base signature must not be required to handle a new broader checked failure merely because the runtime receiver is a subtype. The override may narrow checked exceptions or omit them. Unchecked exceptions have different compiler obligations.
+
+</details>
+
+<details>
+<summary>When does composition improve a data-structure API?</summary>
+
+When inheriting an existing container exposes operations that violate the new abstraction's rules. A queue wrapping a private list can expose only queue operations. A queue inheriting a general mutable list inherits indexed operations that may bypass its ordering contract.
+
+</details>
+
+### Coding exercise
+
+Add a second Pricing implementation and test Checkout without changing its class. Explain how dependency inversion differs from constructing a concrete dependency inside total.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Can a constructor safely call a method declared final?</summary>
+
+Final prevents subtype overriding of that method, reducing one construction hazard. It does not make leaking this, calling an external callback or reading incompletely initialized state safe. Review the whole construction path.
+
+</details>
+
+<details>
+<summary>Why can using a base reference hide a subclass overload?</summary>
+
+The compiler only considers the members visible through the declared receiver type. It chooses a signature before runtime dispatch, so the subclass overload may never be a candidate even though the actual object is a subtype.
+
+</details>
+
+<details>
+<summary>How do you explain a pattern choice in an interview?</summary>
+
+Name the responsibility that varies, the invariant the boundary preserves and the callers it decouples. A Strategy for a varying discount policy has a concrete reason; adding an interface for every one-off helper does not.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Object-model references
+
+- [Inheritance and member rules](https://dev.java/learn/language/oop/inheritance/what-is-inheritance/)
+- [Class members and initialization](https://dev.java/learn/language/oop/classes-objects/more-on-classes/)
+- [Flexible constructor bodies, final in Java 25](https://openjdk.org/jeps/513)

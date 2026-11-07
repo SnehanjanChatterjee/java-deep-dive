@@ -1,0 +1,67 @@
+---
+const {id='increment-interleaving'} = Astro.props;
+---
+<section class="interleaving-lab" data-interleaving aria-labelledby={id+'-title'}>
+ <div class="interleaving-heading"><div><span class="eyebrow">WORKED INTERLEAVING</span><h3 id={id+'-title'}>Two increments: where can one update disappear?</h3></div><label>Protocol<select data-protocol aria-label="Increment protocol"><option value="plain">Plain count++</option><option value="volatile">Volatile count++</option><option value="cas">CAS retry loop</option></select></label></div>
+ <div class="interleaving-state"><div><span>Thread A's state</span><strong data-local-a>—</strong></div><div><span>Shared count</span><output data-shared-count>0</output></div><div><span>Thread B's state</span><strong data-local-b>—</strong></div></div>
+ <p class="interleaving-explanation" data-step-explanation role="status" aria-live="polite">Two callers each intend to increment once. Step through one deliberately chosen schedule.</p>
+ <ol class="interleaving-events" data-events></ol>
+ <div class="interleaving-controls"><button class="secondary" data-previous disabled>Previous</button><span data-position>Start</span><button class="secondary" data-reset>Reset</button><button class="primary" data-next>Next step</button></div>
+ <p class="interleaving-caption">This is a deterministic teaching model, not a JVM execution or an exhaustive set of memory-model outcomes. The CAS loop illustrates an atomic transition; it does not claim that incrementAndGet uses this exact machine-code sequence.</p>
+</section>
+<script>
+const plain=[
+ {actor:'A',action:'Read count into a local value',a:'0',b:'—',count:0,explain:'A reads zero. It has not yet written the incremented value.'},
+ {actor:'B',action:'Read the same old count',a:'0',b:'0',count:0,explain:'B also reads zero before either caller publishes a new count.'},
+ {actor:'A',action:'Calculate its local value plus one',a:'1',b:'0',count:0,explain:'A computes one locally. This arithmetic does not change B’s earlier observation.'},
+ {actor:'A',action:'Write one to count',a:'1',b:'0',count:1,explain:'A stores one. B still holds the zero it read earlier.'},
+ {actor:'B',action:'Calculate and write its own one',a:'1',b:'1',count:1,explain:'B computes from its old zero and also writes one. Two requested increments produced a final count of one.'}
+];
+const atomic=[
+ {actor:'A',action:'Read the expected value',a:'0',b:'—',count:0,explain:'A observes zero and proposes changing zero to one.'},
+ {actor:'B',action:'Read the same expected value',a:'0',b:'0',count:0,explain:'B also proposes zero to one. Observing a value is not yet a successful update.'},
+ {actor:'A',action:'CAS 0 → 1 succeeds',a:'0 → 1',b:'0',count:1,explain:'A’s expected-value check and update take effect atomically.'},
+ {actor:'B',action:'CAS 0 → 1 fails',a:'0 → 1',b:'stale 0',count:1,explain:'The shared value is already one, so B cannot overwrite it using its stale expectation.'},
+ {actor:'B',action:'Reread the current value',a:'0 → 1',b:'1',count:1,explain:'The retry uses a fresh observation and recomputes the candidate two.'},
+ {actor:'B',action:'CAS 1 → 2 succeeds',a:'0 → 1',b:'1 → 2',count:2,explain:'Both increments now have distinct successful atomic transitions. The final count is two.'}
+];
+for(const lab of document.querySelectorAll<HTMLElement>('[data-interleaving]')){
+ const select=lab.querySelector<HTMLSelectElement>('[data-protocol]')!;
+ const previous=lab.querySelector<HTMLButtonElement>('[data-previous]')!,next=lab.querySelector<HTMLButtonElement>('[data-next]')!;
+ const events=lab.querySelector<HTMLOListElement>('[data-events]')!,explanation=lab.querySelector<HTMLElement>('[data-step-explanation]')!;
+ let position=-1;
+ const render=()=>{
+  const steps=select.value==='cas'?atomic:plain;
+  const current=position>=0?steps[position]:undefined;
+  lab.querySelector<HTMLElement>('[data-local-a]')!.textContent=current?.a||'—';
+  lab.querySelector<HTMLElement>('[data-local-b]')!.textContent=current?.b||'—';
+  lab.querySelector<HTMLElement>('[data-shared-count]')!.textContent=String(current?.count||0);
+  const qualifier=select.value==='volatile'?' Volatile accesses do not combine this read/modify/write sequence into one atomic increment.':'';
+  explanation.textContent=current?current.explain+qualifier:'Two callers each intend to increment once. Step through one deliberately chosen schedule.';
+  events.replaceChildren(...steps.map((step,index)=>{
+   const row=document.createElement('li');row.classList.toggle('current',index===position);
+   if(index===position)row.setAttribute('aria-current','step');
+   const number=document.createElement('span');number.className='event-number';number.textContent=String(index+1);
+   const actor=document.createElement('strong');actor.textContent='Thread '+step.actor;
+   const action=document.createElement('span');action.textContent=step.action;
+   row.append(number,actor,action);return row;
+  }));
+  previous.disabled=position<0;next.disabled=position===steps.length-1;
+  lab.querySelector<HTMLElement>('[data-position]')!.textContent=position<0?'Start':`${position+1} / ${steps.length}`;
+ };
+ select.addEventListener('change',()=>{position=-1;render()});
+ previous.addEventListener('click',()=>{position=Math.max(-1,position-1);render()});
+ next.addEventListener('click',()=>{position++;render()});
+ lab.querySelector('[data-reset]')!.addEventListener('click',()=>{position=-1;render()});render();
+}
+</script>
+<style is:global>
+.interleaving-lab{border:1px solid var(--control-border,var(--line));border-radius:8px;background:var(--surface);padding:20px;margin:24px 0}
+.interleaving-heading{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}.interleaving-heading h3{font-size:19px;line-height:1.5;margin:7px 0 0}.interleaving-heading label{font-size:12px;display:grid;gap:5px}
+.interleaving-state{display:grid;grid-template-columns:1fr minmax(110px,.6fr) 1fr;gap:12px;margin:20px 0 16px}.interleaving-state>div{padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;text-align:center}.interleaving-state span{font-size:11px;color:var(--muted);display:block}.interleaving-state strong{font-family:monospace;font-size:17px;display:block;margin-top:9px}.interleaving-state output{font-size:27px;font-weight:700;color:var(--green);display:block;margin-top:2px}
+.interleaving-explanation{font-size:14px;line-height:1.75;min-height:50px;margin:12px 0}
+.interleaving-events{list-style:none;padding:0;margin:16px 0}.interleaving-events li{display:grid;grid-template-columns:20px 72px minmax(0,1fr);gap:8px;padding:9px 10px;font-size:13px;line-height:1.5;border-left:2px solid transparent;border-bottom:1px solid var(--line)}.interleaving-events li.current{background:var(--soft);border-left-color:var(--green)}.interleaving-events .event-number{font-size:10px;color:var(--muted);padding-top:2px}
+.interleaving-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.interleaving-controls>[data-position]{font-size:12px;color:var(--muted);margin-right:auto}.interleaving-caption{font-size:11px;line-height:1.65;color:var(--muted);margin:14px 0 0}
+@media(max-width:480px){.interleaving-lab{padding:15px}.interleaving-state{grid-template-columns:1fr 90px 1fr;gap:6px}.interleaving-state>div{padding:9px 5px}.interleaving-state span{font-size:10px}.interleaving-events li{grid-template-columns:16px 64px minmax(0,1fr);padding:8px 4px;gap:5px;font-size:12px}.interleaving-controls button{padding:9px 10px}.interleaving-heading h3{font-size:18px}}
+@media(prefers-reduced-motion:no-preference){.interleaving-events li.current{animation:step-reveal .18s ease-out}@keyframes step-reveal{from{background:var(--bg)}to{background:var(--soft)}}}
+</style>

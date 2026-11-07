@@ -1,0 +1,197 @@
+---
+title: "Annotations, reflection and service discovery"
+module: "platform"
+group: "Metadata and extensibility"
+summary: "Inspect metadata and design explicit extension points."
+order: 620
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Metadata and dynamic invocation
+
+Annotations attach metadata to declarations or type uses. Retention determines whether that metadata is available only in source, in class files or at runtime. Annotation processing runs during compilation and is distinct from reflection, which inspects runtime types and members. An annotation does not execute behavior by itself.
+
+Reflection can inspect constructors, fields and methods, but access checks and module boundaries still apply. Dynamic proxies can implement interface-based interception; method handles provide typed executable references with different linkage and adaptation mechanisms. These tools increase flexibility while moving some checks away from ordinary source-level calls.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Distinguish method lookup from invocation
+
+The program locates a declared method and invokes it on an instance. The helper is public, so no access suppression is needed. The example highlights the difference between obtaining metadata and performing the invocation.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Annotation, proxy and service lifecycles
+
+<Diagram client:visible definition={"flowchart TD\n T[Runtime type] --> M[Lookup method metadata]\n M --> A[Access checks]\n A --> I[Invocation]\n I --> R[Return value or wrapped target failure]"} caption={"Reflection lookup and invocation can fail at different stages and should preserve their distinct causes."} />
+
+### Annotation retention and targets
+
+SOURCE retention is for source/compiler tooling; CLASS retention preserves metadata in class files without requiring runtime reflection visibility; RUNTIME permits reflective access. CLASS is the default retention. `@Target` limits valid declaration/type-use locations. `@Inherited` affects certain class-level annotation lookup through superclass inheritance; it does not automatically inherit method annotations or interface annotations. `getDeclaredAnnotation` and inherited-aware lookup therefore answer different questions.
+
+An annotation processor implements a compile-time processing contract and is configured on a processor path/build tool. It can validate or generate additional source/resources during rounds; the annotation itself does not execute code or rewrite every method at runtime. Java 25 builds should configure processors explicitly rather than rely on historical implicit classpath discovery.
+
+### Metadata lookup versus invocation
+
+`getMethod` finds a public method, including inherited public methods. `getDeclaredMethod` examines declarations on the named class, including nonpublic ones, without automatically granting access. Parameter lookup requires exact declared parameter classes; it is not ordinary overload resolution over arbitrary runtime values. Use `int.class` for an int parameter, not Integer.class. Invocation can perform permitted argument conversions but cannot make a missing lookup signature exist.
+
+A target method's exception is wrapped in InvocationTargetException. Wrong access, wrong receiver/argument shape and missing members are separate failures. `trySetAccessible` can fail under strong module encapsulation; blanket access suppression is not a portable reflection strategy.
+
+### Executable annotation, proxy, handle and service example
+
+The complete `MetadataLab.java` source appears in the Java implementation section below.
+
+`@Label` uses runtime retention and a method target. The program reads it on PlainGreeter.greet, invokes the method reflectively, routes the same interface through a dynamic proxy, calls a typed method handle, and discovers a provider through ServiceLoader. Each mechanism reaches the same simple behavior so the differences in wiring remain visible.
+
+The proxy factory rejects a null target and gives the proxy identity-based Object methods. `equals` compares the proxy reference with the argument, `hashCode` uses System.identityHashCode on the proxy, and `toString` reports the target type without calling either proxy or target toString recursively. Service calls delegate to the target and unwrap InvocationTargetException so the original failure is preserved. This example has no interface default method; an API using defaults must define its invocation policy separately. Proxies implement interfaces, not transparent subclasses of arbitrary concrete classes, and target self-invocation does not cross the proxy again.
+
+### Why Object methods need an explicit policy
+
+Blindly delegating equals to the target would evaluate `target.equals(proxy)`. With ordinary target identity semantics, that makes `proxy.equals(proxy)` false, violating reflexivity. The example instead treats each proxy as a distinct identity: it equals itself, not its target, null or another proxy wrapping the same target. Identity hash codes may collide, so the contract does not require different proxies to have different numerical hashes.
+
+<JavaExample file="MetadataLabTest.java" />
+
+The tests verify reflexivity, distinct-proxy/target inequality, stable identity hashing, nonrecursive diagnostics, service delegation and propagation of the exact original service exception. Choosing identity semantics is deliberate; a proxy intended to share domain equality with its target would need a separately consistent equality/hash policy on both sides.
+
+### Method handles are typed invocation objects
+
+A MethodType describes return and parameter types. `findVirtual` performs access checks when obtaining the handle, and the receiver is part of the invocation shape. `invokeExact` requires an exact call-site type, including the return cast; adaptable invoke allows defined conversions. Handles are not automatically faster in every use: lookup frequency, adaptation and call-site stability affect optimization. They also do not bypass module access merely because the API is low level.
+
+### ServiceLoader separates contract from provider selection
+
+On the classpath, a UTF-8 file under `META-INF/services/<fully-qualified-interface>` lists provider binary names. Providers need the required construction visibility/shape. The example creates only a temporary service descriptor directory; its nested provider class is already on the parent classpath. The resource loader is closed and temporary resources removed after discovery.
+
+In named modules, the consumer declares `uses service.Interface`; the provider declares `provides service.Interface with provider.Implementation`. An exported implementation package is not normally required just to provide that service. Discovery is lazy and provider construction/configuration failures can occur during iteration. Preserve ServiceConfigurationError rather than pretending no provider existed. Do not assume provider discovery order is a meaningful application priority policy.
+
+<Diagram client:visible definition={"flowchart TD\n C[Consumer uses service interface] --> L[ServiceLoader]\n D[Descriptor or module provides] --> L\n L --> P[Provider construction]\n P --> I[Interface call]\n X[Metadata or construction failure] -. report .-> C"} caption={"A service contract, provider metadata and successful provider construction are separate prerequisites for discovery."} />
+
+### Interview exercise
+
+Add a second provider and choose explicitly by a provider-reported capability rather than iteration order. Then remove the descriptor and compare “none discovered” with “descriptor names an invalid provider.” Explain class-loader context and module declarations before changing reflection accessibility.
+
+## Reflection failures, proxy contracts and service selection
+
+### Lookup uses declared parameter types
+
+A reflected method lookup does not perform ordinary overload resolution using arbitrary argument values. To find an int parameter, request int.class rather than Integer.class. getMethod searches public methods including inherited ones; getDeclaredMethod examines declarations on the chosen class. Discovery does not grant access to nonpublic members or override module encapsulation.
+
+Invocation can reach the target and then report its failure through InvocationTargetException. Unwrap/preserve that cause when translating the failure at a deliberate boundary. NoSuchMethodException instead means lookup did not find the requested signature; IllegalAccessException describes an invocation-access problem. Combining them into one “reflection failed” default loses the stage needed for diagnosis.
+
+### Proxy interception is interface-based
+
+The handler receives a Method and arguments for an interface invocation. It must handle Object methods and eligible default methods deliberately, preserve declared checked-exception policy and decide whether annotation metadata comes from the interface or implementation. Looking for an implementation annotation only on the interface Method can silently miss it.
+
+Delegating to a target method should preserve its original failure rather than adding accidental reflection wrappers. Self-invocation inside the target does not cross the proxy boundary again. A proxy is not a transparent subclass of every concrete class and should not be sold as universal interception.
+
+### Method handles move some checks to linkage
+
+MethodType specifies receiver/parameter/result shape. A lookup object determines permitted access when obtaining the handle. invokeExact requires an exact call-site descriptor, including the expected return type; adaptable invoke performs defined conversions. A cast on the returned result can therefore be semantically significant for invokeExact. Handles do not bypass module readability/openness automatically.
+
+### Service discovery needs a selection contract
+
+Zero providers, invalid provider metadata and provider-construction failure are different outcomes. Do not catch ServiceConfigurationError and pretend discovery was empty. If more than one provider is available, choose through explicit capability/priority policy rather than undocumented iteration order. Named modules use uses/provides, while classpath discovery uses service resources. The chosen loader/context determines which definitions and metadata are visible.
+
+### Exercise solution
+
+Define an interface capability and two providers reporting supported formats. Discover providers, validate their reported capability and select by an explicit rule. Test no match, multiple matches, invalid metadata and target failure. Keep the service contract visible to the consumer without hard-coding every provider implementation into the consumer's module dependency list.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Implement metadata and provider discovery
+
+### Metadata, invocation and provider discovery
+
+<JavaExample file="MetadataLab.java" output={"true\nHello Mira\nHello Mira\nHello Mira\nHello Mira"} />
+
+### Introductory example
+
+The following program is a complete executable example. Compile with `javac ReflectionExample.java` and run with `java ReflectionExample`.
+
+<JavaExample file="ReflectionExample.java" output={"Hello Mira"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Reflection and discovery pitfalls
+
+Do not assume every annotation is retained at runtime, mistake a compiler processor for a runtime interceptor, or silently swallow provider-loading failures. Reflection does not make an otherwise invalid access policy appropriate.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Metadata and services interview practice
+
+### What is the difference between a missing method and an invoked-method failure?
+
+<details>
+<summary>Explanation</summary>
+
+Method lookup can fail because the requested name/signature is unavailable. Invocation can instead succeed in reaching the method, which then throws its own exception; reflection reports that through InvocationTargetException. Handle and explain the appropriate stage rather than treating both as the same error.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can an annotation be visible in a class file but absent from reflection?</summary>
+
+CLASS retention stores metadata without runtime annotation visibility. RUNTIME is required for ordinary reflective annotation lookup. Annotations also need the appropriate target and lookup policy; inherited and declared-only queries differ.
+
+</details>
+
+<details>
+<summary>Why can getDeclaredMethod find a method that invoke cannot access?</summary>
+
+Discovery and access permission are separate. The lookup can return a private declaration, while invocation still enforces access/module rules. Finding metadata is not authorization to suppress encapsulation.
+
+</details>
+
+<details>
+<summary>Is an invalid provider descriptor equivalent to no providers?</summary>
+
+No. An empty discovery result can mean no configuration is available. A descriptor naming an invalid or unconstructable provider can fail with ServiceConfigurationError. Preserve that diagnostic instead of silently reporting absence.
+
+</details>
+
+### Coding exercise
+
+Define a runtime-retained annotation and inspect it. Then define a service interface and two providers, configure discovery and explain how packaging/class loaders affect the providers found.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why can interface annotation lookup miss implementation metadata?</summary>
+
+The proxy Method often describes the interface declaration. An implementation method can carry different annotations. Choose which declaration owns the policy and locate that method explicitly when needed.
+
+</details>
+
+<details>
+<summary>Why is a method handle's return cast meaningful?</summary>
+
+invokeExact is checked against the call-site type, not merely a runtime value compatible with some broader Object context. The expression's expected result type contributes to the exact invocation descriptor.
+
+</details>
+
+<details>
+<summary>What is wrong with choosing the first ServiceLoader provider?</summary>
+
+It makes discovery iteration order an undeclared business policy. Define a capability/priority/conflict rule so packaging or loader changes do not silently select a different behavior.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Reflection and service references
+
+- [Runtime annotation lookup](https://dev.java/learn/api/reflection-method-handles/reflection/annotations/)
+- [Reflection method lookup and invocation](https://dev.java/learn/api/reflection-method-handles/reflection/methods/)
+- [Dynamic proxy invocation contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/reflect/Proxy.java)
+- [Method-handle access and invocation](https://dev.java/learn/api/reflection-method-handles/introduction_to_method_handles/)
+- [ServiceLoader packaging and failures](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ServiceLoader.java)
+- [Explicit annotation-processing policy](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/jdk.compiler/share/classes/com/sun/tools/javac/processing/JavacProcessingEnvironment.java)

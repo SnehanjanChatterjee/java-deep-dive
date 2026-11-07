@@ -1,0 +1,16 @@
+---
+import { getCollection, render } from 'astro:content';
+import SiteLayout from '../../layouts/SiteLayout.astro';
+import metadata from '../../data/hashmap.json';
+export async function getStaticPaths(){
+ const lessons=await getCollection('lessons');const ids=new Set(lessons.map(l=>l.id));const order=new Set<number>();
+ for(const lesson of lessons){if(order.has(lesson.data.order))throw new Error('Duplicate lesson order');order.add(lesson.data.order);for(const prerequisite of lesson.data.prerequisites){if(!ids.has(prerequisite))throw new Error('Missing prerequisite: '+prerequisite);if(lessons.find(l=>l.id===prerequisite)!.data.order>=lesson.data.order)throw new Error('Prerequisite order is invalid: '+lesson.id)}}
+ return lessons.map(lesson=>({params:{slug:lesson.id},props:{lesson}}));
+}
+const {lesson}=Astro.props;const {Content,headings}=await render(lesson);
+const groups=[['Foundations','Understand the concept'],['Internals','Examine behavior and tradeoffs'],['Implementation','Study executable Java'],['Interview preparation','Apply and explain'],['Reference','Primary sources']];
+const groupFor=(text:string)=>text==='Java implementation'?'Implementation':text==='References'?'Reference':text==='Mechanics and tradeoffs'?'Internals':text==='Common mistakes'||text==='Exercises and interview questions'?'Interview preparation':'Foundations';
+const sections=lesson.id==='collections/hashmap'?metadata.chapters.map(([id,title,group])=>({id,title,group})):headings.filter(h=>h.depth===2).map(h=>({id:h.slug,title:h.text,group:groupFor(h.text)}));
+const stages=lesson.id==='collections/hashmap'?metadata.stages:groups.filter(([g])=>sections.some(s=>s.group===g));
+---
+<SiteLayout title={lesson.data.title} summary={lesson.data.summary} lesson={lesson} sections={sections} stages={stages}><Content/></SiteLayout>

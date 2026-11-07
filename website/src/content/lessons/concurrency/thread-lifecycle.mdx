@@ -1,0 +1,103 @@
+---
+title: "Threads, lifecycle and cooperative cancellation"
+module: "concurrency"
+group: "Threads and correctness"
+summary: "Understand execution ownership, observable thread states, interruption and reliable task termination."
+order: 330
+version: "Java 8+ · source analysis OpenJDK 25"
+prerequisites: ["objects/inheritance-and-composition"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## A thread is an execution, not just a Runnable
+
+Runnable describes work. Thread supplies an execution context with a lifecycle, stack and interruption status. Constructing a Thread object does not run the work. Calling start arranges a new thread that invokes run; calling run yourself is an ordinary method invocation on the caller's thread. The same Thread object cannot be started again after termination. Reuse the Runnable through a suitable executor or create a new Thread instead.
+
+Concurrency means executions can overlap in time. Parallelism means work actually executes at the same instant on different processors. A program can have concurrency-related correctness problems even on one processor, because scheduling can interleave a read, another thread's update, and the first thread's write. More threads do not create more CPU capacity.
+
+A daemon thread does not keep the process alive when all non-daemon threads have terminated. That makes it unsuitable as the only owner of critical shutdown work. Virtual threads are daemon threads; their scheduling details are covered separately. This chapter uses platform threads so lifecycle and cancellation can be studied without a version-specific scheduler.
+
+<span id="worked-example"></span>
+## Read states without guessing timing
+
+| State | Meaning | Does not establish |
+| --- | --- | --- |
+| NEW | start has not begun the execution | That run will execute on a different thread if called directly |
+| RUNNABLE | Executing or eligible under the VM/OS scheduling model | Continuous CPU consumption |
+| BLOCKED | Waiting to enter an intrinsic monitor | Every kind of lock wait |
+| WAITING | An indefinite supported wait, join or park | Deadlock by itself |
+| TIMED_WAITING | A bounded supported wait/sleep/park | A guaranteed wakeup-to-execution deadline |
+| TERMINATED | Execution ended | That every application operation succeeded |
+
+getState is a diagnostic snapshot. The value can change immediately afterward. ReentrantLock acquisition can park a thread rather than make it BLOCKED in the intrinsic-monitor sense. Tests asserting an arbitrary intermediate state after a sleep depend on scheduling and are fragile. Coordinate milestones with a latch instead. NEW before start and TERMINATED after successful join are stable boundaries in the example.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Interruption is a cooperative protocol
+
+interrupt does not forcibly unwind arbitrary code or restore application state. It sets a signal, with special behavior for particular blocking operations. Methods such as wait, sleep, join and CountDownLatch.await can throw InterruptedException and clear the interrupted status when reporting it. A CPU loop must inspect cancellation at appropriate points; an uninterruptible native operation may not stop promptly.
+
+`Thread.interrupted()` tests and clears the current thread's status. `thread.isInterrupted()` observes a thread's status without clearing it. Confusing the two can consume a cancellation signal before another layer sees it. A method declaring InterruptedException should usually propagate it; a Runnable boundary that cannot propagate may restore the status and end its work. Restoring status and blindly retrying the same interruptible wait can create a busy failure loop.
+
+Cancellation must define ownership. Which caller requests it? Which work can stop? Which resources must be released? Which partially completed side effects remain? These questions matter more than wrapping every blocking call in a catch block.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant P as Owner\n participant W as Worker\n P->>W: start\n W-->>P: started latch signal\n W->>W: wait interruptibly\n P->>W: interrupt request\n W->>W: catch, restore status, finish\n P->>W: join\n W-->>P: termination observed"} caption="The owner starts, cancels and joins its worker. The startup signal and termination boundary serve different purposes." />
+
+<span id="java-implementation"></span>
+## Complete lifecycle and cancellation example
+
+<JavaExample file="ThreadLifecycleLab.java" output={"NEW\nTERMINATED\ntrue"} />
+
+Worker.run signals that execution has entered its body and waits on a closed gate. The owner need not guess when the worker is blocked: interrupting before or during await is handled by the blocking API's interruption contract. The handler restores status and then records that status before returning. Main prints the exit observation only after join, which also provides the required publication edge for that ordinary boolean field.
+
+The started latch has a bounded wait so startup failure becomes explicit. The finally block requests interruption and joins the worker even when startup checking fails. In this particular program the worker's only potentially indefinite action is interruptible, making this cleanup design coherent. A general library cannot promise bounded termination of arbitrary user code merely by calling interrupt and join.
+
+<span id="common-mistakes"></span>
+## Design a termination policy
+
+A bounded join limits the owner's waiting, not the worker's actual lifetime. If it times out, choose whether to escalate, report a still-running task, or transfer ownership; do not claim termination occurred. Avoid deprecated unsafe stop/suspend mechanisms: a forced exit can release monitors with an invariant half updated, while suspension can leave locks permanently held.
+
+sleep does not release a monitor already held. wait releases only the monitor on which it is invoked, and reacquires it before returning. yield is only a scheduling hint and creates no publication or fairness guarantee. The volatile-publication chapter uses a bounded polling demonstration to expose a memory edge; latches/conditions are usually clearer for ordinary coordination.
+
+### Coding exercise: cancellation-aware CPU work
+
+Implement a loop processing a bounded chunk at a time and checking `Thread.currentThread().isInterrupted()` between chunks. A correct answer defines the largest acceptable cancellation delay, leaves state valid after the last completed chunk and returns without clearing the status accidentally. If the method instead declares InterruptedException, it can throw a specific interruption outcome rather than pretending to return a normal complete result.
+
+<span id="exercises-and-interview-questions"></span>
+## Interview questions with reasoning
+<details>
+<summary>Why not call run instead of start?</summary>
+
+run executes synchronously on the calling thread. It does not create a second execution or activate the Thread lifecycle in the same way as start. Thread.currentThread inside the work therefore identifies the caller.
+
+</details>
+
+<details>
+<summary>Why join if a result field is volatile?</summary>
+
+Visibility does not wait for an update to occur. A read may correctly observe the old value before the worker runs. Join establishes termination and a happens-before relationship to the owner's subsequent observation.
+
+</details>
+
+<details>
+<summary>Should every InterruptedException handler restore status?</summary>
+
+No blanket rule replaces ownership reasoning. A method that propagates the checked exception has already communicated cancellation. A boundary unable to propagate commonly restores the signal before stopping. A layer explicitly consuming cancellation as its documented policy may make a different choice.
+
+</details>
+
+<details>
+<summary>Is a WAITING thread evidence of deadlock?</summary>
+
+No. It may correctly await a task, a gate, a condition or termination. A deadlock diagnosis needs a dependency cycle and ownership evidence, not a single state label.
+
+</details>
+
+<span id="references"></span>
+## Primary references
+
+- [Thread lifecycle and interruption](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Thread.java)
+- [CountDownLatch startup and completion signals](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CountDownLatch.java)

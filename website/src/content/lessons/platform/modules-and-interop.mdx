@@ -1,0 +1,212 @@
+---
+title: "Modules, runtime images and native interoperability"
+module: "platform"
+group: "Modules and interoperability"
+summary: "Separate dependency readability, reflective access and runtime packaging."
+order: 630
+version: "Java 25 · Java 8 comparison"
+prerequisites: ["jvm/loading-and-bytecode", "platform/reflection-and-services"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Readability, exports and reflective access
+
+The Java Platform Module System gives named modules explicit dependencies and package boundaries. requires establishes readability; exports exposes a package for ordinary access; opens permits deep reflection under its specified scope. They are different permissions. A package being present on disk does not mean a named module can access it.
+
+The classpath remains relevant for unnamed modules and existing applications. Migration involves split packages, automatic modules, transitive dependencies and reflective frameworks. A module descriptor is an architectural boundary rather than an extra package statement. Module support begins in Java 9.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Separate a service contract from its implementation
+
+The executable Java 8-compatible example demonstrates an explicit interface boundary and implementation. In a named-module version, the public service package could be exported while the implementation package remains encapsulated. The example does not claim to execute JPMS on Java 8.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Module resolution and foreign-memory ownership
+
+<Diagram client:visible definition={"flowchart TD\n C[Client module] -->|requires| S[Service module]\n S -->|exports| P[Public service package]\n S --> E[Encapsulated implementation]\n R[Reflective access] --> O[Appropriate opens declaration]"} caption={"Module readability, ordinary package exports and deep-reflection openness are separate relationships."} />
+
+### Module declarations are dependency and access contracts
+
+| Directive | Meaning | Does not imply |
+| --- | --- | --- |
+| requires A | This module reads A | Every package in A is exported |
+| requires transitive A | Readability of A is passed to consumers | Unrestricted reflection |
+| requires static A | Required during compilation; optional at runtime | Runtime resolution of A in every launch |
+| exports p | Ordinary access to public API in p | Deep access to private members |
+| opens p | Deep reflective access at runtime | Normal source-level imports from p |
+| uses / provides | Service consumption/provider declaration | A hard-coded provider-selection priority |
+
+Qualified exports/opens restrict access to named consumers. Package public/private/protected rules still apply within the module-access rules. `--add-exports` and `--add-opens` are explicit launch/compile escape hatches for constrained migration, not interchangeable permanent design fixes.
+
+### Diagnose the supplied two-module example
+
+Compile and run the complete module source shown later in the chapter. Remove `requires study.service` from the client descriptor: ordinary use lacks readability. Restore it and remove `exports study.api` from the service: the package is no longer exported. Both failures arise before any service method executes. Restore the descriptor before moving on.
+
+A public member in an exported package can still have a private field inaccessible to deep reflection unless opened appropriately. `exports` and `opens` therefore solve different failure cases; indiscriminately adding both widens more access than needed.
+
+### Classpath, automatic modules and split packages
+
+A modular JAR on the classpath participates in the unnamed module rather than enforcing its descriptor as a named module. A plain JAR on the module path can become an automatic module. Its name comes from Automatic-Module-Name if supplied, otherwise a filename-derived rule that is brittle when artifact names change. Automatic modules have broad readability/access characteristics useful for migration, but they are not equivalent to intentionally designed descriptors.
+
+Split packages across modules can prevent reliable module resolution or access. Fix package ownership rather than adding random reads/opens. Classpath shadowing and named-module resolution fail differently; inspect the actual launch command and artifact placement.
+
+### Dependency analysis and runtime images
+
+```bash
+jdeps --module-path out --module study.client
+jlink --module-path out --add-modules study.client --output study-runtime
+study-runtime/bin/java -m study.client/study.client.Main
+```
+
+Run with a full JDK and a new output directory. jlink adds the root module's resolved dependencies to a platform-specific runtime image. Automatic modules cannot be linked as if they were explicit modules. Dynamically discovered providers and optional runtime dependencies need explicit review; service binding can be requested where appropriate. jpackage can produce an application image or platform installer around a runtime/application; the result is platform-specific, not one portable native executable for every OS.
+
+### FFM: bounds, layout and lifetime
+
+The stable Foreign Function and Memory API (Java 22+) distinguishes MemorySegment, MemoryLayout/ValueLayout, Arena and Linker. A segment describes a bounded memory region; a layout describes representation, size, alignment and byte order; an arena owns a lifetime; a linker connects a foreign function signature to a callable handle. A confined arena limits access to its owning thread; a shared arena permits cross-thread access but does not make racing reads/writes automatically safe.
+
+ForeignMemoryDemo allocates a native int, stores 42, reads it while the arena is open, then deliberately attempts access after closure. The Java API rejects that closed lifetime. Other failures include out-of-bounds offsets, alignment mismatch and wrong-thread access to confined segments. A valid Java segment does not prove an external C pointer/signature is correct; native code can still violate process safety.
+
+<Diagram client:visible definition={"stateDiagram-v2\n [*] --> Open: arena created\n Open --> Open: allocate and access within bounds\n Open --> Closed: close arena\n Closed --> Rejected: segment access after lifetime\n Open --> Rejected: wrong thread or invalid offset"} caption={"A segment's validity depends on arena lifetime, confinement, bounds and layout; native interoperability adds signature obligations."} />
+
+### Foreign function boundary
+
+A downcall must match the actual native ABI: return type, argument layouts, alignment, symbol ownership and calling convention. Retaining a segment beyond its arena or passing a pointer to short-lived memory into a native operation that outlives the call is invalid even if the Java method returns successfully. Restricted native access has version-specific launch policy; use the selected JDK's documented flags instead of suppressing every warning. JNI and FFM are interoperability mechanisms, not reasons to use native code for ordinary collection algorithms.
+
+## Migration boundaries and native lifetime proofs
+
+### Module readability is not transitive by default
+
+If A requires B and B requires C, A does not automatically gain the same ordinary access relationship to C. requires transitive is appropriate when B's exported API intentionally exposes C's public types to consumers. Adding it indiscriminately expands the architectural contract rather than merely fixing an inconvenient compiler error.
+
+requires static makes a dependency required for compilation but optional at runtime. If runtime execution actually uses the absent dependency, it still fails. A module descriptor expresses dependencies and access; it does not package external classes into the application automatically.
+
+### Runtime discovery can escape static dependency analysis
+
+jdeps describes static bytecode dependencies, but configuration-driven reflection, services and native resources can require additional runtime review. jlink resolves explicit modules and does not accept automatic modules as a final linked graph. Service binding, optional modules and launch-time providers need a deliberate image policy. A successful development classpath run does not prove the linked runtime contains every discovered feature.
+
+### A foreign segment is a bounded view with a lifetime
+
+Arena allocates/owns native regions; MemorySegment describes their bounds and scope; layouts encode size/alignment/order. A slice shares storage/lifetime rather than copying independent memory. A confined arena restricts thread access, while a shared arena permits access but does not make racing operations logically safe. Closing an arena invalidates its segments under the API's checks.
+
+A downcall signature must match the actual ABI, including return/argument representation and ownership. A pointer handed to native code can outlive the Java call if the native API retains it. Its arena must then outlive that actual use. Neither a correct-looking MethodType nor successful return from one call proves all native lifetime obligations are satisfied.
+
+### Migration exercise with a solution path
+
+First compile/run the existing two-module example. Remove readability, then restore it and remove the package export; observe the distinct compile-time access failures. Next keep ordinary exports and attempt deep reflection on a private member: openness is the separate permission. Do not solve every case by exporting/opening all packages. Restore the narrow intended contract, then build an image from the resolved module roots.
+
+For FFM, distinguish out-of-bounds, wrong-thread and closed-lifetime access in a controlled example before involving native libraries. Those API checks do not make a wrong external C signature memory-safe.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Run modules and scoped native-memory examples
+
+The following program is a complete executable example. Compile with `javac ModuleBoundary.java` and run with `java ModuleBoundary`.
+
+<JavaExample file="ModuleBoundary.java" output={"JAVA"} />
+
+### Java 25 executable examples
+
+This example uses the stable FFM API. Compile and run with Java 25; no preview flags are needed.
+
+<JavaExample file="modern/ForeignMemoryDemo.java" output={"42\nclosed"} />
+
+
+### Two-module example
+
+The service exports its API package; the client declares readability with requires. Compile from the repository root using `javac -d out --module-source-path java-examples/modern/jpms -m study.service,study.client`, then run `java --module-path out -m study.client/study.client.Main`. The output is `Hello Mira`.
+
+<JavaExample file="modern/jpms/study.service/module-info.java" />
+
+<JavaExample file="modern/jpms/study.service/study/api/Greeter.java" />
+
+<JavaExample file="modern/jpms/study.client/module-info.java" />
+
+<JavaExample file="modern/jpms/study.client/study/client/Main.java" />
+
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Module and interop pitfalls
+
+Do not use exports and opens interchangeably, assume a jlink image contains every possible runtime-discovered dependency, or expose an entire implementation package merely to work around an unexplained reflection failure.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Module and interop interview practice
+
+### Why can a public class still be inaccessible across modules?
+
+<details>
+<summary>Explanation</summary>
+
+Public member/class access is only one part of accessibility. The caller also needs the relevant module readability and package export. Deep reflection can require openness as well. A public declaration inside a non-exported package is intentionally encapsulated from ordinary clients.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why does opens not replace exports?</summary>
+
+Opens enables appropriate deep reflection at runtime. Exports enables ordinary access to public API in a package. A source import can remain illegal even though reflective access is permitted; the two directives serve different contracts.
+
+</details>
+
+<details>
+<summary>Why can jlink reject a working automatic-module application?</summary>
+
+Automatic modules are a migration bridge, but jlink requires explicit modules for its linked graph. A successful module-path launch does not prove the same dependency graph can be turned into a runtime image without modularizing those artifacts.
+
+</details>
+
+<details>
+<summary>Does a shared Arena make memory operations race-free?</summary>
+
+No. It changes thread-access/lifetime permissions. Concurrent state updates still need a memory-access coordination policy. A confined arena instead rejects access from the wrong thread, and either kind rejects access after closure.
+
+</details>
+
+### Coding exercise
+
+On Java 25, separate the example into a service module and a client module, export only the service package, and build a jlink image. Record the module graph and identify any dynamically loaded providers.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>When should requires transitive be considered?</summary>
+
+When an exported API intentionally exposes public types from another module and clients need the resulting readability. It should follow the API contract, not be added as a blanket dependency shortcut.
+
+</details>
+
+<details>
+<summary>Does a slice extend an arena's lifetime?</summary>
+
+No. It is another view into storage with the original scope/lifetime constraints. Retaining the slice after closing the arena does not keep that native region valid.
+
+</details>
+
+<details>
+<summary>What can jdeps miss for an application image?</summary>
+
+Runtime configuration can select reflected classes, service providers or native resources not evident as ordinary static references. Review those discovery paths and include their modules/resources explicitly as appropriate.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Module and interop references
+
+- [Module readability and encapsulation](https://dev.java/learn/organizing/modules/intro/)
+- [Automatic modules and packaging](https://dev.java/learn/organizing/modules/automatic-module/)
+- [jlink runtime-image constraints](https://dev.java/learn/organizing/jlink/)
+- [Foreign Function and Memory API, final in Java 22](https://openjdk.org/jeps/454)
+- [Arena lifetime and confinement](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/foreign/Arena.java)
+- [MemorySegment bounds and thread access](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/foreign/MemorySegment.java)

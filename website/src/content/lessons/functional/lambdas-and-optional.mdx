@@ -1,0 +1,191 @@
+---
+title: "Lambdas, functional interfaces and Optional"
+module: "functional"
+group: "Functions and absence"
+summary: "Express small behaviors and absence without hiding side effects."
+order: 230
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition", "generics/bounds-wildcards-erasure"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Functional behavior and optional results
+
+A functional interface has one abstract method, allowing a lambda or method reference to supply its behavior. Default and static methods do not automatically disqualify it. Standard interfaces such as Predicate, Function, Consumer and Supplier describe different input/output roles rather than interchangeable callback names.
+
+A lambda can capture a local variable that is final or effectively final. This restricts reassignment of the captured local reference; it does not freeze an object reachable through it. Optional represents a possibly absent result. Its purpose is an explicit result contract, not automatic null safety for every variable and field.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Normalize a result with lazy fallback
+
+A predicate filters a candidate and a function normalizes it. Optional.map transforms a present value, while filter can turn it into absence. orElseGet computes a fallback only when needed. The example records how often the fallback runs.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Capture, composition and absence semantics
+
+<Diagram client:visible definition={"flowchart TD\n A[Optional result] --> B{Present?}\n B -->|yes| C[Transform with map]\n B -->|no| D[Evaluate orElseGet supplier]\n C --> E[Result or absence]\n E --> F[Consumer handles result]"} caption={"Optional transformation and lazy fallback are explicit operations; a lambda may still contain side effects."} />
+
+### Functional interfaces express a method shape
+
+A functional interface has one abstract method contract after accounting for inherited override-equivalent declarations. Public Object methods such as equals do not add another functional contract. Default, static and private interface methods do not count as abstract requirements. `@FunctionalInterface` asks the compiler to enforce the intended shape.
+
+| Interface | Shape | Typical use |
+| --- | --- | --- |
+| Predicate&lt;T&gt; | T → boolean | Validate or filter |
+| Function&lt;T,R&gt; | T → R | Transform |
+| Consumer&lt;T&gt; | T → void | Perform a side effect |
+| Supplier&lt;T&gt; | () → T | Deferred creation |
+| UnaryOperator&lt;T&gt; | T → T | Same-type transformation |
+| BiFunction&lt;T,U,R&gt; | (T,U) → R | Combine two values |
+
+Primitive variants such as IntPredicate and IntUnaryOperator avoid a boxed input/output contract. A lambda is target-typed: the expected interface determines parameter and result compatibility. A lambda alone does not declare an independent nominal function type.
+
+### Four method-reference forms
+
+`Integer::parseInt` names a static method. `text::trim` binds one receiver now. `String::trim` leaves the receiver as the first functional argument. `ArrayList<String>::new` references a constructor. `String[]::new` is an array constructor reference. Overloads are still resolved using the target signature; a method reference is not an instruction to defer all method selection until runtime.
+
+A bound reference evaluates its receiver when created; a null receiver fails then. A lambda like `() -> receiver.method()` performs the dereference when invoked instead. Both can ultimately fail, but the timing differs.
+
+### Capture and composition
+
+Captured locals must be final or effectively final. A captured List reference can still receive add calls; that is object mutation rather than local reassignment. Fields are not subject to the same local-capture rule, and reading shared mutable fields introduces ordinary visibility/atomicity concerns. Lambda `this` refers to the enclosing instance, while an anonymous class has its own instance.
+
+For functions f and g, `f.andThen(g)` computes g(f(x)); `f.compose(g)` computes f(g(x)). Predicate and/or short-circuit. Checked exceptions must fit the functional method's declaration: a Function mapper cannot directly throw an arbitrary checked IOException. Choose a suitable API, handle the specific failure, or translate it with a preserved cause; do not silently drop values.
+
+### Optional operations and failure modes
+
+| Operation | Present | Empty |
+| --- | --- | --- |
+| `map(f)` | Apply f; null result becomes empty | Remains empty |
+| `flatMap(f)` | f must return a non-null Optional | Remains empty |
+| `filter(p)` | Keep only if predicate matches | Remains empty |
+| `orElse(value)` | Return value inside Optional; fallback argument was already evaluated | Return evaluated fallback |
+| `orElseGet(factory)` | Factory not called | Invoke factory |
+| `orElseThrow(factory)` | Return value | Throw supplied exception |
+
+An Optional variable itself should not be null. Do not synchronize on Optional or depend on instance identity: it is a value-based abstraction. It is primarily a result-shape tool; using it for every field/parameter can complicate models without clarifying absence. Optional is not Serializable. Empty means “no result” under the API's contract, not “an exception occurred but was hidden.”
+
+### Worked composition example
+
+For `Optional<String> input`, `input.map(String::trim).filter(s -> !s.isEmpty())` normalizes a present string and rejects a blank result. If a lookup already returns Optional, use flatMap to avoid nesting. With a present value, `orElse(expensiveLookup())` still runs the lookup because Java evaluates arguments before method entry. `orElseGet(() -> expensiveLookup())` defers the lookup. This difference matters for I/O and exceptions as well as performance.
+
+### Interview exercise
+
+Create a lookup returning Optional of a parsed domain value. Distinguish absent input, invalid input and an infrastructure failure: these need not all become empty. Explain each boundary and where a checked exception is translated. A fluent chain is useful only if it preserves the intended contract.
+
+## Target typing, closure state and callback contracts
+
+### The target interface supplies the method contract
+
+A lambda is checked against an expected functional interface; it does not declare a universal function type on its own. `Function<String,Integer>` accepts a parse function with boxing in its result contract, while `ToIntFunction<String>` exposes a primitive int result. A method reference still undergoes overload selection using that target. A function-shaped expression that throws a checked exception must fit the functional method's throws contract or handle/translate that failure deliberately.
+
+### Bound receivers are evaluated at creation
+
+`receiver::work` evaluates receiver when the reference is created and requires the appropriate non-null instance. `() -> receiver.work()` can defer the dereference until invocation. A captured local reference must be effectively final, but fields and mutable referents can still change. A final List captured by a callback is not an immutable snapshot of its elements.
+
+A lambda's this denotes the enclosing receiver. An anonymous class's this denotes the anonymous instance. This affects member lookup, synchronization and accidental retention of the enclosing object. A callback stored in a long-lived listener collection can retain captured context after the initiating operation has ended.
+
+### Composition must preserve failure and side-effect order
+
+For f and g, `f.andThen(g)` computes g(f(x)); compose reverses the composition relationship. Predicate.and/or short-circuit and can avoid executing the second predicate. A predicate with state changes makes that ordering externally observable. Reordering apparently equivalent filters is valid only when their behavior and exception/side-effect contracts permit it.
+
+Consumer expresses a side effect, not a value transformation. Supplier expresses deferred production, not guaranteed memoization. Function does not promise purity. Naming these interfaces accurately makes an API clearer than calling every callback an action.
+
+### Translation is not object-identity semantics
+
+The compiler/runtime can implement a lambda using invokedynamic and generated linkage machinery. Do not assume one anonymous class per lambda expression, one fresh object per invocation or stable identity between repeated evaluations. Applications should not use lambda identity as their functional equivalence test or synchronize on a callback object whose allocation/caching behavior is unspecified.
+
+Making a functional interface serializable does not make every captured value serializable or provide a stable durable representation of behavior. Prefer explicit commands/data over treating serialized closures as long-term application storage.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Functional-interface examples in Java
+
+The following program is a complete executable example. Compile with `javac FunctionalValues.java` and run with `java FunctionalValues`.
+
+<JavaExample file="FunctionalValues.java" output={"java\nfallback"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Callback and Optional pitfalls
+
+Do not call get without establishing presence, use Optional.of with nullable input, or assume orElse is lazy. A lambda closing over an object is not isolated from changes to that object.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Functional Java interview practice
+
+### Why must a captured local be effectively final?
+
+<details>
+<summary>Explanation</summary>
+
+The lambda captures the local value, not a mutable stack variable shared by reference. Reassignment of the local would create confusing expectations about which value the lambda observes. Mutable objects referenced by that captured value are separate state and are still mutable.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can a lambda add to a captured final List?</summary>
+
+Final applies to the captured reference variable, preventing reassignment. It does not make the referent immutable. If several threads invoke that lambda, the list still needs a safe mutation protocol.
+
+</details>
+
+<details>
+<summary>Why can orElse trigger an exception despite a present Optional?</summary>
+
+Java evaluates the fallback argument before invoking orElse. If building that argument throws, the call is never reached. orElseGet accepts a deferred supplier and invokes it only when empty.
+
+</details>
+
+<details>
+<summary>What happens when an Optional flatMap mapper returns null?</summary>
+
+It violates flatMap's requirement to return a non-null Optional and throws NullPointerException. Optional.map instead treats a null mapped value as absence. These are intentionally different contracts.
+
+</details>
+
+### Coding exercise
+
+Compare orElse and orElseGet using a fallback with an observable counter. Implement a custom functional interface and demonstrate a default method alongside its single abstract method.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What should a callback API document beyond its parameter/return types?</summary>
+
+Specify when and how often it is invoked, thread/executor context, whether it may be retained/retried, null handling and failure propagation. A callback can otherwise be syntactically compatible while violating its caller's lifecycle assumptions.
+
+</details>
+
+<details>
+<summary>Does Supplier imply a cached value?</summary>
+
+No. Each get can execute the body again. Memoization needs an explicit storage/concurrency/exception policy, including whether failed initialization is retried.
+
+</details>
+
+<details>
+<summary>Why is callback retention an ownership question?</summary>
+
+The retaining collection can keep its captured object graph alive. Unregistering a listener and limiting captured context are part of lifetime design; garbage collection cannot reclaim a graph that is still strongly reachable.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Functional API references
+
+- [Lambda expressions and capture](https://dev.java/learn/language/fp/lambdas/first-lambdas/)
+- [Functional-interface package contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/function/package-info.java)
+- [Optional API semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Optional.java)
+- [Method-reference language guide](https://dev.java/learn/language/fp/lambdas/method-references/)

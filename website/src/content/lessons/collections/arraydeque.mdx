@@ -1,0 +1,157 @@
+---
+title: "ArrayDeque"
+module: "collections"
+group: "Queues and priority"
+summary: "Trace circular storage, wraparound, growth and a complete two-ended deque."
+order: 200
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Queues, stacks and circular storage
+
+A deque permits insertion and removal at both ends. ArrayDeque implements it using a resizable circular array. It can express a FIFO queue or LIFO stack without a linked node for every element. It rejects nulls and does not provide synchronized shared access.
+
+For FIFO, add/offer at the last end and remove/poll at the first. For LIFO, push/pop use the first end. A deque's end-operation contract is different from a List's indexed-access contract. Prefer explicit endpoint method names when the algorithm mixes both roles.
+
+<span id="worked-example"></span>
+## Queue and stack examples
+
+<JavaExample file="ArrayDequeExample.java" />
+
+Removing from the first end returns A. Adding C at the last preserves the logical sequence `[B, C]`. Push inserts top at the first end and pop removes that same value. Poll on the empty deque returns null. The implementation's null prohibition makes that empty sentinel unambiguous.
+
+The array need not store logical elements contiguously from slot zero. Iteration follows logical head-to-tail order even when the physical storage wraps. Printing this tiny sequence demonstrates the API, not a promise about array capacity or exact physical indexes.
+
+<span id="mechanics-and-tradeoffs"></span>
+## ArrayDeque wrapping and growth
+
+### Circular indexing
+
+Head identifies the next first element; tail marks the next insertion position at the last end. Advancing an index wraps at array length. A ring representation can use explicit size or reserve a spare slot to distinguish full from empty. These designs have different invariants; do not mix their full tests.
+
+OpenJDK 25 reserves an unused null slot at tail and keeps unused slots null. Its array length need not be a power of two, so old bit-mask explanations must not be taught as universal current ArrayDeque behavior. Wrapping uses implementation helpers appropriate to its actual array length.
+
+### Growth and copying
+
+When space runs out, allocate a larger array and preserve the logical order of the wrapped segments. The physical tail/head layout may change. An individual expansion copies O(n) references; a geometric growth policy yields amortized constant-time end operations. Removing from an end clears a slot so obsolete elements are not retained.
+
+### Interior operations
+
+Contains and remove(Object) must search for an equal value. Removing an interior match also shifts an appropriate segment to close the gap while preserving order. These are linear operations, unlike ordinary endpoint access. Iterator removal has its own cursor/bookkeeping implications.
+
+### Algorithm applications
+
+Breadth-first traversal uses FIFO with a visited policy. A stack-based traversal uses LIFO. A monotonic deque for sliding-window maxima removes expired indexes from the front and dominated candidates from the back. Each index enters and leaves at most once, giving linear total deque operations; the correctness argument depends on why a removed dominated candidate can never be a future maximum.
+
+<Diagram client:visible definition={"flowchart LR\n H[Head at slot 3] --> A[A at 3]\n A --> B[B at 0]\n B --> C[C at 1]\n C --> T[Tail spare slot 2]\n P[Poll first] --> R[Clear slot 3 and wrap head to 0]"} caption={"ArrayDeque: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="arraydeque" />
+
+## Sliding-window maxima as a complete deque exercise
+
+<JavaExample file="CoreSlidingWindow.java" output={"[3, 3, 5, 5, 6, 7]"} />
+
+### The deque stores candidates, not every window value
+
+Store indexes so expiry can be checked independently of value equality. Candidate indexes increase from first to last, while their corresponding values decrease. The first index therefore identifies the maximum among current eligible candidates. Removing an expired index from the front preserves window membership; removing a dominated value from the back preserves only candidates that could still win.
+
+When a new value is at least as large as a previous candidate, the older candidate can never become preferable in a future window containing both: the new value is no smaller and expires later. Keeping the newer equal candidate is a deliberate tie policy. For value-only maxima it is sufficient; returning earliest maximum positions would need a different tie decision.
+
+### Trace the first windows
+
+For `[1,3,-1,-3,5,...]` with window 3, visiting 3 removes the weaker candidate 1. At the first full window the deque begins with index 1, so output is 3. Visiting -3 keeps the previous maximum. Before outputting the window ending at 5, expired indexes are removed and 5 dominates the remaining weaker candidates, becoming the new maximum.
+
+### Aggregate cost proof
+
+Every index is appended once. It can later be removed once from the front for expiry or once from the back for domination, not repeatedly reinserted. Thus all deque operations across n inputs total O(n), even though there are nested while loops. The deque retains at most O(window) eligible candidates and the result array stores one answer per full window.
+
+### Method contract and boundaries
+
+The implementation rejects null arrays and windows outside 1..length. Window one reproduces each value. Window length produces one global maximum. Negative values and duplicates are ordinary data; zero is not used as a missing sentinel. The method does not modify the input array.
+
+### Why indexes are necessary
+
+Storing only values loses which duplicate occurrence expired. A separate occurrence-count/expiry protocol could reconstruct that information, but indexes encode it directly. Explain the invariant before coding; selecting ArrayDeque is only the storage choice, not the correctness proof of the monotonic algorithm.
+
+<span id="java-implementation"></span>
+## Implement a growing circular deque
+
+<JavaExample file="RingDeque.java" output={"A\nC\nstart\nB\nnull"} />
+
+The complete single-file deque above implements both insertion and removal ends plus growth. It uses explicit size, rather than the production deque's spare-slot representation. addLast writes at `(head + size) % capacity`; addFirst decrements head with wraparound. Removal saves the value, clears its physical slot and reduces size. Null insertion is rejected, making a null poll result unambiguous.
+
+`growIfFull` copies the logical sequence into a new array starting at zero and only then replaces storage and resets head. If the old physical sequence wrapped, this restores a contiguous representation without changing logical order. Capacity has an explicit teaching bound so doubling does not overflow. The source deliberately omits iterators, arbitrary-value removal and concurrency.
+
+
+<JavaExample file="BoundedQueueDemo.java" />
+
+This separate teaching ring uses explicit size and fixed capacity, plus monitor-based waiting for producers/consumers. It is not a full ArrayDeque clone. Its state still makes circular storage concrete: put writes tail and advances it; take reads head, clears that slot and advances head. Size distinguishes full and empty when head equals tail.
+
+For an ArrayDeque coding exercise, extend that representation with nonblocking addFirst/addLast/pollFirst/pollLast and a geometric grow method. Trace wraparound before growth, then copy the logical i-th value from `(head + i) % oldLength` into new storage starting at zero. Set head to zero and tail to size. Publish the new array only after the copy is complete.
+
+The production source contains the full growing deque implementation. Study its own spare-slot invariant rather than assuming the fixed teaching queue's size field exists there.
+
+<span id="common-mistakes"></span>
+## Deque failure cases and ownership
+
+Do not add null as ordinary data, assume every operation is constant time, or confuse clear with zeroing the bytes inside referenced objects. An ArrayDeque is not a BlockingQueue. A concurrent producer/consumer algorithm needs a separate protocol or a suitable concurrent queue.
+
+<span id="exercises-and-interview-questions"></span>
+## ArrayDeque interview questions and exercises
+
+<details>
+<summary>How can head equal tail represent either full or empty?</summary>
+
+In an explicit-size ring, size distinguishes them. A spare-slot ring instead never fills every physical slot. State which invariant the implementation uses before writing a full/empty predicate.
+
+</details>
+
+<details>
+<summary>Why clear a removed array slot?</summary>
+
+The backing array remains reachable. A stale reference can retain an object no longer in the logical deque, even when size and traversal look correct.
+
+</details>
+
+<details>
+<summary>Why is ArrayDeque unsuitable for indexed List operations?</summary>
+
+Its public contract exposes end operations rather than get(index). A custom ring can compute a physical index, but that does not make the library a List or change its documented API.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why do nested while loops still yield linear total work?</summary>
+
+Each loop iteration removes a candidate that was inserted once and will never be reinserted. Charge removal work to that unique insertion, rather than multiplying n by a maximum possible loop length.
+
+</details>
+
+<details>
+<summary>How would earliest-maximum index output change duplicate handling?</summary>
+
+Removing equal older values favors the newer occurrence. To preserve the earliest equal maximum while eligible, remove strictly smaller values instead and retain appropriate equal candidates until their own expiry.
+
+</details>
+
+<details>
+<summary>Why not use PriorityQueue alone for this algorithm?</summary>
+
+A heap can find a maximum but expired indexes need a removal/lazy-cleanup policy and can add logarithmic work or retained stale entries. A monotonic deque exploits fixed-window order to achieve a stronger linear bound.
+
+</details>
+
+<span id="references"></span>
+## Primary ArrayDeque references
+
+- [ArrayDeque circular storage and grow](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ArrayDeque.java)
+- [Deque endpoint method families](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Deque.java)

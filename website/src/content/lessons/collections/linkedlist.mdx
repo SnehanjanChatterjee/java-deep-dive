@@ -1,0 +1,151 @@
+---
+title: "LinkedList"
+module: "collections"
+group: "Lists and arrays"
+summary: "Trace node links, iterator positions, endpoint repair and a complete linked-list implementation."
+order: 120
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Nodes, links and positional access
+
+LinkedList stores a sequence as doubly linked nodes. Each node holds an element and references to its predecessor and successor. The list keeps first/last references and a size. It implements both List and Deque and allows null elements, but is not synchronized.
+
+Its main distinction from ArrayList is locating versus relinking. Once a node position is known, changing a few links is constant time. Finding the node at an arbitrary index still requires traversal. Choose it only when the actual operation pattern benefits from node-based editing or its API; do not choose it merely because a problem mentions insertion.
+
+<span id="worked-example"></span>
+## Editing with a list iterator
+
+<JavaExample file="LinkedListExample.java" />
+
+The cursor initially sits between A and C. Adding B inserts before the element that next would return, so the list becomes `[A, B, C]`. The next call returns C. Iterator remove deletes the last returned element, leaving `[A, B]`; it does not remove B just because B was recently inserted. Removing the last element after adding start returns B.
+
+A ListIterator is a cursor between elements, not an index permanently attached to one node. Its remove/set eligibility depends on previous next/previous operations. Calling remove twice without another traversal call is invalid. The iterator maintains the list's mutation protocol while ordinary external structural changes can invalidate it.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Traversal and link repair
+
+### Node lookup
+
+OpenJDK traverses from the nearer endpoint for indexed access. Index zero is near first; size−1 is near last; a middle index can require approximately half the list's links. Consequently a loop calling get(i) for every i can be O(n²), while an iterator traversal is O(n). The comparison is about the complete algorithm, not only one get.
+
+### Link insertion
+
+To insert N between P and Q, establish N.previous=P and N.next=Q, then connect P.next=N and Q.previous=N. Endpoint cases update first or last instead of a missing neighbor. Increment size once. If the list was empty, both endpoints must identify N. The invariant is that forward and backward links agree for every adjacent live pair.
+
+### Unlink and retention
+
+Save the removed element before breaking links. Reconnect its neighbors, update first/last where necessary, decrement size and clear obsolete references. A detached node held by an iterator should not unnecessarily retain an entire list graph. The public API does not expose arbitrary Node handles, so an interview claim of constant-time deletion must say how the relevant position was obtained.
+
+### Memory and locality
+
+Each element needs node storage and extra references, rather than just a slot in a compact reference array. Pointer chasing can have poor locality. These costs depend on VM layout and workload; do not invent a fixed bytes-per-element figure independent of the JDK and object layout.
+
+<Diagram client:visible definition={"flowchart LR\n P[Node A] <--> N[New node B]\n N <--> Q[Node C]\n F[First] --> P\n L[Last] --> Q"} caption={"LinkedList: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="linkedlist" />
+
+## Proving bidirectional link invariants
+
+### The invariant has two directions and two endpoints
+
+For every adjacent live pair P and Q, P.next must be Q and Q.previous must be P. First has no live predecessor, last has no live successor, and size equals the number of reachable live nodes. The empty list has both endpoints null. These conditions are independent: a size counter can be correct while backward traversal is broken.
+
+In insertion, allocate the new node before publishing it through endpoints/neighbors. Establish its predecessor/successor references, then reconnect the existing nodes. For removal, save the returned value before detaching links. A singleton tests both endpoint branches; head and tail removals each test one missing-neighbor case. An interior removal tests the ordinary two-neighbor repair.
+
+### Position lookup dominates many public operations
+
+The teaching implementation's nodeAt searches from the nearer endpoint. That reduces the constant factor but does not change arbitrary indexed access from linear to constant time. An iterator already positioned at a node can edit locally; constructing that iterator at a fresh middle index can first require traversal. Explain both costs in a coding exercise.
+
+Returning a private Node as a public handle changes the API significantly. Callers can retain stale handles or attempt repeated removal. Such an API would need ownership/version rules; the standard LinkedList API does not expose arbitrary Node identities for constant-time external deletion.
+
+### A worked deletion proof
+
+For A↔B↔C, removing B first reconnects A.next=C and C.previous=A. Neither endpoint changes. Removing A instead sets first=B and B.previous=null. Removing C sets last=B and B.next=null. Removing the final remaining B sets both first and last to null. After each case, size decreases exactly once and a fresh append must work.
+
+Detached-node cleanup prevents stale iterator/node references from unnecessarily retaining the surviving graph. It does not imply immediate garbage collection; other aliases can retain the value. The lifetime chapter distinguishes reachability from collection timing.
+
+### Coding review sequence
+
+Check validation before mutation, then endpoint branches, then reciprocal links, then size, then returned value. Test growth/reuse through many mutations even though there is no backing-array resize. For the existing complete implementation, add a backward traversal assertion in a test/debug helper if extending the public API requires it; do not infer backward correctness solely from forward output.
+
+<span id="java-implementation"></span>
+## Implement a doubly linked list
+
+<JavaExample file="DoublyLinkedList.java" output={"B\nC\nreused"} />
+
+This complete single-file teaching implementation supplies endpoint append, indexed insertion, indexed read/removal, first removal and size. It permits null values and omits iterators, serialization and the full List interface. Node helpers are nested in the same file.
+
+`nodeAt` validates before traversing from the nearer endpoint. `add` treats index equal to size as append; otherwise it connects a new node before the located successor. `unlink` repairs previous.next and next.previous, or first/last when a neighbor is absent. A singleton has neither neighbor, so removing it sets both endpoints to null. The main method proves the list can then be reused. Every successful insertion/removal changes size once.
+
+
+The iterator example above is a complete executable Java file. For a handwritten list, use one class with a nested static Node, first, last and size. Implement endpoint insertion/removal before indexed operations; the node-search helper should return the appropriate node without changing the structure.
+
+A useful implementation order is linkLast, linkBefore, unlink, nodeAt, add and remove. Reuse unlink for all removal paths so head/tail and size bookkeeping do not diverge. Trace three cases explicitly: removing the only node sets both endpoints to null; removing the head updates the successor's previous reference; removing the tail updates its predecessor's next reference.
+
+Do not present a partial Node declaration as a complete LinkedList implementation. The JDK source provides the full production algorithms, including iterator state, cloning, serialization and bulk operations. A focused interview implementation should state exactly which subset is requested.
+
+<span id="common-mistakes"></span>
+## LinkedList failure cases and tradeoffs
+
+Do not claim indexed insertion is O(1), use repeated get(i) for traversal, or assume fail-fast means thread-safe. Allowing null makes poll returning null ambiguous between an empty list and a removed null value. Prefer an explicit null policy in a custom queue.
+
+<span id="exercises-and-interview-questions"></span>
+## LinkedList interview questions and exercises
+
+<details>
+<summary>When is iterator insertion constant time?</summary>
+
+Once the iterator is positioned. Constructing listIterator(index) can first require traversal, so repeated independently located indexed insertions remain expensive.
+
+</details>
+
+<details>
+<summary>What breaks if only the forward links are repaired?</summary>
+
+Forward traversal might look correct while backward traversal reaches a removed node or loses elements. Check both directions and the first/last references, especially after singleton removal.
+
+</details>
+
+<details>
+<summary>Why might ArrayDeque be a better queue?</summary>
+
+It supports efficient endpoint operations without a node allocation for each entry and often has better locality. That does not make it a List or provide indexed editing; choose the required contract first.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What does clearing node links accomplish?</summary>
+
+A stale reference to the removed node no longer retains its old predecessor/successor graph through those links. The removed value can remain reachable from a returned result or another alias; clearing links is not an immediate free operation.
+
+</details>
+
+<details>
+<summary>Why is node ownership important in a handle-based list?</summary>
+
+Without ownership/version checks a caller can pass a node from another list or remove a detached node twice, corrupting endpoints/size. Keeping nodes private avoids exposing that extra contract.
+
+</details>
+
+<details>
+<summary>How do you test the empty-to-nonempty transition?</summary>
+
+Remove the singleton, assert size zero and empty behavior, then append again and read/remove the new singleton. This catches endpoint fields that accidentally still reference the detached node.
+
+</details>
+
+<span id="references"></span>
+## Primary LinkedList references
+
+- [LinkedList node and iterator implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedList.java)
+- [ListIterator cursor contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ListIterator.java)

@@ -1,0 +1,192 @@
+---
+title: "Runtime memory, garbage collection and JIT"
+module: "jvm"
+group: "Memory and performance"
+summary: "Relate object lifetime, compilation and memory pressure to observable behavior."
+order: 570
+version: "Java 8+"
+prerequisites: ["jvm/loading-and-bytecode"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Process memory and reachability
+
+A JVM process uses memory beyond the Java heap: thread stacks, class metadata, code cache, native allocations and mapped resources all matter. An object's lifetime depends on reachability, not the end of the source block where it was created. A retained reference can keep a large graph alive even when application logic no longer needs it.
+
+Garbage collection reclaims memory that is no longer required under the collector's reachability rules. A memory leak in Java commonly means unwanted retention rather than a missing explicit free. Soft, weak and phantom references have different contracts and should not be substituted for a deliberate cache or resource-lifetime policy.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Trace removal of a retaining reference
+
+The example removes an obsolete array from a list and verifies the remaining logical size. It deliberately does not print GC timing or claim the array was immediately collected: collection scheduling and optimizer liveness are not deterministic outputs of this program.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Allocation, collectors and optimization
+
+<Diagram client:visible definition={"flowchart TD\n R[GC root] --> C[Retaining collection]\n C --> L[Live object graph]\n U[Unreachable graph] --> E[Eligible for reclamation]\n E -. scheduling is collector-dependent .-> G[Collection]"} caption={"A retaining path keeps objects reachable. Eligibility for reclamation does not specify exactly when collection occurs."} />
+
+### Map process memory before diagnosing it
+
+| Area | Typical contents | Distinct failure/pressure |
+| --- | --- | --- |
+| Java heap | Objects and arrays managed by GC | Retention, allocation pressure, heap exhaustion |
+| Per-thread stack | Invocation frames and execution state | Deep recursion, too many threads/native stack reservation |
+| Metaspace in HotSpot | Class metadata in native memory | Class-loader retention or excessive generated classes |
+| Code cache | Compiled machine code and runtime stubs | Compilation/code-cache limits |
+| Other native memory | Direct buffers, JVM/native-library allocations | Process memory can grow while heap is stable |
+| Mapped files | File-backed memory mappings | Address-space and resident-memory effects |
+
+The JVM specification describes runtime data areas; HotSpot's concrete memory layout is an implementation. “Objects live on heap, primitives live on stack” is misleading: primitive fields are part of objects, references can be fields or locals, and optimized allocations may disappear. `-Xmx` is a heap bound, not a cap on total process memory.
+
+### Reachability and retention
+
+GC roots include live thread execution references, appropriate static references through live classes, JNI handles and runtime roots. Following strong references identifies retained graphs. Cycles without a root path are collectible; reference counting is not Java's general object-lifetime model. Clearing one local does not free an object still held by a cache, listener list, thread local or another alias.
+
+Soft references allow collector-controlled reclamation under memory pressure, which is not a predictable cache eviction policy. Weak references do not keep their referents strongly reachable; WeakHashMap weakens keys, but a strongly held value that refers back to its key can defeat the intended reclamation. Phantom references and ReferenceQueue support post-mortem cleanup coordination without ordinary access to the referent. Cleaner actions must avoid retaining their referents and are not a substitute for deterministic close.
+
+### From allocation to collection
+
+HotSpot commonly allocates small objects through thread-local allocation buffers, making the common allocation path efficient. Objects can die before a collection, survive/move, or be promoted depending on collector policy. Large allocations and region-size relationships can take different paths. Allocation rate measures new memory demanded per unit time; retained/live size measures what remains reachable. A bounded live set can still generate expensive GC work through high churn.
+
+### G1 mechanics on the Java 25 baseline
+
+G1 divides the heap into regions. Young evacuation collections copy surviving objects and update references during stop-the-world pauses. Concurrent marking identifies liveness for old regions, with pause phases around the concurrent work. Mixed collections can collect young regions and selected old regions. Remembered-set/card mechanisms track cross-region references so a collection does not need to rescan the entire heap for every local collection.
+
+A pause target is a tuning goal, not a hard real-time guarantee. Humongous allocations, promotion/evacuation pressure, insufficient headroom and fallback full collections can disrupt expected latency. Do not infer from the word “concurrent” that all collector phases run without stopping application threads.
+
+### ZGC and collector tradeoffs
+
+ZGC performs much of marking and relocation concurrently, using barriers and metadata to maintain correctness while references/objects change. Generational ZGC targets different young/old behavior. In Java 25, the old non-generational mode has been removed (since 24); instructions that describe enabling generations as an optional Java 25 experiment are outdated. Low pauses still require CPU and memory headroom. Allocation stalls or an overloaded process can still produce bad application latency.
+
+Parallel GC emphasizes throughput through parallel stop-the-world work; Serial GC can suit small constrained workloads. Collector availability and defaults depend on JDK/platform/configuration. Select with observed workload goals, not an unqualified ranking.
+
+<Diagram client:visible definition={"flowchart TD\n A[High allocation rate] --> G[Frequent collection work]\n R[Growing retained graph] --> L[Higher post-collection live set]\n G --> P[CPU and pause pressure]\n L --> H[Less free headroom]\n H --> P"} caption={"Allocation churn and unwanted retention can both cause pressure, but they require different evidence and fixes."} />
+
+### Read GC logs as evidence
+
+On a modern JDK, `-Xlog:gc*,safepoint:file=gc.log:time,uptime,level,tags` records collection and safepoint information. Identify collector, cause, before/after occupancy, duration and repeated patterns. High reclaimed volume suggests churn; rising comparable post-collection occupancy suggests a larger live set requiring retaining-path investigation. Neither pattern alone identifies the offending application object. Safepoints can also occur for reasons other than GC.
+
+### JIT, profiles and deoptimization
+
+HotSpot can interpret and tier-compile hot code. Inlining exposes constants and call-site type information; escape analysis and scalar replacement can eliminate some allocations. Optimized code may assume a receiver type remains common. Loading another implementation or changing a profile can require deoptimization and reconstruction of interpreter-visible state. A warmup curve, compilation pause or uncommon trap can therefore affect a benchmark without a source-code change. Neither `new` in source nor “non-escaping” proves a heap allocation occurs or guarantees stack placement.
+
+## Allocation, retained ownership and diagnostic categories
+
+### Allocation and retention measure different things
+
+A short-lived processing loop can allocate many objects while its post-collection live set stays bounded. An unbounded registry can allocate slowly but retain every historical entry. Both can cause memory pressure through different mechanisms. Distinguish allocation-site evidence from retaining-path evidence before choosing a fix.
+
+A shallow size counts one object's storage; retained size describes a dominated graph under the analyzer's definition. Shared references mean removing one apparent owner may not make the whole graph unreachable. A cycle without a root path is collectible; a simple acyclic list rooted by a static field can leak indefinitely.
+
+### Allocation paths and promotion
+
+HotSpot commonly allocates small objects in thread-local allocation buffers, but collector/platform decisions and larger allocations can use different paths. Surviving collections, promotion policies and humongous allocations depend on the selected collector/version. Do not teach every object as taking one identical young-generation journey or assume the layout of one collector applies to another.
+
+### Reference categories are not cache policies
+
+Weak references do not keep their referents strongly reachable. A WeakHashMap value that strongly references its key can still retain that key through the value path. Soft-reference lifetime depends on collector/memory-pressure decisions and is not an application SLA for expiry/eviction. Phantom references and cleaners aid post-mortem cleanup coordination, but their cleanup actions must not accidentally retain the object they are meant to clean.
+
+### Runtime memory beyond heap
+
+A stable Java heap does not establish stable process memory. Thread stacks, metaspace, generated native code, direct/mapped buffers and native libraries consume separate resources. OutOfMemoryError details can distinguish heap exhaustion from native-thread creation failure or metadata pressure. Increasing Xmx can even reduce native headroom in a constrained process; diagnose the category first.
+
+### Optimization preserves observable contracts
+
+A new expression in source can disappear through allocation elimination/scalar replacement when the optimized program preserves required behavior. That is not a universal promise of stack allocation. A locally allocated object can escape through a return value, field, callback or alias, and incomplete inlining can limit analysis. JIT profiles and deoptimization also affect what a warmed-up measurement represents.
+
+The dedicated garbage-collection and JIT lessons develop these mechanisms separately; use this chapter to maintain the complete process-memory and lifetime model.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Investigate object lifetime in Java
+
+The following program is a complete executable example. Compile with `javac ReferenceLifetime.java` and run with `java ReferenceLifetime`.
+
+<JavaExample file="ReferenceLifetime.java" output={"1"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Memory and JIT reasoning pitfalls
+
+Do not equate heap usage with total process memory, assume System.gc gives deterministic reclamation, or treat object allocation counts as proof of a leak. Avoid tuning collector flags before identifying the actual source of latency or retention.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Memory and optimization interview practice
+
+### What distinguishes high allocation pressure from a memory leak?
+
+<details>
+<summary>Explanation</summary>
+
+High allocation can produce frequent collection while the retained live set stays bounded. A leak increases unwanted retention over time, often visible as growing post-collection occupancy and specific retaining paths. Compare equivalent workload phases and inspect object ownership rather than labeling any large heap as a leak.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can the process run out of memory below Xmx?</summary>
+
+Xmx bounds heap, while stacks, metaspace, code cache, direct buffers, mapped resources and other native allocations also consume process memory. Diagnose the reported failure category and process limits before enlarging heap.
+
+</details>
+
+<details>
+<summary>Are reference cycles inherently leaks in Java?</summary>
+
+No. An unreachable cycle can be collected because reachability tracing does not require reference counts to reach zero. A cycle retained from a live root remains reachable; the retaining path, not cyclic shape alone, explains the leak.
+
+</details>
+
+<details>
+<summary>Does a new expression guarantee a heap allocation?</summary>
+
+Not in optimized execution. Inlining and escape analysis can make scalar replacement/allocation elimination possible when observable semantics are preserved. The source expression is not proof of actual allocation, nor a guarantee of automatic stack placement.
+
+</details>
+
+### Coding exercise
+
+Create a bounded and an unbounded cache in a controlled test. Observe heap usage under repeated work, then identify the retaining collection in a heap dump. Keep workload and JDK configuration recorded.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What does a growing post-GC live set suggest?</summary>
+
+Potentially more retained data, but compare equivalent workload phases and collector behavior before calling it a leak. Then identify actual root paths and ownership; the occupancy trend alone does not identify an offending field.
+
+</details>
+
+<details>
+<summary>Why can a cleaner action defeat cleanup?</summary>
+
+If the action strongly captures the referent, the cleanup mechanism itself can keep that object reachable. Keep only the independent cleanup state needed and retain deterministic close ownership for resources.
+
+</details>
+
+<details>
+<summary>Why can a smaller heap worsen native-memory pressure?</summary>
+
+Total process limits include heap and native categories. Reserving more for one category can leave less for others, while too small a heap can increase GC CPU. The correct balance requires workload/category evidence rather than one universal heap-size rule.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Runtime-memory references
+
+- [HotSpot garbage-collection concepts](https://dev.java/learn/jvm/tool/garbage-collection/java-specifics/)
+- [G1 architecture and phases](https://dev.java/learn/jvm/tool/garbage-collection/g1gc-overview/)
+- [Removal of non-generational ZGC](https://openjdk.org/jeps/490)
+- [Reference types and reachability](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ref/package-info.java)
+- [HotSpot escape analysis](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/opto/escape.hpp)
+- [Unified JVM logging](https://openjdk.org/jeps/158)

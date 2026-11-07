@@ -1,0 +1,122 @@
+---
+title: "Collectors and lawful mutable reduction"
+module: "functional"
+group: "Collectors and gatherers"
+summary: "Build custom collectors from invariants, partition laws and an explicit result contract."
+order: 260
+version: "Java 8+"
+prerequisites: ["functional/streams-and-collectors"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## What a collector controls
+
+A collector describes how to build a result from stream elements using mutable intermediate state. Its type parameters have different roles: T is the input element, A the accumulation state and R the published result. A and R can be the same type, but do not need to be. Separating them allows efficient local mutation followed by an immutable result boundary.
+
+A supplier creates a fresh accumulator. An accumulator function adds one input. A combiner joins independently accumulated partial results. A finisher produces the public result. Characteristics declare additional promises the stream implementation may rely on. They are not performance decorations to add until a benchmark becomes faster.
+
+A useful first question is the invariant: what must remain true after every accepted input and after every combination? Only then choose fields and functions. This lesson aggregates purchase count and total minor units, with explicit nonnegative input and overflow behavior.
+
+## Trace sequential and partitioned accumulation
+
+For purchases A:100, B:300, A:200, grouping by customer creates two logical group results. Customer A's result has count 2 and total 300; B has count 1 and total 300. A TreeMap gives the example a defined key order rather than relying on a hash table's observed traversal.
+
+Sequential reduction can use one accumulator per group. Parallel reduction can form separate maps/accumulators for partitions and combine them. It must produce the same aggregate meaning. An empty partial state contributes zero count and zero total; combining it with an existing state must not change that result.
+
+<Diagram client:visible definition={"flowchart TD\n I[Purchases partitioned by traversal] --> A[Fresh accumulator A]\n I --> B[Fresh accumulator B]\n A --> C[Merge count and total]\n B --> C\n C --> F[Finish into immutable Stats]\n F --> R[Published result per customer]"} caption="Each partition owns its mutable state. The combiner preserves aggregate meaning before the finisher publishes the result." />
+
+## Complete collector implementation
+
+<JavaExample file="CorePurchaseCollector.java" output={"{A=2:300, B=1:300}\n{A=2:300, B=1:300}"} />
+
+The program is one source file with nested input, accumulator and result types. The nested classes keep the example complete without making every helper method a separate file. The map is a library result container; this is a collector implementation, not a new Map implementation.
+
+### Input and result ownership
+
+Purchase validates its customer and nonnegative cents. Stats stores only the completed aggregate and exposes no mutator. Accumulator is private implementation state. A caller receiving Stats cannot change an accumulator still being used by another reduction stage.
+
+The cents field assumes one declared currency/minor-unit domain. Adding amounts in different currencies would require another validated model; a long total does not make that domain decision automatically.
+
+### Accumulate without a half-assigned state
+
+Accumulator.add calculates next count and total using exact arithmetic before assigning either field. If arithmetic fails, that accumulator does not first publish an updated count paired with an old total. The stream operation still fails; the code does not silently substitute zero or wrap overflow.
+
+This local failure ordering is distinct from thread safety. The accumulator's fields are ordinary mutable fields. Concurrent updates to one instance are not permitted by this collector's declared model.
+
+### Combine independent results
+
+Merge adds the other partial count/total to this partial result and returns this accumulator. It need not preserve the identity of both mutable containers after combination. The important property is equivalent aggregate meaning, including empty-state identity and associative grouping over valid inputs.
+
+The inputs are nonnegative amounts, so a mathematically out-of-range total is a failure regardless of grouping. For other domains, exception behavior and non-associative arithmetic can complicate the equivalence argument. Do not assume an arbitrary state-mutating merge is lawful merely because it compiles.
+
+### Finish and characteristics
+
+The finisher creates Stats, so A and R differ. IDENTITY_FINISH would be false: the framework cannot safely treat an Accumulator as the published Stats result. CONCURRENT would also be false: multiple workers must not call add concurrently on one ordinary accumulator.
+
+Parallel safety instead comes from separate state and lawful combination. A nonconcurrent collector can run correctly in a parallel stream without locks on every field. UNORDERED concerns whether encounter order changes the result meaning; it is not a promise to return random output.
+
+## Compose downstream reductions
+
+GroupingBy chooses a key, then applies the downstream collector to that group's elements. Downstream counting, summing, mapping or filtering can avoid storing a full list that is never used. A custom collector is justified when the existing combinators do not clearly express the required result/invariants; do not rebuild toList just to use a pattern name.
+
+ToMap requires an explicit duplicate-key policy when duplicate logical keys are possible. Choosing the latest timestamp can be a domain policy; blindly retaining an arbitrary first/last value can lose required information. If a merge policy depends on order, preserve and explain that order rather than marking the reduction unordered for convenience.
+
+## Tests that expose collector defects
+
+<JavaExample file="CorePurchaseCollectorTest.java" />
+
+The tests check empty input, multiple groups, same-customer accumulation, sequential/parallel values, null/negative inputs and arithmetic overflow. A test should assert fields, not merely that two result objects have the same toString. Running parallel once does not prove every concurrency property; the ownership/law argument is the principal correctness reasoning.
+
+A useful manual partition test creates two accumulators through the supplier, accepts values into each, combines, finishes and compares that result with unsplit reduction. Include an empty accumulator on both sides. A collector can appear correct sequentially while a broken combiner corrupts parallel output.
+
+## Interview questions with worked answers
+
+<details>
+<summary>Why is StringBuilder usually unsuitable as one shared reduce identity?</summary>
+
+A mutable identity can be reused where reduction expects a lawful identity/result relationship, and several partial operations can interfere with shared state. Mutable collection belongs in collect with freshly supplied containers and a valid combiner. The problem is the reduction contract, not that StringBuilder can never be used by a collector.
+
+</details>
+
+<details>
+<summary>What does CONCURRENT allow that an ordinary parallel collector does not?</summary>
+
+It permits concurrent accumulation into a shared result container under the stream's applicable conditions. The container/accumulator must support that access safely. An ordinary parallel collector can use independent containers and combine them without such shared accumulation.
+
+</details>
+
+<details>
+<summary>Why can the framework call the supplier several times?</summary>
+
+Partitions need independently owned partial state. Returning the same mutable singleton from the supplier violates that model even if its contents happen to be empty initially. Supply genuinely independent containers unless the characteristics/contracts explicitly support a different design.
+
+</details>
+
+<details>
+<summary>How can a finisher make a result safer to publish?</summary>
+
+It can detach immutable result data from private mutable accumulation state. That boundary must be real: returning a wrapper around a still-exposed mutable backing object can leave mutation aliases. The immutable Stats object in the example retains only final aggregate values.
+
+</details>
+
+<details>
+<summary>What is the solution to a broken parallel-only collector?</summary>
+
+First inspect supplier independence and combiner identity/associativity, then check claimed characteristics. Do not add synchronized indiscriminately: it cannot repair an incorrect merge formula or a false IDENTITY_FINISH cast. Construct small explicit partitions that demonstrate the difference.
+
+</details>
+
+## Coding extension and solution
+
+Extend Stats with a maximum purchase value. For empty input, represent no maximum explicitly rather than using zero unless the domain intentionally defines zero as its identity. Add initializes/updates the maximum from accepted values; merge compares maxima from nonempty partial states; finish publishes the absence/presence contract. Test empty versus a real zero-valued purchase so the distinction cannot be hidden by the normal total.
+
+An average should be derived from count and total at the correct finish boundary with the required numeric policy. Averaging partial averages without their counts is generally wrong; combining (count,total) preserves the information needed for the final calculation.
+
+## References
+
+- [Collector functions, laws and characteristics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/Collector.java)
+- [Collector factory composition](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/Collectors.java)
+- [Stream reduction requirements](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/package-info.java)

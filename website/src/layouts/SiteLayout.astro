@@ -1,0 +1,44 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { getCollection } from 'astro:content';
+import Search from '../components/Search.jsx';
+import LearningControls from '../components/LearningControls.jsx';
+import CourseNavigation from '../components/CourseNavigation.astro';
+import {CodeIcon as Code, CaretRightIcon as CaretRight, MoonIcon as Moon, CaretDoubleLeftIcon as CaretDoubleLeft, XIcon as X, ListIcon as List} from '@phosphor-icons/react';
+import { modules } from '../data/modules';
+import { url } from '../lib/paths';
+import '@fontsource/dm-sans/400.css';
+import '@fontsource/dm-sans/500.css';
+import '@fontsource/dm-sans/600.css';
+import '@fontsource/dm-sans/700.css';
+import '@fontsource/manrope/700.css';
+import '@fontsource/manrope/800.css';
+import '../styles/global.css';
+interface Props { title:string; summary:string; lesson?:CollectionEntry<'lessons'>; sections?:{id:string;title:string;group:string}[]; stages?:string[][]; catalog?:boolean; }
+const { title, summary, lesson, sections = [], stages = [], catalog = false } = Astro.props;
+const lessons=(await getCollection('lessons')).sort((a,b)=>a.data.order-b.data.order);
+const current=lesson?lessons.findIndex(l=>l.id===lesson.id):-1;
+const previous=current>0?lessons[current-1]:null,next=current>=0?lessons[current+1]:null;
+const ids=lessons.map(l=>l.id);
+const moduleName=lesson?modules.find(m=>m.id===lesson.data.module)?.title:'';
+---
+<!doctype html><html lang="en"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><meta name="description" content={summary}/><meta name="color-scheme" content="light dark"/><script is:inline>try{const theme=localStorage.getItem('jdd-theme')==='dark'?'dark':'light';document.documentElement.dataset.colorTheme=theme;document.documentElement.style.colorScheme=theme}catch{}</script><title>{title} · Java Deep Dive</title><link rel="icon" href={url('favicon.svg')} type="image/svg+xml"/></head><body><div class="app" id="site-app"><a href="#main-content" class="skip-link">Skip to content</a><header class="topbar"><a class="brand" href={url()} aria-label="Java Deep Dive home"><Code size={27}/><span>Java<span class="brand-rest"> Deep Dive</span></span></a><Search client:load/><div class="header-actions"><button class="icon-button" data-theme aria-label="Toggle color theme"><Moon size={21}/></button><button class="icon-button mobile-menu" data-menu aria-label="Open navigation" aria-expanded="false"><List size={23}/></button></div></header>
+<button class="navigation-backdrop" data-nav-backdrop aria-label="Close course navigation" hidden tabindex="-1"></button>
+<aside id="course-sidebar" class="sidebar" aria-label="Course navigation"><button class="navigation-collapse icon-button" data-sidebar-toggle aria-label="Collapse course navigation" title="Collapse course navigation" aria-expanded="true" aria-controls="course-navigation-content"><CaretDoubleLeft size={18}/></button><button class="navigation-close icon-button" data-nav-close aria-label="Close course navigation"><X size={20}/></button><div id="course-navigation-content" class="navigation-content"><CourseNavigation lessons={lessons} currentId={lesson?.id} catalog={catalog} sections={sections} stages={stages}/></div></aside>
+<div class={`page-grid reading-layout ${!lesson?'catalog-grid':''}`}><main id="main-content" class="article" data-pagefind-body={lesson?'':undefined}>
+<header class="article-header">
+ <div class="article-context"><nav class="breadcrumbs" aria-label="Breadcrumb"><a href={url()}>Course</a>{lesson&&<><CaretRight size={11}/><a href={url('#module-'+lesson.data.module)}>{moduleName}</a></>}</nav><div class="article-meta-tools">{lesson&&<span class="version-label">{lesson.data.version}</span>}{lesson&&<div class="reader-controls">
+  <details class="article-contents" data-reader-disclosure><summary>On this page <span>{sections.length}</span></summary><nav class="reader-disclosure-panel" aria-label="On this page">{sections.map((section,index)=><a href={'#'+section.id} data-section-link={section.id}><span>{String(index+1).padStart(2,'0')}</span><span>{section.title}</span></a>)}</nav></details>
+  {lesson.data.prerequisites.length>0&&<details class="lesson-prerequisites" data-reader-disclosure><summary>Prerequisites</summary><div class="reader-disclosure-panel"><p>Review these topics if needed:</p><ul>{lesson.data.prerequisites.map(id=><li><a href={url('learn/'+id+'/')}>{lessons.find(item=>item.id===id)?.data.title}</a></li>)}</ul></div></details>}
+ </div>}</div></div>
+ <h1 data-pagefind-meta="title">{title}</h1><p class="lede">{summary}</p>
+
+</header>
+<slot/>
+{lesson&&<><LearningControls id={lesson.id} ids={ids} client:idle/><nav class="lesson-pagination" aria-label="Previous and next lessons">{previous?<a href={url('learn/'+previous.id+'/')}><small>Previous lesson</small>{previous.data.title}</a>:<span/>}{next&&<a href={url('learn/'+next.id+'/')}><small>Next lesson</small>{next.data.title}</a>}</nav></>}
+<footer class="site-footer">Java Deep Dive · Concepts, implementation, and interview preparation</footer></main></div></div>
+<script>
+import { initializeSite } from '../lib/site';
+initializeSite();
+</script>
+</body></html>

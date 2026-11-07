@@ -1,0 +1,198 @@
+---
+title: "Compilation, bytecode and execution"
+module: "execution"
+group: "Execution and tooling"
+summary: "Understand the path from a Java source file to a running JVM."
+order: 10
+version: "Java 8+"
+prerequisites: []
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## How Java source becomes a running program
+
+A Java source file describes classes and their members. The compiler checks syntax and types and emits class files containing bytecode and metadata. The JVM loads those class files and executes their instructions. Source compatibility, class-file compatibility and library availability are separate concerns: code can compile against a library that is absent at runtime.
+
+The JDK includes development tools such as javac, java, javap and javadoc. The JVM is the execution engine, while the Java runtime also includes libraries and support files. An IDE invokes the same kinds of tools but can hide the selected JDK and classpath. Verify those settings when command-line and IDE results disagree.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Compile, launch and inspect a class
+
+Save the program using its public class name. javac checks the call to twice and produces CompileRun.class. java CompileRun names the class, not the source path or class-file filename. The main method is an entry point; the helper illustrates that a method call is represented in bytecode rather than expanded as source text.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Classpath, bytecode and runtime compatibility
+
+<Diagram client:visible definition={"flowchart TD\n A[Source file] --> B[javac type checking]\n B --> C[Class files]\n C --> D[Load and link]\n D --> E[Initialize when required]\n E --> F[Execute and optimize]"} caption={"Compilation produces class files; the runtime loads, links and initializes types as required before executing their behavior."} />
+
+### A reproducible package and classpath exercise
+
+A package is part of a type's binary name. For a class declared as `package study; public class Hello`, the binary name is `study.Hello`. The classpath contains the directory **above** `study`, rather than the package directory itself. Create this file as `src/study/Hello.java`:
+
+```java
+package study;
+
+public final class Hello {
+    private static int twice(final int value) {
+        return value * 2;
+    }
+
+    public static void main(final String[] args) {
+        System.out.println(twice(7));
+    }
+}
+```
+
+Run the following from the directory containing `src`:
+
+```bash
+javac -d out src/study/Hello.java
+java -cp out study.Hello
+javap -classpath out -c -p study.Hello
+```
+
+`-d out` creates the package directory structure. The launcher finds `out/study/Hello.class` through the `out` classpath root. The program prints `14`. The private helper's important bytecode operations are `iload_0`, `iconst_2`, `imul`, and `ireturn`: load the argument, load two, multiply, return. In the caller, `invokestatic` invokes the static helper; the print call is an instance invocation. Exact offsets and constant-pool indexes are compiler output, not language contracts.
+
+### Separate source, binary and API compatibility
+
+| Concern | Example | Appropriate control |
+| --- | --- | --- |
+| Accepted source syntax | Records cannot be compiled as Java 8 source | Choose the language release |
+| Class-file format | A Java 25 class file cannot run on a Java 8 JVM | Compile for the oldest supported runtime |
+| Available library APIs | A Java 8 target cannot call `List.of` | Use `javac --release 8` on a supporting modern JDK |
+| Dependency versions | A library method was removed after compilation | Align runtime dependencies with the compiled contract |
+
+On Java 9+, `--release` selects supported source rules, target class-file version and the platform API for that release. Merely using `-source` and `-target` can still compile calls against a newer boot library. Preview features require the matching release and preview flags at compilation and execution; they are not ordinary portable class files.
+
+### Diagnose failures by phase
+
+| Failure | What failed | First investigation |
+| --- | --- | --- |
+| Compiler cannot find symbol | A type/member is unavailable to source compilation | Imports, spelling, compilation classpath |
+| Launcher cannot find main class | The named entry type cannot be located/launched | Fully qualified name, classpath root |
+| `ClassNotFoundException` | Explicit loading requested an unavailable class | Requested name and chosen loader |
+| `NoClassDefFoundError` | A required class definition or prior initialization is unavailable | Runtime dependencies and original initialization failure |
+| `NoSuchMethodError` | Loaded class does not have the expected binary member | Duplicate JARs and dependency version mismatch |
+| `UnsupportedClassVersionError` | Runtime does not support the class-file version | Compiler release and runtime JDK |
+
+A module path is a separate mechanism for resolving named modules, their dependencies and encapsulation. Placing a JAR on the classpath does not activate its module declaration as a named module. The modules chapter develops this distinction with a multi-module example.
+
+### Interview reasoning exercise
+
+A project runs in the IDE but fails in a terminal. Compare `java -version`, `javac -version`, the launch command, working directory, classpath/module path and runtime dependency versions. Explain why changing a source import cannot repair a `NoSuchMethodError` in an already compiled artifact. The runtime is resolving a symbolic reference in bytecode against a different binary contract.
+
+## From an entry point to a reproducible launch
+
+### Launch modes and argument boundaries
+
+The traditional class launch `java -cp out study.Hello one two` passes `one` and `two` to main. The classpath and main class are launcher arguments, not application arguments. `java -jar app.jar` uses executable-JAR metadata; an ordinary library JAR need not have a main entry. Source-file launching is a different mode and depends on the target JDK's capabilities. Begin troubleshooting with the exact command rather than treating all launches as equivalent.
+
+A process exit code is separate from printed output. A program can print a useful message and still fail with an uncaught exception. Likewise, successful compilation says that the compiler's visible source/types were valid; it does not prove the application actually started the expected class or processed its inputs successfully.
+
+### Packages and access are not filesystem permissions
+
+A package declaration establishes a namespace and participates in access checks. Copying a class file into another directory does not change its binary package. An import only shortens a source-level type name; it does not load a class, add a dependency or grant access. The JDK resolves references according to binary names, loaders and module/access rules. A missing runtime JAR cannot be repaired by adding an import to a source file that was already compiled.
+
+### A useful debugger workflow
+
+Place a breakpoint at main, then step into a helper to distinguish the selected overload from the runtime implementation. Inspect declared reference types alongside actual objects. A watch expression can call code and change state, so avoid using side-effecting expressions as if they were passive observations. Exception breakpoints can stop where a failure is thrown, which is often more useful than only observing the final catch or stack trace.
+
+JShell is useful for isolated expressions and API exploration. A snippet that succeeds there may still rely on implicit imports or a different JDK than a packaged project. Bring the result back into a complete source file with explicit imports and the intended release target.
+
+### A reproducibility checklist that explains failures
+
+Record the compiler/runtime versions, source files, output directory, classpath/module path, dependency versions and launch arguments. Build into a separate output tree to avoid accidentally loading stale class files mixed with source. Recompile callers when a change affects their compiled contract; replacing one library file is not always sufficient, especially for inlined constants. Use `javap -classpath out -c -p` to inspect the artifact actually launched.
+
+A minimal diagnostic experiment changes one variable: for example, launch the same compiled artifact with the intended classpath. Rebuilding with a different JDK and replacing several libraries at once may make the symptom disappear without explaining it.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Compilation and execution example
+
+The following program is a complete executable example. Compile with `javac CompileRun.java` and run with `java CompileRun`.
+
+<JavaExample file="CompileRun.java" output={"14"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Launch and build mistakes
+
+Do not confuse javac with the JVM, or bytecode with native machine code. Running java with a package path as though it were a filename is a different operation from launching a fully qualified class. Avoid assuming the IDE and terminal select the same JDK. Use compiler release targeting when distributing code to an older runtime.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Compilation and execution interview practice
+
+### Why can code compile and still fail with a linkage error?
+
+<details>
+<summary>Explanation</summary>
+
+Compilation checked the types visible on its compilation classpath. Runtime may load a different version or fail to locate a required definition. For example, a method available during compilation may be missing from the deployed library. Confirm the actual runtime JDK and classpath before changing application logic. A linkage problem is distinct from a checked exception thrown by the method itself.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why does `java -cp out study.Hello` work while `java -cp out/study Hello` fails for a packaged class?</summary>
+
+The binary name includes the package. The launcher appends study/Hello.class beneath each classpath root. The second command asks for an unqualified Hello and does not match the class file's declared binary name. Correct both the root and fully qualified class name.
+
+</details>
+
+<details>
+<summary>Does `--release 8` make an arbitrary third-party dependency run on Java 8?</summary>
+
+No. It constrains the compiled source and platform API target, not the bytecode and API requirements of every external JAR. Dependencies must also support the intended runtime. A modern dependency can still introduce UnsupportedClassVersionError or missing runtime APIs.
+
+</details>
+
+<details>
+<summary>Is a JAR necessarily an executable application?</summary>
+
+No. A JAR is an archive format. It can contain library classes/resources without an entry point. An executable JAR needs suitable launcher metadata and accessible runtime dependencies. Packaging application classes does not automatically bundle all dependency classes.
+
+</details>
+
+### Coding exercise
+
+Add a package to the example, compile it into an output directory with javac -d, and run it using a fully qualified class name. Inspect the helper with javap -c and identify the arithmetic and return instructions.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What does an import do at runtime?</summary>
+
+An import is a compiler convenience for resolving source names. The compiled reference uses a binary type/member identity. Runtime class loading still needs a definition visible through the chosen loader and launch configuration.
+
+</details>
+
+<details>
+<summary>Why can a clean output directory change a result?</summary>
+
+A stale class can otherwise be found before the newly compiled definition. A clean isolated output directory removes that competing artifact, making the experiment about the intended source and dependencies rather than search-path accidents.
+
+</details>
+
+<details>
+<summary>How would you demonstrate a constant-inlining issue?</summary>
+
+Compile a client reading a public constant variable, change only the library constant and replace only its class file. Inspect the client with javap: it may contain the old literal rather than getstatic. Recompile the client and compare. The class-initialization lab later makes the distinction executable.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Execution references
+
+- [JDK tools: compilation and inspection](https://dev.java/learn/jvm/core-tools/)
+- [Class loading and linking implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ClassLoader.java)
+- [Release targeting in the compiler](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/jdk.compiler/share/classes/com/sun/tools/javac/main/Arguments.java)

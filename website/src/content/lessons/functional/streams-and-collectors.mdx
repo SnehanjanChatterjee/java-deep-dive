@@ -1,0 +1,198 @@
+---
+title: "Streams, collectors and parallel execution"
+module: "functional"
+group: "Stream pipelines"
+summary: "Reason about lazy pipelines, reductions and safe aggregation."
+order: 250
+version: "Java 8+"
+prerequisites: ["functional/lambdas-and-optional", "collections/choosing-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Lazy pipelines over a source
+
+A stream is a pipeline for processing a source, not a container storing elements. Intermediate operations are generally lazy; a terminal operation triggers evaluation. A stream is consumed once. Its encounter order comes from the source and operations, while evaluation order may differ under parallel execution.
+
+map transforms one element, flatMap flattens nested results, filter retains matching elements and reduce combines them. Collectors describe mutable reduction through an accumulator and related combination behavior. Grouping and downstream collectors express useful aggregation without manually maintaining nested maps.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Build a normalized word-frequency result
+
+The program flattens lines into words, normalizes them and groups by word with counting. A TreeMap supplies deterministic key order for demonstration. The original input collection remains unchanged because the pipeline does not mutate it.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Operation categories and reduction laws
+
+<Diagram client:visible definition={"flowchart TD\n S[Source] --> F[Lazy filter]\n F --> M[Lazy map or flatMap]\n M --> T[Terminal operation]\n T --> R[Result]\n T -. triggers traversal .-> S"} caption={"Intermediate stream operations describe a pipeline; the terminal operation triggers evaluation, potentially with short-circuiting."} />
+
+### Classify operations before building a pipeline
+
+| Category | Examples | Consequence |
+| --- | --- | --- |
+| Stateless intermediate | filter, map, flatMap | Process an element without remembering all prior elements |
+| Stateful intermediate | sorted, distinct | Need buffering or state; can affect memory and parallel merging |
+| Short-circuiting intermediate | limit, takeWhile (9+) | Can bound traversal when source/order allow |
+| Terminal result | count, collect, reduce, toArray | Consume the stream |
+| Short-circuiting terminal | findFirst, findAny, anyMatch | May stop before all source values are consumed |
+
+A source can be infinite, so `sorted()` before `limit(10)` need not terminate. Source order matters: a List has encounter order; a HashSet does not promise one. `unordered()` relaxes an order requirement; it does not randomly shuffle values. `forEachOrdered` preserves encounter order where defined, while parallel forEach does not.
+
+### Trace laziness element by element
+
+For `[1,2,3,4]`, filtering even values, mapping to their squares and finding the first result can inspect 1, reject it, inspect 2, produce 4, then stop. It need not create a full intermediate filtered list. Reusing that stream for count is illegal after consumption; create a fresh stream from the source. Implementations can elide operations whose results do not affect the answer, so peek and mapper side effects are not dependable control flow.
+
+### Reduction laws explain parallel behavior
+
+A sum with identity 0 and associative addition can combine independently reduced partitions. Subtraction cannot: `(10 - 3) - 2` differs from `10 - (3 - 2)`. Using identity 1 for a sum introduces one per partition and can inflate parallel results. Floating-point addition is not mathematically associative under finite rounding, so regrouping can change low-order bits even with a seemingly valid arithmetic reduction.
+
+Mutable accumulation belongs in collect rather than mutating one shared identity in reduce. The complete StreamCollectorLab creates a fresh summary container per partition and merges independent partial totals.
+
+The complete `StreamCollectorLab.java` source appears in the Java implementation section below.
+
+The supplier constructs an empty Summary. The accumulator adds one input. The combiner adds one partial count/total to another. The result has identity finish, but it is deliberately not marked CONCURRENT: ordinary Summary fields do not support concurrent accumulation into one shared instance. Parallel reduction can still be correct through independently owned containers.
+
+<Diagram client:visible definition={"flowchart TD\n A[Partition: 1 and 2] --> X[Summary: count 2 total 3]\n B[Partition: 3 and 4] --> Y[Summary: count 2 total 7]\n X --> C[Combine summaries]\n Y --> C\n C --> R[Count 4 total 10]"} caption={"Parallel mutable reduction uses separate partial containers and a lawful combiner, rather than concurrent writes to one ordinary accumulator."} />
+
+### Collectors that commonly appear in interviews
+
+`groupingBy(classifier, downstream)` first chooses a key, then reduces each group's elements. Downstream counting avoids storing every value. `partitioningBy` creates true/false groups. `toMap` without a merge function rejects duplicate keys; provide a deliberate merge policy such as latest timestamp, not an arbitrary “keep one” workaround. Use a map supplier if a specific result order is required. `Collectors.toList()` makes no general mutability/type guarantee; `Stream.toList()` (16+) returns an unmodifiable list and can contain nulls, unlike `List.of`.
+
+### Gatherers, Java 24+
+
+Collectors perform terminal reduction. Gatherers express custom intermediate operations, including windows, running scans and bounded concurrent transformations. The Java 25 example below uses the stable API: fixed windows produce a final short window; sliding windows overlap. This is not an equivalent operation to grouping by a key.
+
+<JavaExample file="modern/GathererWindows.java" output={"[[1, 2, 3], [4, 5]]\n[[1, 2, 3], [2, 3, 4], [3, 4, 5]]"} />
+
+### Parallelism tradeoffs
+
+Splitting quality, work per element, ordering, merge cost, allocation and pool contention determine whether parallel execution helps. Blocking I/O can occupy shared workers and is a poor default workload for a common-pool stream. Avoid nested parallelism as an automatic optimization. State a performance hypothesis and measure the intended workload; a parallel pipeline is not proof of a speedup.
+
+## Pipeline flags, resource ownership and deterministic results
+
+### Source characteristics constrain possible optimizations
+
+A Spliterator describes traversal/splitting characteristics such as ORDERED, SIZED, SUBSIZED, DISTINCT, SORTED, NONNULL, IMMUTABLE or CONCURRENT. These are documented properties of the source/traversal, not hints to invent properties the data lacks. Intermediate operations can preserve or remove knowledge: mapping may invalidate distinct/sorted knowledge, while filtering generally removes exact output-size knowledge.
+
+A terminal count can exploit a known exact size and omit callbacks that cannot affect the result. Consequently a peek or mapper is not a reliable place for mandatory auditing, counters or external writes. The API permits optimizations; the exact set exercised by one JDK is not a universal evaluation transcript.
+
+### map, flatMap and mapMulti solve different shapes
+
+Map produces one result per input. FlatMap opens zero or more results and flattens them. MapMulti, available from Java 16, lets a mapper emit zero or more results through a downstream consumer without requiring the same intermediate-stream shape. It does not make retained downstream consumers safe: use them only under the operation's contract.
+
+Primitive streams avoid boxing in their arithmetic/result contracts. Mapping a Stream of objects to IntStream changes the element/terminal API; it is not simply a cosmetic spelling. Summation can still overflow its primitive result type, so numeric domain correctness remains separate from pipeline syntax.
+
+### Reduction contracts determine correctness
+
+A reduce identity must behave as an identity under the accumulator/combiner. An associative operator supports regrouping; subtraction and arbitrary mutable external updates do not. Floating arithmetic has rounding effects under regrouping. A custom collector can be parallel-safe through independently supplied containers without marking them CONCURRENT.
+
+For toMap, define a merge policy for duplicate logical keys. An arbitrary keep-first/keep-last choice can discard domain information. For grouping, use downstream reductions when only an aggregate is needed; retaining complete lists for every group can consume unnecessary memory. Specify the map factory if sorted or encounter-key output is required.
+
+### Resource-backed streams still need closing
+
+A stream obtained from a collection usually owns no external resource. Files.lines/walk can. A terminal operation does not excuse an absent close protocol on a resource-backed source, and returning a stream from a block that already closed its resource is invalid ownership. Parallelism does not change who owns that cleanup.
+
+### Exercise solution
+
+Group validated purchases by customer using an explicit TreeMap supplier and the custom totals collector. Check sequential and parallel results by aggregate fields, not incidental accumulator class identity. Introduce duplicate customer keys and overflow values deliberately. The dedicated collector lesson explains supplier, accumulator, combiner, finisher and characteristics against that complete implementation.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Implement stream aggregation and collectors
+
+### A lawful mutable collector
+
+<JavaExample file="StreamCollectorLab.java" output={"count=4, total=10\n{even=2, odd=2}"} />
+
+### Introductory example
+
+The following program is a complete executable example. Compile with `javac StreamAggregation.java` and run with `java StreamAggregation`.
+
+<JavaExample file="StreamAggregation.java" output={"{java=2, jvm=1}"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Stream reuse, ordering and side-effect pitfalls
+
+Do not reuse a consumed stream, mutate its source during traversal, depend on peek for mandatory behavior, or use a non-associative reduction in parallel. forEach is not an encounter-order guarantee on a parallel stream.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Stream and collector interview practice
+
+### Why can summing into a shared ArrayList from a parallel stream fail?
+
+<details>
+<summary>Explanation</summary>
+
+ArrayList does not coordinate concurrent structural updates. Multiple tasks may overwrite internal state or observe inconsistent size/capacity changes. Use a suitable collector or a deliberately coordinated data structure. Merely switching to a synchronized collection may preserve correctness while introducing contention and changing the performance tradeoff.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why is `reduce(1, Integer::sum)` unsuitable as a sum identity?</summary>
+
+One is not the identity for addition. Partitioned reduction can introduce it once per partial result, so parallel regrouping changes the answer. Use zero for sum and ensure accumulator/combiner laws agree.
+
+</details>
+
+<details>
+<summary>Does a collector need a thread-safe accumulator to support parallel streams?</summary>
+
+Not when it uses separately supplied, thread-confined partial containers and a lawful combiner. Marking it CONCURRENT changes the allowed accumulation model and requires the corresponding safety contract. Do not mark ordinary mutable fields concurrent just because collection runs in parallel.
+
+</details>
+
+<details>
+<summary>How do a gatherer and a collector differ?</summary>
+
+A gatherer defines an intermediate stream transformation, potentially emitting zero or several values with state. A collector performs terminal reduction into a result. Windowing can continue into later pipeline operations; groupingBy is a terminal aggregation.
+
+</details>
+
+### Coding exercise
+
+Implement grouping with a downstream mapping collector. Compare ordered and unordered terminal operations, then explain why a subtraction-based reduction changes when partitioned.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why does count sometimes skip peek?</summary>
+
+If exact cardinality is known and the skipped operation cannot affect the answer under the contract, traversal can be optimized away. Required side effects do not belong in optional observation stages.
+
+</details>
+
+<details>
+<summary>Does an ordered parallel stream process each element sequentially?</summary>
+
+No. Encounter order constrains appropriate result semantics, not necessarily the order/timing of every intermediate callback. Stateful barriers and forEachOrdered can add coordination; they do not turn all callbacks into one sequential transcript.
+
+</details>
+
+<details>
+<summary>Why can collecting to a list produce different mutability guarantees?</summary>
+
+Collectors.toList does not promise a specific implementation/mutability contract, Stream.toList returns an unmodifiable result on supported JDKs, and toUnmodifiableList has its own null restrictions. Select and document the intended result API.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Stream API references
+
+- [Stream operation and side-effect contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/package-info.java)
+- [Collector identity, associativity and concurrency](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/Collector.java)
+- [Collector factories](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/Collectors.java)
+- [Gatherer window semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/stream/Gatherers.java)
+- [Gatherers, final in Java 24](https://openjdk.org/jeps/485)
+
+- [Spliterator characteristics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Spliterator.java)

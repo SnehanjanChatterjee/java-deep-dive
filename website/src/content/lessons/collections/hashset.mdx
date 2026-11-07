@@ -1,0 +1,147 @@
+---
+title: "HashSet"
+module: "collections"
+group: "Sets"
+summary: "Understand uniqueness, hash collisions, mutable elements and map-backed set implementation."
+order: 170
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections","collections/hashmap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Hash-based uniqueness
+
+HashSet models distinct values using a hash table. It does not promise encounter order and accepts a null element. LinkedHashSet adds defined encounter order, normally the order distinct elements were first inserted. Neither is a sorted set and neither provides synchronization.
+
+The membership relation comes from equals/hashCode, not object identity. Two separately allocated but equal objects represent one logical member. Distinct objects can share a hash and must remain independently retrievable. Stable equality-relevant state is essential while an element belongs to a set.
+
+<span id="worked-example"></span>
+## Hash collisions and duplicate membership
+
+<JavaExample file="HashSetExample.java" />
+
+Aa and BB have the same String hash but are unequal, so the size is 2. Adding another equal Aa returns false. No assertion depends on HashSet iteration order. LinkedHashSet prints `[B, A, C]`, discarding the duplicate B while keeping first appearance. Removing then reinserting A produces `[B, C, A]`, because it is a new membership insertion.
+
+Re-adding an element that is still present does not normally move it in insertion order. Java 21 sequenced-set positioning operations are additional APIs and should not be confused with ordinary add behavior. Iteration order, membership equality and sorting are three different requirements.
+
+<span id="mechanics-and-tradeoffs"></span>
+## HashSet storage and membership
+
+### A set implemented with a map
+
+HashSet uses elements as map keys and one shared marker as all values. Add delegates to insertion; contains delegates to key presence; remove deletes the key. The marker is not a second user element. Because every stored marker is non-null, the previous marker can distinguish an existing key from absence.
+
+### Collision and resize behavior
+
+The backing table selects a bucket using the key's hash, then checks candidate keys by equality. Equal hashes do not imply equal elements. Resizing redistributes entries according to the table implementation; it does not repair an element whose equality/hash state changed. Expected constant-time membership assumes suitable dispersion and bounded key-method costs.
+
+### Ordered uniqueness
+
+LinkedHashSet maintains additional encounter-order bookkeeping through an ordered backing map. Its iterator follows the order structure rather than scanning all buckets in an arbitrary table order. Removing an entry must repair both membership storage and order links. The added ordering has storage and update costs, so it is a deliberate semantic choice.
+
+### Bulk operations and views
+
+Set equality compares membership rather than encounter order. Bulk membership checks depend on the other collection's implementation and relation, so do not assume every retainAll/removeAll combination has the same cost. Unmodifiable wrappers prevent API mutations through that view but can still observe changes to a mutable backing set. Mutable elements remain mutable.
+
+<Diagram client:visible definition={"flowchart LR\n E[Element] --> K[Backing map key]\n K --> H[Hash bucket and equality check]\n H --> P[Shared present marker]\n K --> O[Optional encounter-order links]"} caption={"HashSet and LinkedHashSet: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="hashset" />
+
+## Membership laws and collision-focused testing
+
+### Hashing narrows candidates; equality decides membership
+
+A bucket collision means two hashes select the same table location. A full-hash collision means the raw/spread hash values are equal. Both permit distinct members. A duplicate is a key equal under the membership relation. These cases require different tests: same bucket/different hashes, same hash/unequal values and equal-but-separately-allocated values.
+
+The backing map's marker is not a user-visible value. Because every present membership maps to that same non-null marker, add/remove can distinguish membership changes through previous-marker results. That argument would fail if a custom wrapper allowed arbitrary null backing values to represent presence inconsistently.
+
+### Mutation is a relation failure, not a disappearing allocation
+
+Insert a custom key using an ID-derived hash, then modify the ID. The retained entry remains in the old insertion location with a cached hash. Search now uses changed state and can miss it. Iteration can still show the object, and another add can produce further pathological membership behavior. Increasing capacity or re-running hashCode on an unrelated key does not repair the broken policy.
+
+Prefer stable immutable membership values. If mutation is truly required, remove under the old identity, mutate outside membership and then re-add, handling failures explicitly. This is not a thread-safe compound protocol without coordination.
+
+### Set equality ignores order but needs a consistent relation
+
+Two ordinary sets with the same logical members compare equal regardless of encounter order. Comparing a comparator-based set whose zero relation disagrees with equals can violate that expected symmetry. The correct fix is to align the intended relations, not to depend on which set happens to receive the equals call.
+
+### Implementation exercise solution
+
+Use the complete SimpleHashSet wrapper to explain delegation: one shared PRESENT value, put returning the previous marker for add, containsKey for contains, remove returning the marker for deletion and map.size for cardinality. Then discuss whether built-in map storage is allowed. If it is forbidden, reuse the preceding handwritten MyHashMap source or integrate its nested bucket-node representation into the exercise, instead of pretending the wrapper implements hashing itself.
+
+### Required test categories
+
+Cover null membership, repeated equal values, unequal deliberate collisions, missing removal, repeated growth and stable size. Do not assert HashSet traversal order. A reference-model comparison should compare membership and result semantics, while implementation-specific bucket order is outside the public promise.
+
+<span id="java-implementation"></span>
+## Implement a set over a hash table
+
+<JavaExample file="SimpleHashSet.java" />
+
+This set uses the preceding MyHashMap implementation and a shared PRESENT marker. Compile both canonical source files together. `add` returns true only when the old marker is absent. `contains` checks the node's existence, and `remove` tests whether it received the marker. Size is the backing map's mapping count. Null membership works because null is a supported key, while the marker itself is never null.
+
+The wrapper is short because hashing, equality, collision chains and resizing are already implemented by the map. Explain that delegation rather than duplicating hash-table logic. For a from-scratch set exercise, implement the map storage first in the same file or as the explicitly permitted prerequisite; using an existing library Map may be outside the interview's requested constraints.
+
+<span id="common-mistakes"></span>
+## Mutable elements and iteration pitfalls
+
+Do not assert HashSet iteration order, mutate membership fields, or override equals without a consistent hashCode. A set can contain mutable values, but mutations must not change the relation the set relies on. Copying a set only copies element references.
+
+<span id="exercises-and-interview-questions"></span>
+## HashSet interview questions and exercises
+
+<details>
+<summary>Can equal objects occupy separate HashSet entries?</summary>
+
+With a correct equality/hash contract, a normal add replaces the same logical membership and returns false. Broken hashCode consistency or mutation can make lookup behavior violate application expectations.
+
+</details>
+
+<details>
+<summary>How can a mutable set element seem lost?</summary>
+
+Its insertion hash located the stored node. After mutation a lookup can select another bucket or fail the stored-hash check, while iteration still visits the retained object. Remove before changing membership identity, or use immutable elements.
+
+</details>
+
+<details>
+<summary>Which set removes duplicates while preserving first appearance?</summary>
+
+LinkedHashSet for insertion encounter order. TreeSet instead sorts according to comparison, which can define a different membership relation.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Can using the same marker value make different elements equal?</summary>
+
+No. Keys determine membership; the shared backing value merely records presence. Different unequal keys can all map to the same marker without becoming one key.
+
+</details>
+
+<details>
+<summary>What does HashSet.add return on an equal duplicate?</summary>
+
+False, because logical membership did not change. A separately allocated object can still be an equal duplicate. Reference identity alone is not the normal relation.
+
+</details>
+
+<details>
+<summary>Why is a constant hash contract-correct but usually poor?</summary>
+
+Equal objects still share the same hash, satisfying the required implication. However many unequal values collide and require more candidate checks. Contract validity and useful dispersion are separate concerns.
+
+</details>
+
+<span id="references"></span>
+## Primary HashSet references
+
+- [HashSet backing-map implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/HashSet.java)
+- [LinkedHashSet encounter order](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedHashSet.java)
+- [Set equality contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Set.java)

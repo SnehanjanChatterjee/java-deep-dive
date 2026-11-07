@@ -1,0 +1,148 @@
+---
+title: "PriorityQueue and binary heaps"
+module: "collections"
+group: "Queues and priority"
+summary: "Study priority ordering, binary heaps, sift algorithms and top-k selection."
+order: 210
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Priority selection and partial ordering
+
+PriorityQueue exposes the least element according to natural ordering or a supplied comparator. It is implemented with a binary heap, not a fully sorted array. Choose it for repeated minimum/maximum selection, scheduling by priority or top-k selection, rather than for arbitrary sorted traversal.
+
+Null elements are prohibited. Equal-priority elements can coexist, but their relative removal order is not guaranteed. If stable tie order matters, include a sequence number in the comparison key. PriorityQueue is not synchronized and does not enforce a fixed capacity merely because an initial capacity is supplied.
+
+<span id="worked-example"></span>
+## Minimum and maximum queue examples
+
+<JavaExample file="PriorityQueueExample.java" />
+
+Peek observes 1 without removing it. Repeated poll returns 1, 2, 3 and 4, because each removal repairs the heap. Reverse comparison makes the largest numeric value the least under that comparator, so the final result is 4. A for-each loop would not promise the same sorted order.
+
+The distinction between peek and poll affects complexity and state. Peek reads the root; poll also restores the heap. Avoid comparing priority values by subtraction because int overflow can reverse the intended order. Mutating an enqueued object's priority does not automatically reposition it.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Binary-heap representation and repair
+
+### Array representation
+
+For index i, children are 2i+1 and 2i+2 and the parent is floor((i−1)/2). Each parent is no greater than its children under the chosen order. This local condition implies the root is a global minimum, but does not order siblings or unrelated subtrees.
+
+### Offer and sift up
+
+Append at the next free logical position. Compare the new value with its parent and move larger parents down until it fits. Only the ancestor path changes, so O(log n) comparisons suffice, excluding an occasional array expansion. The logical heap stays complete because insertion uses the next array slot.
+
+### Poll and sift down
+
+Save the root result, remove the last logical element, then place that replacement through a hole starting at the root. Repeatedly lift the smaller child until the replacement is at most both children. Always select the smaller child; choosing an arbitrary child can violate the other branch's ordering. Empty and singleton removals need explicit handling.
+
+### Building and top-k
+
+Repeated offer builds a heap in O(n log n) worst-case work. Bottom-up heapify starts at the last internal node and sifts down; many nodes are near leaves, yielding O(n) total work. To retain the largest k values, keep a min-heap of size k and compare incoming values with its root. The total processing cost is O(n log k), with O(k) storage, plus any final ordering work.
+
+<Diagram client:visible definition={"flowchart TD\n R[1 at index 0] --> L[2 at index 1]\n R --> H[3 at index 2]\n L --> V[4 at index 3]\n P[Poll 1] --> S[Move last value 4 to root hole]\n S --> D[Lift smaller child 2; place 4 below]"} caption={"PriorityQueue and binary heaps: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="priorityqueue" />
+
+## Top-k selection with bounded candidate storage
+
+<JavaExample file="CoreTopK.java" output={"[5, 6, 7]"} />
+
+### Preserve the best candidates seen so far
+
+Use a min-heap of at most k values. Until full, retain each input. Once full, its root is the weakest retained candidate. An incoming value no larger than that root cannot improve the k largest values seen so far. A larger value replaces the root. The invariant after every input is that retained contains one valid multiset of the k largest values observed, or all values if fewer than k have been read.
+
+Duplicates count as values, not distinct membership classes. For `[7,7,1]` with k=2, both sevens belong in the result. If the task instead asks for k distinct values, membership deduplication is an additional requirement and changes the algorithm/state.
+
+### Walk through the example
+
+For k=3 and input 4,1,7, the heap holds all three values with root 1. Reading 5 replaces 1, leaving candidates 4,5,7. Reading 2 is rejected. Reading 6 replaces 4, leaving 5,6,7. Repeated poll supplies the promised ascending output, while direct heap iteration would not guarantee it.
+
+### Cost includes final output policy
+
+Processing n values takes O(n log k) heap work for positive k, with O(k) candidate storage. Polling the final heap to produce ascending output adds O(k log k). If the consumer does not require ordered output, that final sorting/extraction requirement can be different. Do not claim a lookup-only heap cost while silently omitting required ordered presentation.
+
+### Boundary choices are part of the API
+
+The implementation permits k=0 and returns an empty array; it rejects negative k and k greater than input length. It accepts an empty input only with k=0. It does not modify the source array. These choices avoid a peek of an empty heap and make the cardinality promise explicit.
+
+### Selection versus scheduling
+
+A scheduler needs more than a min-heap: stable tie policy, task cancellation, deadlines and concurrency may all matter. If priorities are mutable, changing an object's field while queued does not automatically repair heap placement. Remove/reinsert under the chosen protocol or use a representation designed for updates.
+
+<span id="java-implementation"></span>
+## Implement a min-heap and top-k selection
+
+<JavaExample file="IntMinHeap.java" />
+
+This complete single-file min-heap does not use a built-in queue. `offer` reserves a position and moves ancestors downward while comparing against the inserted value. `poll` saves the minimum, removes the last element, selects the smaller child at each step and writes the replacement into the final hole. `peek` defines empty behavior through NoSuchElementException in this exercise; the library's poll uses null for emptiness.
+
+The invariant is an active array prefix of size elements satisfying parent≤child. Growth retains that prefix and does not itself sort it. The explicit exercise capacity limit prevents an overflowing allocation request. This focused implementation omits generic comparators, arbitrary-element removal, iterators and serialization.
+
+Trace `[1,2,3,4]` after poll: the resulting heap can be `[2,4,3]`. That unsorted array is correct. A test that demands sorted backing storage would test the wrong representation.
+
+<span id="common-mistakes"></span>
+## Priority mutation and iteration pitfalls
+
+Do not rely on iteration order, assume contains is logarithmic, or mutate ordering fields in place. PriorityBlockingQueue adds concurrent blocking retrieval but is logically unbounded; it does not by itself provide memory backpressure. A priority queue is not automatically a complete scheduler with deadlines and fairness.
+
+<span id="exercises-and-interview-questions"></span>
+## PriorityQueue interview questions and exercises
+
+<details>
+<summary>Why is contains linear?</summary>
+
+The heap only constrains ancestor relationships. It cannot choose one ordered search branch for an arbitrary value as a search tree can, so it may scan the array.
+
+</details>
+
+<details>
+<summary>How does top-k differ from sorting everything?</summary>
+
+A size-k heap maintains only the currently relevant candidates. Its root is the smallest retained candidate, enabling rejection of weaker incoming values. Sorting all n values stores and orders more information than the top-k task needs.
+
+</details>
+
+<details>
+<summary>What boundary cases should a heap implementation cover?</summary>
+
+Empty peek/poll, singleton, duplicates, negative/extreme ints, repeated growth and interleaved insert/remove. Compare the entire poll sequence with an independently sorted reference input.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why use a min-heap to retain the largest values?</summary>
+
+The root identifies the smallest retained value, exactly the candidate to discard when a better value arrives. A max-heap exposes the strongest retained value instead, which is not the useful replacement boundary.
+
+</details>
+
+<details>
+<summary>What changes if only distinct top values are requested?</summary>
+
+Repeated equal values must be deduplicated under a declared relation. The heap alone is a multiset-like priority container, so add coordinated membership state or a different ordered structure and analyze its cost.
+
+</details>
+
+<details>
+<summary>Why is k=0 handled before reading the heap root?</summary>
+
+An empty retained heap has no replacement boundary. Returning immediately fulfills the requested zero-cardinality result and avoids an invalid/null peek path.
+
+</details>
+
+<span id="references"></span>
+## Primary heap references
+
+- [PriorityQueue sift and heapify algorithms](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/PriorityQueue.java)
+- [Comparator reverse ordering](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Comparator.java)

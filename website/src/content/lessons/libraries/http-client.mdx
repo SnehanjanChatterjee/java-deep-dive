@@ -1,0 +1,119 @@
+---
+title: "HTTP client, timeouts and response ownership"
+module: "libraries"
+group: "Networking"
+summary: "Handle response status, body lifetime, size bounds, timeouts and cancellation as separate contracts."
+order: 320
+version: "Java 25 examples \u00b7 HTTP client Java 11+"
+prerequisites: ["libraries/io-nio-networking"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Request, transport and application outcomes
+
+HttpClient sends HTTP requests and receives responses; it is part of the standard API from Java 11. A reusable client owns configuration such as connection policy and is distinct from an individual HttpRequest. HttpResponse contains status, headers and a body representation selected by a BodyHandler.
+
+A received 404 or 500 is an ordinary HTTP response, not automatically an IOException. A connection failure, unsuccessful application status, cancelled wait and malformed body are different outcomes. Design the failure policy before writing retries or mapping every problem to an empty result.
+
+The examples here target Java 25. HttpClient implements AutoCloseable on modern JDKs; older Java 11 code has different client-lifecycle APIs. Do not copy try-with-resources around the client into an older target without checking the selected release.
+
+## A reproducible status investigation
+
+The following complete program creates a temporary server bound only to loopback on an ephemeral port. It returns two fixed small responses, then closes the server/client. It does not depend on an external site being available. The full JDK's `jdk.httpserver` module supplies the test server; it is a controlled standard-library lab, not a backend-framework requirement.
+
+<JavaExample file="modern/CoreHttpStatusLab.java" output={"200:hello\n404\nstatus rejected"} />
+
+The 200 response is accepted by requireSuccess and exposes hello. The 404 response still arrives normally; its status prints before the application policy rejects it. If a transport or setup operation fails, main propagates that failure rather than printing the expected success sequence anyway.
+
+### Ownership at each boundary
+
+The test server's respond method sends bytes whose length is known, closes its output stream and closes the exchange in finally. The caller owns server shutdown. The client owns the connection machinery and is closed after the requests. BodyHandlers.ofString consumes the small known body into an in-memory result.
+
+Using this handler for a known short loopback response is deliberate. It is not a recommendation to buffer an arbitrarily large untrusted response. Body representation and accepted size are separate policy choices.
+
+## Buffered and streaming bodies
+
+An in-memory String/byte-array handler waits for the chosen representation to be collected. An InputStream handler returns an owned stream that the application must consume/close. A successful send does not make it valid to leak that stream. Failing to consume/cancel/close appropriately can hold resources or affect connection reuse.
+
+Choose charset from the representation/protocol. A forced UTF-8 demonstration is appropriate when the input contract says UTF-8; a general client should respect its actual media-type/charset policy. Text decoding is not a substitute for validating the body's domain schema.
+
+<Diagram client:visible definition={"flowchart TD\n R[Build request with method and policy] --> T[Send over transport]\n T --> S[Receive status and headers]\n S --> P{Status accepted by application?}\n P -->|no| E[Consume or close body under failure policy]\n P -->|yes| B[Consume chosen body representation]\n B --> V[Validate size, encoding and domain data]\n V --> C[Close owned resources]"} caption="Receiving a response, accepting its status, consuming its body and validating its meaning are separate stages." />
+
+## A bounded streaming example
+
+<JavaExample file="modern/HttpFetch.java" />
+
+This command-line example accepts one URI, sends GET, accepts status 200 and reads at most one byte beyond a 1 MiB body limit. Reading limit+1 distinguishes a complete bounded body from one known to exceed the accepted limit. The stream is closed even when the status or size policy rejects the response.
+
+The limit bounds buffered memory. It does not by itself bound how long a slow streaming body can take. An end-to-end streaming deadline/cancellation policy needs additional ownership of body consumption. Do not describe connectTimeout or a timed future wait as proof that every downstream action stopped.
+
+## Timeout and cancellation scopes
+
+Connection timeout concerns establishing a connection. A request timeout concerns the request's documented response behavior; streaming consumption after the response has been made available needs particular care. A caller's Future.get timeout only bounds that wait. CompletableFuture exceptional timeout is another completion event and does not establish that a remote side effect never happened.
+
+Interruption should propagate or be preserved at the boundary that cannot throw it. A cancelled operation still needs body/resource cleanup. Closing a modern client has documented shutdown semantics and can wait for operations; unconsumed streaming work can therefore affect closure. Define task ownership rather than treating client.close as a universal forced abort.
+
+## Retry only with a meaningful policy
+
+A retry needs an overall deadline, backoff/admission limits, a failure classification and an idempotency model. A failed wait after sending a write request does not prove the server never applied it. Retrying can duplicate effects unless the operation/protocol provides a safe key or idempotent meaning.
+
+GET is often suitable for retrieval, but business semantics and endpoint behavior still matter. A status-based retry policy should distinguish permanent rejection, transient throttling and transport uncertainty. Avoid multiplying retries across several layers so one request explodes into many attempts.
+
+## TLS and endpoint trust
+
+For external secure endpoints, use normal certificate-chain and hostname verification. Encryption without verifying the expected endpoint does not establish the intended peer identity. Never solve a trust failure by teaching a permissive trust manager or hostname verifier.
+
+The loopback lab intentionally uses plain HTTP to isolate status/body behavior without certificate setup. It does not model secure deployment, authentication or authorization. Those are additional boundaries with their own contracts.
+
+## Interview questions with worked answers
+
+<details>
+<summary>Why does a 404 response not necessarily throw from send?</summary>
+
+The HTTP exchange can complete successfully at the transport level while the application receives an unsuccessful status. The application must inspect status and decide whether to accept, reject, retry or parse a documented error body.
+
+</details>
+
+<details>
+<summary>Why can a body handler change when send completes?</summary>
+
+The chosen handler defines the body representation and completion behavior. A completed in-memory body and a returned stream with later consumption are different ownership/lifecycle contracts. Do not assume all handlers behave like ofString.
+
+</details>
+
+<details>
+<summary>What does reading at most limit+1 bytes prove?</summary>
+
+It bounds the amount buffered and can detect a body exceeding the accepted byte limit. It does not prove a time bound, trusted schema or correct charset. Those require separate policies.
+
+</details>
+
+<details>
+<summary>Why is request retry not just a catch block?</summary>
+
+The retry decision depends on possible prior effects, idempotency, remaining deadline, attempt limits and failure category. Catching IOException alone does not establish that a write was never applied remotely.
+
+</details>
+
+<details>
+<summary>When should a client instance be reused?</summary>
+
+When its connection/configuration ownership matches the application's scope. Constructing one per tiny request can defeat reuse and complicate shutdown. Reuse does not mean unbounded accepted work or shared mutable request builders without a policy.
+
+</details>
+
+## Coding exercise and solution
+
+Extend the loopback lab with a response larger than the accepted limit. Select a streaming handler, read at most limit+1, reject oversize and always close the body. Add a separate endpoint returning invalid UTF-8 if strict decoding is required. Assert status, size failure and decoding failure separately; one broad exception assertion would not prove the intended boundary.
+
+A delayed-body test should use explicit coordination in the server/test rather than arbitrary timing guesses. Establish when headers/body progress occur, then test the actual cancellation/deadline policy. Do not infer a whole-operation deadline from a fast local test that never exercises the slow path.
+
+## References
+
+- [HttpClient lifetime and sending contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpClient.java)
+- [HttpRequest timeout and request construction](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpRequest.java)
+- [HttpResponse body-handler contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpResponse.java)
+- [JDK loopback test server API](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/jdk.httpserver/share/classes/com/sun/net/httpserver/HttpServer.java)

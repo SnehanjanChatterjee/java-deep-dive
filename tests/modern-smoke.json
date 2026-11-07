@@ -1,0 +1,54 @@
+[
+  {
+    "class": "ModernTypesDemo",
+    "expected": "value=42\nerror=missing\nrejected"
+  },
+  {
+    "class": "VirtualThreadsDemo",
+    "expected": "true\n42"
+  },
+  {
+    "class": "ScopedValuesDemo",
+    "expected": "false\nrequest-42\nfalse"
+  },
+  {
+    "class": "StructuredConcurrencyDemo",
+    "expected": "43"
+  },
+  {
+    "class": "ForeignMemoryDemo",
+    "expected": "42\nclosed"
+  },
+  {
+    "class": "GathererWindows",
+    "expected": "[[1, 2, 3], [4, 5]]\n[[1, 2, 3], [2, 3, 4], [3, 4, 5]]"
+  },
+  {
+    "class": "FilteredSerialization",
+    "expected": "42\nrejected"
+  },
+  {
+    "class": "CoreRecordOwnership",
+    "expected": "1\ntrue\nfound=2\nmissing=x\nabsent input"
+  },
+  {
+    "class": "CoreHttpStatusLab",
+    "expected": "200:hello\n404\nstatus rejected",
+    "java_args": [
+      "--add-modules",
+      "jdk.httpserver"
+    ]
+  },
+  {
+    "class": "StructuredFailureLesson",
+    "expected": "child failed\ncleanup remaining=0"
+  },
+  {
+    "class": "ScopedNestingLesson",
+    "expected": "outer\ninner\nouter\nbound=false"
+  },
+  {
+    "class": "VirtualResourceLimitLesson",
+    "expected": "maximum=2\ntotal=42\npermits=2"
+  }
+]

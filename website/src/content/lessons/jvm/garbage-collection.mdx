@@ -1,0 +1,124 @@
+---
+title: "Garbage collection, G1 and ZGC"
+module: "jvm"
+group: "Garbage collection"
+summary: "Connect reachability, collector phases and heap evidence without confusing allocation with retention."
+order: 580
+version: "Java 25 runtime baseline \u00b7 example Java 8+"
+prerequisites: ["jvm/memory-gc-jit"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## The collector reclaims unreachable state
+
+An object remains live while the runtime's reachability model requires it. Leaving the source block that created an object does not free it if a cache/listener/static field still retains it. Conversely, a local can become dead before its enclosing method returns when the optimizer and required semantics permit that liveness determination.
+
+Tracing collectors begin from roots and follow references. An isolated cycle can be reclaimed because it has no root path; Java's ordinary lifetime model is not simply a reference count that must individually reach zero. The collector's internal barriers and reference-processing rules add detail, but application ownership is still the first place to explain unwanted retention.
+
+Allocation rate is demand for new storage over time. Retained/live size describes what remains reachable at a given phase. High churn with a bounded live set and slow growth in an unbounded registry are different problems. A GC pause log alone does not identify the field retaining an application graph.
+
+## A concrete retaining-path lab
+
+<JavaExample file="CoreRetentionLab.java" output={"16\n16\n32\n0"} />
+
+The static RETAINED map is a root-reachable owner. Loading the same 16 keys replaces values and keeps cardinality 16. Loading a new key range grows the retained map to 32. Clear removes those mapping references. The program reports logical ownership counts, not a claim that a specific array was collected immediately.
+
+Run with the hold argument to inspect it before clearing. The program waits for Enter rather than exiting before a heap snapshot can be captured. Use jcmd to identify this controlled process, then inspect a histogram or heap dump as appropriate for the selected JDK. The expected retaining path is class/static map → map entry → byte-array value.
+
+<Diagram client:visible definition={"flowchart TD\n R[Live class/static owner] --> M[RETAINED map]\n M --> E[Entry for each key]\n E --> A[Byte-array payload]\n C[Clear map] --> D[Remove these ownership references]\n D --> U[Arrays may become unreachable if no other aliases remain]"} caption="Removing one retaining path permits reclamation only when no other required reference path remains; it does not schedule a deterministic collection." />
+
+## Generations and allocation
+
+Many workloads allocate objects that die soon, motivating generational strategies. Surviving data can move or be promoted according to collector policy. Objects do not all follow one universal young→old sequence: large allocations, collector-specific regions and optimization can alter the path.
+
+HotSpot commonly uses thread-local allocation buffers for efficient small allocations. This implementation mechanism does not make allocation free, guarantee a TLAB for every object or equate heap occupancy with total process memory. Native/direct buffers, stacks, metadata and code cache require separate accounting.
+
+## G1: regions, marking and evacuation
+
+G1 partitions the heap into regions rather than one permanently contiguous young/old layout. Young collections evacuate surviving objects during stop-the-world phases. Concurrent marking identifies liveness information while much application work continues, with pause phases coordinating parts of the cycle. Mixed collections can reclaim young regions and selected old regions.
+
+Cross-region references must still be found when collecting a subset. Card/remembered-set mechanisms track relevant reference information so a collection does not simply scan the entire heap every time. Those barriers and remembered sets cost memory/CPU and can contribute to workload-specific tradeoffs.
+
+Reclaiming regions with useful garbage potential motivates the collector's name. A pause target is a goal, not a real-time guarantee. Humongous objects, promotion/evacuation pressure, insufficient free space and fallback behavior can produce unexpected pauses. A large array's behavior depends on region sizing and version-specific thresholds; do not describe every “large object” using a fixed universal byte cutoff.
+
+## ZGC: concurrent work with headroom requirements
+
+ZGC performs much of marking and relocation concurrently, using barriers/metadata to preserve the required view as objects/references change. Low pause goals do not mean zero stop-the-world work, unlimited throughput or no CPU overhead. The collector still needs space and CPU to keep up with allocation.
+
+On the Java 25 baseline, ZGC is generational; the non-generational mode was removed in Java 24. Advice to enable generational mode as an optional Java 25 experiment is stale. Earlier releases had different activation/status details, so commands must match the selected JDK.
+
+A live set near the heap limit leaves little working headroom. Allocation can outrun concurrent reclamation and cause stalls even when individual pause phases are short. Application latency also includes scheduling, locking and I/O; a collector's pause goal is not an end-to-end request latency guarantee.
+
+## Choosing a collector from a workload
+
+Serial, Parallel, G1 and ZGC balance throughput, pause behavior, memory footprint and CPU work differently. Availability/default selection depends on runtime/platform/configuration. Do not publish a universal ranking based on the collector names. Begin with required workload behavior, retained size, allocation patterns and actual evidence.
+
+Changing several collector flags, heap size and application code at once prevents identifying which change helped. Keep comparable workload phases and report the actual selected collector/JDK. Treat “it stopped failing after increasing Xmx” as an observation to investigate, not proof that the application has no retention problem.
+
+## Read logs without inventing a cause
+
+On a modern HotSpot JDK, unified logging such as `-Xlog:gc*,safepoint:file=gc.log:time,uptime,level,tags` records relevant events. Identify collector, event cause, occupancy before/after, duration and repeated patterns. Event formats/options are version-specific; obtain help from the actual runtime.
+
+Large reclaimed volume with bounded comparable post-collection occupancy suggests churn. Rising post-collection occupancy can suggest a growing live set, but workload phases can legitimately retain more data. Use a heap graph/dominator/root-path investigation to identify ownership. Safepoints can also occur for reasons other than GC.
+
+Do not insert invented pause/throughput numbers into an interview answer. Explain what a field means and which observation would distinguish churn from retention.
+
+## Reference strengths and external resources
+
+Weak references do not strongly retain referents. Soft references permit collector-controlled reclamation but are not a predictable eviction/expiry policy. A WeakHashMap value strongly referencing its weak key can create another retention path. Phantom references/ReferenceQueue and Cleaner support cleanup coordination without ordinary access to a live referent.
+
+Cleaners are fallback mechanisms, not deterministic ownership for files, sockets or native regions. A cleaning action that captures the referent can keep it alive. Use close/try-with-resources for resources with explicit lifetimes; reachability and operating-system resource budgets are different concerns.
+
+## Interview questions with worked answers
+
+<details>
+<summary>Why is high heap usage not enough to diagnose a leak?</summary>
+
+It can reflect a legitimate live set, delayed collection or temporary allocation. Compare equivalent workload phases and inspect what remains retained, then identify root paths. Usage alone does not establish unintended ownership.
+
+</details>
+
+<details>
+<summary>What distinguishes G1 concurrent marking from evacuation?</summary>
+
+Marking determines liveness information and can perform much work alongside the application. Evacuation moves surviving objects from selected regions and includes stop-the-world coordination. “Concurrent collector” does not mean every phase has identical pause behavior.
+
+</details>
+
+<details>
+<summary>Why can ZGC still produce poor application latency?</summary>
+
+Insufficient memory/CPU headroom can cause allocation stalls or competition, and application waits/scheduling are separate from GC pause phases. A low-pause design does not remove every source of latency.
+
+</details>
+
+<details>
+<summary>Why does System.gc not prove an object was reclaimed?</summary>
+
+It is a request subject to runtime policy and reachability/optimization details. A still-retained object remains live, and exact collection timing is not a deterministic application contract. Test ownership and use diagnostic evidence appropriately.
+
+</details>
+
+<details>
+<summary>Can a retained cycle be fixed by using weak references everywhere?</summary>
+
+That changes the ownership contract and can make data disappear unpredictably. First identify which path should own the data and when it should release it. Weakness is appropriate for specific reachability semantics, not a generic repair for unclear lifecycle.
+
+</details>
+
+## Investigation exercise and solution
+
+Run the retention lab with hold, capture a local heap graph and locate the static map's values. Then release/clear and compare equivalent evidence if investigating reclamation. State which strong path was removed and whether other aliases remain. Do not assert a deterministic collection timestamp from the map's size output.
+
+For a high-allocation scenario, use an allocation profile or JFR recording during representative work. Compare allocation sites with retained owners: the method allocating arrays may not be the component keeping them. The diagnostic-tools chapter provides the command/evidence workflow.
+
+## References
+
+- [G1 architecture and phases](https://dev.java/learn/jvm/tool/garbage-collection/g1gc-overview/)
+- [ZGC operating model and headroom](https://dev.java/learn/jvm/tool/garbage-collection/zgc-overview/)
+- [Removal of non-generational ZGC](https://openjdk.org/jeps/490)
+- [Reference reachability contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ref/package-info.java)
+- [Unified JVM logging](https://openjdk.org/jeps/158)

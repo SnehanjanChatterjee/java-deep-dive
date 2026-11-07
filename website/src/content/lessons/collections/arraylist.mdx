@@ -1,0 +1,144 @@
+---
+title: "ArrayList"
+module: "collections"
+group: "Lists and arrays"
+summary: "Understand array storage, growth, shifting, views and a complete dynamic-array implementation."
+order: 110
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Resizable arrays and positional order
+
+ArrayList is a resizable array implementing List. It preserves positional order, accepts duplicate and null elements, and provides constant-time indexed access. Its logical size counts elements; capacity counts allocated reference slots. Choose it when indexed reads and traversal dominate and the application does not require thread-safe mutation.
+
+A list's position is not an object identifier. Inserting before index 3 moves the old element at 3 to 4. References stored in the list still identify the same objects; moving a reference does not clone its referent. Implementations of List share an API but can have very different traversal and mutation costs.
+
+<span id="worked-example"></span>
+## Insertion, removal and view examples
+
+<JavaExample file="ArrayListExample.java" />
+
+The first output is `[10, 15, 20, 30]`: indexed insertion shifts the suffix. `remove(1)` removes by position and returns 15. `remove(Integer.valueOf(20))` selects the Object overload and removes that value, leaving `[10, 30]`. Overload selection matters especially for List of Integer.
+
+The subList is a backed range view. Setting its first element changes the original list to `[99, 30]`. Creating that view is not a copy and does not establish independent ownership. `new ArrayList<>(view)` would detach the container, but still share mutable element objects.
+
+<span id="mechanics-and-tradeoffs"></span>
+## ArrayList storage and growth
+
+### Indexed operations and shifting
+
+`get(i)` checks that i is in the logical range, then reads the backing array slot. `set(i,v)` replaces a reference and returns the old value without changing size. `add(i,v)` permits i equal to size, ensures capacity, shifts size−i references to the right, writes v and increments size. Removal shifts size−i−1 references left and clears the vacated final slot. That clearing prevents retention outside the logical sequence.
+
+### Growth and amortized reasoning
+
+Geometric growth copies the existing array into larger storage occasionally. A single expanding append is O(n), while n appends have O(n) aggregate copying under geometric growth, giving amortized O(1) append. Growing by exactly one would make aggregate copying quadratic. OpenJDK's growth policy is an implementation choice; the API does not promise a specific multiplier. Pre-sizing can reduce reallocation when a reliable size estimate is known, but excessive capacity wastes memory.
+
+### Iterators and views
+
+A structural modification changes size or otherwise structurally changes storage. Ordinary value replacement is different. Iterators use modification bookkeeping for best-effort fail-fast detection; it is not a concurrency guarantee. Structural changes to a parent outside the permitted subList protocol can invalidate a view. Retaining a tiny view can also retain its large backing list. Copy a range when independent lifetime is required.
+
+<Diagram client:visible definition={"flowchart TD\n A[Size 3: 10 20 30] --> B[Insert 15 at index 1]\n B --> C[Shift 20 and 30 right]\n C --> D[Size 4: 10 15 20 30]\n D --> E[Remove index 1 and clear old last slot]"} caption={"ArrayList: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="arraylist" />
+
+## Iterator state, ranges and overload traps
+
+### Explain iterator mutation as a state machine
+
+An iterator distinguishes the next cursor position from the last element it returned. Its remove operation deletes that last returned element and becomes unavailable until another qualifying traversal. A ListIterator additionally supports backward traversal, insertion and replacement. Adding through the iterator changes its cursor relationship; it does not mean the newly added element is automatically the last-returned element removable by remove.
+
+Fail-fast bookkeeping compares an expected modification count with the container's current structural state. It catches some misuse, including misuse in one thread. It is not synchronization, and a missing ConcurrentModificationException is not evidence that racing access was safe. Replacing a value is different from changing the logical size, but neither distinction authorizes unsynchronized access to shared mutable elements.
+
+### Range ownership can retain far more than expected
+
+A subList can share the entire backing list even when only a small range is visible. Retaining the range can retain storage and other referenced objects beyond that visible range. An independent `new ArrayList<>(range)` copy changes container lifetime ownership, though it still shares element objects.
+
+The range's indexes are relative to its own bounds. Structural parent changes outside the documented view protocol can invalidate it. Do not cache a view and then freely edit the parent in another part of the program while assuming the view's original coordinates remain meaningful.
+
+### Stable removal versus shifting repeatedly
+
+Removing many items one at a time from the front shifts many suffixes and can make a linear-looking loop quadratic. A bulk predicate-based operation or constructing a new accepted sequence can avoid repeated positional shifts. Its correctness still depends on the predicate not mutating the source through a competing path. When a custom array implementation compacts survivors, use a read cursor and write cursor: every accepted value is copied at most once, then the discarded tail is cleared.
+
+### Mutation exercise with an invariant
+
+Implement removeAllMatching on the teaching SimpleArrayList. Before the scan, remember the old size. For every read index, preserve the accepted prefix at write; after the scan clear [write, oldSize), then set size=write. A throwing predicate requires an explicit failure policy: a naive compaction can leave partial changes. A production implementation needs documented behavior and careful bookkeeping rather than silently claiming all-or-nothing mutation.
+
+### API overload review
+
+For List of Integer, primitive remove selects an index while remove(Object) selects value equality. For `toArray`, array component types participate in runtime checks and may reject incompatible values. Prefer an explicitly typed array construction idiom supported by the target JDK rather than unchecked casts from Object[].
+
+<span id="java-implementation"></span>
+## Implement a generic dynamic array
+
+<JavaExample file="SimpleArrayList.java" />
+
+This complete generic teaching implementation supports get, set, append, indexed insertion, removal and clear in one class. It uses Object[] internally and localizes the cast in get. Every typed write preserves the element-type invariant. It deliberately omits the full List contract, iterators and backed views.
+
+Read `add` in this order: validate insertion position, ensure room, shift the suffix, store the new value, increment size. Read `remove` in this order: validate/read the old value, shift the remaining suffix, decrement size, clear the now-unused reference and return the saved value. A rejected index must not change the logical sequence.
+
+Trace capacity 2 with values 10 and 30: inserting 20 at 1 first grows, then moves 30 to 2. Removing index 0 shifts 20 and 30 left. Explain the number of copied references separately from the logical size. The existing dynamic-array chapter develops the aggregate growth proof and boundary exercises.
+
+<span id="common-mistakes"></span>
+## ArrayList pitfalls and ownership
+
+Use the cost model of the actual implementation; do not mistake capacity for accessible elements, or rely on a view as a snapshot. Removing elements from an enhanced-for loop through the list can invalidate its iterator. Use supported iterator removal, removeIf, or a deliberate new result container. None makes unsynchronized shared mutation safe.
+
+<span id="exercises-and-interview-questions"></span>
+## ArrayList interview questions and exercises
+
+<details>
+<summary>Why can one append be slow despite amortized O(1)?</summary>
+
+It may allocate and copy the entire active prefix. Amortization bounds aggregate work over a sequence, not worst-case latency of one operation. If latency predictability matters, capacity planning and workload measurement are separate considerations.
+
+</details>
+
+<details>
+<summary>How would you test a handwritten dynamic array?</summary>
+
+Exercise empty reads/removals, insertion at zero and size, invalid negative/too-large positions, repeated growth, duplicate/null values and first/middle/last removal. Compare the whole logical sequence after each mutation, not just the final size.
+
+</details>
+
+<details>
+<summary>Why is remove(1) surprising for a list of Integer?</summary>
+
+The primitive int overload means index. To remove the value one, pass Integer.valueOf(1). Explain compile-time overload resolution before describing the resulting sequence.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>How can a linear loop accidentally become quadratic?</summary>
+
+If each iteration performs a linear shift or linked-list indexed search, the total is a sum of linear costs. Count the work inside the loop, not merely the number of visible loop statements.
+
+</details>
+
+<details>
+<summary>Why must a generic dynamic array clear its discarded tail?</summary>
+
+The backing Object[] remains reachable. References beyond logical size can retain removed values even when iteration and size appear correct. Clearing restores the storage-ownership invariant.
+
+</details>
+
+<details>
+<summary>Can an iterator be valid after replacing an element?</summary>
+
+A particular implementation may not count replacement as structural, but the replaced object and concurrent access still follow their own contracts. Do not treat iterator validity as a global thread-safety guarantee.
+
+</details>
+
+<span id="references"></span>
+## Primary ArrayList references
+
+- [ArrayList source: grow, add, fastRemove, SubList](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ArrayList.java)
+- [List contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/List.java)

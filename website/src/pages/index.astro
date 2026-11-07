@@ -1,0 +1,29 @@
+---
+import { getCollection } from 'astro:content';
+import { ArrowRightIcon as ArrowRight } from '@phosphor-icons/react';
+import SiteLayout from '../layouts/SiteLayout.astro';
+import { modules } from '../data/modules';
+import { url } from '../lib/paths';
+import { getModuleGroups } from '../lib/course';
+const lessons = (await getCollection('lessons')).sort((a, b) => a.data.order - b.data.order);
+---
+<SiteLayout title="Java course" summary="Learn the language, understand the internals, and practise for interviews. Choose a module, then open a topic." catalog>
+  <div class="course-catalog" data-course-catalog>
+    {modules.map((module, index) => {
+      const topics = lessons.filter(lesson => lesson.data.module === module.id);
+      const groups=getModuleGroups(lessons,module.id);
+      return <section class="module-section" id={'module-' + module.id} data-module-panel={module.id} aria-labelledby={'module-heading-' + module.id}>
+        <div class="eyebrow">MODULE {String(index + 1).padStart(2, '0')} · {topics.length} {topics.length === 1 ? 'TOPIC' : 'TOPICS'}</div>
+        <h2 id={'module-heading-' + module.id}>{module.title}</h2>
+        <p>{module.description}</p>
+        {groups.map(group=><div class="catalog-topic-group">
+          {groups.length>1&&<h3>{group.title}</h3>}
+          <div class="module-topic-rows">{group.lessons.map(lesson=><a class="lesson-row" href={url('learn/'+lesson.id+'/')}>
+            <span class="topic-row-number" aria-hidden="true">{String(topics.indexOf(lesson)+1).padStart(2,'0')}</span>
+            <span><strong>{lesson.data.title}</strong><small>{lesson.data.summary}</small></span><ArrowRight size={18} aria-hidden="true"/>
+          </a>)}</div>
+        </div>)}
+      </section>;
+    })}
+  </div>
+</SiteLayout>

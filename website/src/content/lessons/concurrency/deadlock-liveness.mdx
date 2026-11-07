@@ -1,0 +1,103 @@
+---
+title: "Deadlock, starvation and liveness"
+module: "concurrency"
+group: "Liveness"
+summary: "Analyze wait-for cycles, distinguish stalled work from deadlock, and implement consistent lock ordering."
+order: 410
+version: "Java 8+ · source analysis OpenJDK 25"
+prerequisites: ["concurrency/locks-interruption"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## Safety does not guarantee progress
+
+A safety property says a forbidden state does not occur: a balance never becomes negative or a node never disappears from a list. A liveness property says work can eventually progress. A program can protect every field with locks and still wait forever because lock acquisition dependencies form a cycle.
+
+Deadlock is a stable dependency cycle that prevents the participating operations from progressing. Starvation means an operation repeatedly loses access to needed service or resources while others progress. Livelock means participants keep running and reacting without completing useful work, such as two polite retry loops continually yielding to each other. A single WAITING thread proves none of these by itself.
+
+<span id="worked-example"></span>
+## Draw a wait-for graph before changing locks
+
+Consider transfer A→B locking A then B, while another transfer B→A locks B then A. If the first thread holds A and the second holds B, each requests what the other retains. The dependency cycle is sufficient to explain this two-lock deadlock. Time spent waiting is a symptom; the ownership cycle is the cause.
+
+<Diagram client:visible definition={"flowchart TD\n T1[Thread 1 holds account A] --> B[Needs account B]\n B --> T2[Thread 2 holds account B]\n T2 --> A[Needs account A]\n A --> T1"} caption="Opposing lock acquisition order can create a cycle even when each balance update is individually synchronized." />
+
+The classical deadlock conditions include mutual exclusion, hold-and-wait, no forced resource preemption and circular wait. They are a diagnostic framework, not instructions to remove every lock. Breaking the circular acquisition policy is often clearer than weakening the protected data invariant.
+
+<span id="java-implementation"></span>
+## Complete ordered-transfer implementation
+
+<JavaExample file="OrderedTransferLab.java" output={"200"} />
+
+Each Account receives an immutable ordering key independent of the direction of a transfer. transfer selects first and second using that order, then acquires both monitors in that order. Every participating transfer therefore agrees which account comes first, even for the opposite money direction. The cyclic lock dependency shown above cannot arise from these account acquisitions under that protocol.
+
+Validation rejects null accounts and nonpositive amounts. A same-account transfer is a no-op under the stated policy. Insufficient balance returns false before mutation. Math.addExact computes the credited value before debiting, so overflow fails while both original balances are still intact. The two assignments then occur while both monitors are owned.
+
+Account.balance reads under its own monitor. That is safe for an individual balance, but two separate balance calls are not an atomic combined snapshot while transfers continue. Main joins both worker threads before summing, so no transfers remain during its final observation. A live total-balance operation would need to acquire both accounts using the same ordering protocol.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Lock ordering has scope and preconditions
+
+The ordering works only when every operation that acquires these locks follows it. A callback that obtains another monitor can reintroduce a cycle outside the account-only graph. Keep locked regions small, avoid unknown callbacks and slow I/O while holding locks, and identify all resources whose lifetime overlaps.
+
+Order identifiers must be stable and unambiguous. System.identityHashCode can collide and is not a unique global order by itself; a design using it needs a tie protocol. The teaching example uses generated identifiers, with the practical exercise assumption that identifier space is not exhausted. Production domains can use established immutable unique account IDs or another explicitly defined order.
+
+Consistent ordering prevents a class of deadlocks; it does not prove fairness or bounded latency. A long-running holder can still delay everyone. Reentrant locks do not solve opposite acquisition order, and fair lock queues do not eliminate cycles involving different locks.
+
+<span id="common-mistakes"></span>
+## Timed attempts, cancellation and livelock
+
+Timed tryLock can allow an operation to abandon waiting, but already acquired locks must be released on every path. Two participants repeatedly taking one lock, failing the other and immediately retrying in sync can livelock. Backoff can reduce synchronization of retries, but does not replace a correctness argument or provide a universal completion guarantee.
+
+For an operation with an overall deadline, subtract elapsed monotonic time rather than granting a fresh full timeout for each lock. A timeout means the owner stopped waiting or failed to acquire under that policy; it does not establish that unrelated work stopped. If a partial external operation occurred before timeout, report and recover according to that boundary's contract.
+
+## Diagnose actual blocking evidence
+
+Use repeated thread dumps to connect a blocked stack to the monitor it requests and the thread retaining it. A parked queue consumer waiting for work is often normal. A latch wait can be an executor dependency problem even without a monitor cycle. ThreadMXBean.findDeadlockedThreads can detect supported monitor/ownable-synchronizer cycles; it is not a general detector for every task dependency or distributed wait.
+
+An executor can starve when all workers wait for child tasks queued to the same constrained pool. Increasing a lock timeout will not create a worker to run those children. Another non-lock cycle can occur when a task retains a semaphore permit while waiting for a child that needs that same exhausted resource. Model task and resource dependencies together.
+
+### Coding exercise: reproduce safely, then repair
+
+Write the two opposing transfer operations and describe the forced interleaving before running anything. Avoid leaving intentionally deadlocked non-daemon workers in a test process. The complete solution above demonstrates the repaired policy. Test opposing calls under a bounded harness, verify total conservation after all workers finish, and verify insufficient/overflow failure paths leave both balances unchanged.
+
+<span id="exercises-and-interview-questions"></span>
+## Interview questions with worked reasoning
+<details>
+<summary>Does synchronized make an operation deadlock-free?</summary>
+
+It supplies monitor ownership and publication semantics. If an operation holds one monitor while requesting another in an inconsistent order, both guarantees can hold while participating threads cannot progress.
+
+</details>
+
+<details>
+<summary>Why not use identityHashCode as a unique order?</summary>
+
+Different objects can have equal identity hash codes. Without a tie-breaking protocol, opposite callers can still choose incompatible orders. An ordering policy must be stable and total for the actual lock identities.
+
+</details>
+
+<details>
+<summary>Can a WAITING thread be burning CPU?</summary>
+
+Its sampled waiting state suggests it is not executing at that instant, but one observation is not a time profile. A busy retry loop can alternate states or remain RUNNABLE. Correlate repeated stacks and CPU samples instead of inferring resource use from a label alone.
+
+</details>
+
+<details>
+<summary>What makes the overflow path failure-atomic?</summary>
+
+The credited balance is computed with addExact before either stored balance changes. If it throws, the source was not debited. Computing and assigning the debit first would leave a partial state unless explicitly rolled back.
+
+</details>
+
+<span id="references"></span>
+## Primary references
+
+- [ThreadMXBean supported deadlock detection](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.management/share/classes/java/lang/management/ThreadMXBean.java)
+- [ReentrantLock waiting and ownership](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/ReentrantLock.java)
+- [Executor capacity and dependency context](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ThreadPoolExecutor.java)

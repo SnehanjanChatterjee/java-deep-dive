@@ -1,0 +1,129 @@
+---
+title: "BlockingQueue and producer-consumer lifecycles"
+module: "concurrency"
+group: "Concurrent data structures"
+summary: "Coordinate bounded FIFO storage, waiting, interruption and explicit shutdown."
+order: 490
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["concurrency/locks-interruption"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## Storage, waiting and ownership
+
+A BlockingQueue combines a queue ordering policy with operations that wait for an item or for insertion capacity. It separates producers from consumers, permitting different execution rates while making an overload policy explicit. Blocking describes caller behavior; it does not guarantee that every implementation has a useful memory bound.
+
+A producer owns an item until insertion succeeds. After successful insertion, the consumer-side protocol owns processing it. Removing an item does not acknowledge successful processing, and a queue does not by itself supply durability, retries, exactly-once effects or business rollback. Define those responsibilities separately.
+
+Null elements are prohibited by BlockingQueue. Retrieval methods use null to represent ordinary absence/timeouts, so allowing stored null would make that contract ambiguous. A custom closeable queue can use null specifically for its terminal closed-and-empty state only because it also rejects null data.
+
+<span id="worked-example"></span>
+## Trace FIFO and closure
+
+A capacity-two FIFO accepts A and B. A third put must wait until a consumer removes an item, or another lifecycle event makes insertion impossible. Taking A clears its physical array slot and signals that capacity became available. The third item C can then enter, and retrieval order remains B followed by C.
+
+For shutdown, simply setting a boolean outside the lock is insufficient. Producers waiting on a full condition and consumers waiting on an empty condition must wake and recheck both storage and lifecycle state. The complete teaching queue below defines close-and-drain: new puts are rejected, existing elements remain retrievable, and take returns null only after closure and draining.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Queue representation and predicates
+
+### Choose the method’s failure policy
+
+| Operation | Throw on ordinary failure | Return special value | Wait | Bounded wait |
+| --- | --- | --- | --- | --- |
+| Insert | add | offer | put | offer with timeout |
+| Remove | remove | poll | take | poll with timeout |
+| Inspect | element | peek | Not applicable | Not applicable |
+
+A successful offer transfers one item; a false timed/nonblocking offer does not. An InterruptedException from a waiting operation must be interpreted according to that operation’s contract. Do not blindly retry a put without considering whether a larger application step already performed external effects.
+
+### ArrayBlockingQueue internals
+
+OpenJDK uses a fixed Object array, take/put indexes and count under one ReentrantLock. Separate notEmpty and notFull Conditions associate consumers and producers with the relevant predicate. Enqueue stores at putIndex, advances it with wraparound and increments count; dequeue reads takeIndex, clears the retained reference, advances it and decrements count. These state changes must be atomic under the same lock.
+
+A condition wait releases the associated lock and reacquires it before returning. It belongs in a while loop because waking is not proof that the predicate is satisfied: another contender can consume the change first, and spurious wakeups are permitted. A signal makes a waiter eligible; it is not immediate lock handoff.
+
+### Alternative queue structures
+
+LinkedBlockingQueue uses linked nodes and distinct put/take locks with coordination through its count and signaling protocol. It can permit some producer/consumer overlap, but default capacity is effectively huge unless supplied explicitly. SynchronousQueue stores no buffered items: producers and consumers rendezvous. PriorityBlockingQueue supplies priority retrieval but is logically unbounded; its name does not promise producer backpressure. DelayQueue adds time eligibility rather than ordinary FIFO order.
+
+### Backpressure and termination
+
+Bounded storage limits queued objects, not the number of active producers, downstream connections or requests waiting before insertion. A deadline should cover the parent operation, including queue wait and processing time. Timed offer can reject optional work rather than indefinitely retaining caller state.
+
+BlockingQueue has no universal close method. Applications often coordinate interruption, producer completion or sentinel messages. A poison-pill design needs enough terminal signals for all consumers and a policy for late producers; otherwise some consumers can remain blocked or data can arrive after termination. A closeable implementation instead makes lifecycle part of the guarded invariant. Neither design should silently discard failures from consumer tasks.
+
+<Diagram client:visible definition={"flowchart TD\n P[Producer calls put] --> F{Full and still open?}\n F -->|yes| W[Await notFull and recheck]\n W --> F\n F -->|no| C{Closed?}\n C -->|yes| X[Reject insertion]\n C -->|no| E[Enqueue and signal notEmpty]\n T[Consumer take] --> D[Dequeue, clear slot, signal notFull]\n Z[Close] --> A[Wake both wait sets and drain existing work]"} caption={"Coordinate bounded FIFO storage, waiting, interruption and explicit shutdown."} />
+
+<span id="java-implementation"></span>
+## Implement a closeable FIFO
+
+<JavaExample file="CloseableWorkQueue.java" output={"A\nB\nnull"} />
+
+The single class stores a fixed array, head, tail, size and closed under one lock. Constructor validation establishes positive capacity. put rejects null before acquiring, acquires interruptibly, waits while full and open, then rechecks closure before any mutation. Its linearization point is the guarded insertion state change. A close that wins the lock first prevents later insertion.
+
+Take waits while empty and open. When awakened after closure, it still drains a nonempty queue; only empty-and-closed returns the terminal null. Dequeue clears the slot, preserving the invariant that unused slots do not retain removed objects. The localized generic cast is justified by all successful writes entering through T-typed put.
+
+Close is idempotent: it marks closed and signals all producers and consumers, because lifecycle change can make every waiting operation eligible to finish or fail. One signal would not reliably release all terminal waiters. Normal enqueue/dequeue can signal a relevant waiter rather than broadcast. Every successfully acquired lock is released in finally, including interruption after an await reacquires it.
+
+The example omits timed operations, iterators and fairness. It does not implement the complete BlockingQueue interface and is not a replacement for the production library. Its extra closure contract is explicit and testable.
+
+<span id="common-mistakes"></span>
+## Producer-consumer mistakes
+
+Do not use if around await, release a lock that was never acquired, insert a poison pill as null, or assume a bounded queue bounds the whole service. Do not let a consumer exception disappear while producers wait forever. Close/drain semantics differ from cancel-and-discard; document which one the system uses.
+
+<span id="exercises-and-interview-questions"></span>
+## Queue interview questions
+
+<details>
+<summary>Why are there two Conditions?</summary>
+
+They distinguish consumers waiting for data from producers waiting for space. Each operation signals the population whose predicate it changed. Both still use the same lock and loop-based checks.
+
+</details>
+
+<details>
+<summary>Why signalAll during close?</summary>
+
+All waiting producers must observe that insertion is forbidden, and all consumers must observe either remaining data or terminal emptiness. Lifecycle changes can affect every waiter, unlike one ordinary enqueue.
+
+</details>
+
+<details>
+<summary>Why is size alone insufficient for a shutdown check?</summary>
+
+Zero can mean temporarily empty while producers still exist or permanently drained after closure. Store lifecycle separately and read it under the same coordination protocol.
+
+</details>
+
+<details>
+<summary>What is the publication guarantee for an inserted object?</summary>
+
+Actions before placing an object into a BlockingQueue happen-before actions following its access/removal in another thread. Later unsynchronized mutation remains a separate problem.
+
+</details>
+
+<details>
+<summary>Does fairness guarantee equal task completion latency?</summary>
+
+No. A fair lock can influence acquisition order but does not control processing durations, OS scheduling, downstream latency or all application dependencies.
+
+</details>
+
+### Coding exercise and solution
+
+Implement a fixed-capacity FIFO with put, take and close-and-drain behavior. New puts after closure must fail; existing elements must remain retrievable; closed and empty take must return its documented terminal value. The complete CloseableWorkQueue source is the reference solution, and CloseableWorkQueueTest checks wrapping, draining, input failure, interruption and closure of both waiter populations.
+
+Timed offer is an optional extension. Track remaining nanoseconds with Condition.awaitNanos and recheck full/open in a loop. Return false for expiry and preserve the chosen closed-queue failure policy. Giving every wakeup a new full timeout breaks the overall wait bound.
+
+<span id="references"></span>
+## Primary queue contracts
+
+- [BlockingQueue method families and publication](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/BlockingQueue.java)
+- [ArrayBlockingQueue indexes and Conditions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/ArrayBlockingQueue.java)
+- [LinkedBlockingQueue dual-lock design](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/LinkedBlockingQueue.java)

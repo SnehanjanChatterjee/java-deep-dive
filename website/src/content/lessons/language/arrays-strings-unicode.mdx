@@ -1,0 +1,193 @@
+---
+title: "Arrays, strings and Unicode"
+module: "language"
+group: "Arrays and text"
+summary: "Understand fixed-size arrays, immutable text and Unicode representation."
+order: 40
+version: "Java 8+"
+prerequisites: ["language/types-and-conversions"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Array storage and immutable text
+
+Arrays have a fixed length and a runtime component type. Reference arrays are covariant: a String array can be assigned to an Object-array reference, but the runtime still rejects storing a non-String into it. Generic collections avoid many such runtime failures by enforcing invariant element types at compile time.
+
+String is immutable. Operations such as replace and substring return results instead of modifying the original object. StringBuilder is mutable and supports incremental construction. A Java char is a UTF-16 code unit, not necessarily a complete Unicode character; a supplementary code point occupies two code units.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Trace arrays, UTF-16 and code points
+
+The text contains A followed by a supplementary code point. Its length is three UTF-16 code units but its code-point count is two. Appending to a builder does not mutate any String already produced from it.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Array covariance, pooling and encoding
+
+<Diagram client:visible definition={"flowchart LR\n A[Text containing A and a supplementary code point] --> B[UTF-16 representation]\n B --> C[Three code units]\n A --> D[Two code points]"} caption={"A supplementary code point occupies two UTF-16 code units. Code-point count is not a general grapheme-count guarantee."} />
+
+### Arrays have runtime component types
+
+An array has fixed length, indexed components and a runtime component type. `new String[2]` initializes both entries to null. A multidimensional array is an array whose components refer to arrays; rows may have different lengths or be null. `Arrays.equals` compares a one-dimensional array's contents; `Arrays.deepEquals` handles nested object arrays. Calling ordinary `equals` on an array compares identity.
+
+```java
+final String[] names = {"Ada"};
+final Object[] objects = names;
+objects[0] = Integer.valueOf(7); // ArrayStoreException
+```
+
+The reference assignment is legal because reference arrays are covariant. The store is checked against the actual String array. Generics take a different approach: `List<String>` cannot be assigned to `List<Object>`, avoiding this particular unsafe insertion at compile time. Cloning an object array copies its references, not the objects they reference.
+
+### String identity, equality and the pool
+
+String is immutable: operations such as `replace` return a result and do not change the receiver. `==` compares references; `equals` compares character sequences. Literal strings and compile-time constant concatenations are interned. `new String("java")` creates a distinct String object even though its contents are equal to the literal. A runtime concatenation need not have the literal's identity. `intern()` returns the canonical pooled reference but is not a general justification for using `==` in application comparisons.
+
+Repeated concatenation inside a growing loop can repeatedly copy accumulated content. A locally owned `StringBuilder` expresses incremental construction. A builder is mutable and not thread-safe; share neither its buffer nor assumptions about stable contents across threads. `StringBuffer` synchronizes its own methods, but a multi-call protocol can still need a larger critical section. For a small fixed expression, modern compilers can optimize `+`; benchmark an actual workload rather than replacing every concatenation mechanically.
+
+### UTF-16 units, code points and grapheme clusters
+
+A Java `char` is one UTF-16 code unit. A supplementary Unicode code point uses a surrogate pair, so `"A😀".length()` is 3 and its code-point count is 2. User-perceived characters can be sequences of several code points, such as a letter plus a combining mark or an emoji sequence. Code-point count is therefore not necessarily a display-width or cursor-position count.
+
+```java
+final String text = "A\uD83D\uDE00";
+final int units = text.length();
+final int points = text.codePointCount(0, text.length());
+for (int offset = 0; offset < text.length();) {
+    final int point = text.codePointAt(offset);
+    offset += Character.charCount(point);
+}
+```
+
+The loop advances by the actual code point's UTF-16 width, preventing a split surrogate pair. A substring boundary in the middle of a pair can still create malformed text. Canonically equivalent strings such as precomposed and combining-accent forms can compare unequal; normalization is a deliberate domain decision, not an automatic String behavior.
+
+<Diagram client:visible definition={"flowchart TD\n S[Text A plus supplementary emoji] --> U[UTF-16 units: A, high surrogate, low surrogate]\n U --> P[Two code points]\n P --> B[UTF-8 encoding produces bytes]\n B --> D[Decode using the same charset]"} caption={"String indexes count UTF-16 units. Encoding converts text to bytes; decoding requires a charset agreement."} />
+
+### Encoding and regex boundaries
+
+Use `text.getBytes(StandardCharsets.UTF_8)` and construct the receiving String using the same charset. Arbitrary byte data is not necessarily valid text. For strict input, configure a CharsetDecoder to report malformed/unmappable input instead of silently replacing it. Avoid assuming the platform default matches a file or network protocol.
+
+`String.matches` matches the whole input; `Matcher.find` searches for occurrences. Reuse a compiled Pattern when repeatedly applying a nontrivial regex, but do not share a mutable Matcher concurrently. A String literal needs an extra escaping layer: the regex digit class `\d` is written as `"\\d"`. Bound external input and avoid patterns whose nested repetition creates pathological backtracking.
+
+## Array ownership and search contracts
+
+<JavaExample file="CoreArrayOwnershipLab.java" output={"9\nfalse\ntrue\n1\ncomponent rejected"} />
+
+### Read the object graph, not just the variable names
+
+Cloning the outer int[][] allocates another outer array, but both arrays still refer to the same row arrays. Mutating shallow[0][0] therefore changes original[0][0]. The outer identity comparison is false while the row identity comparison is true. A deep copy for this shape requires copying every row and defining a policy for null rows. For a graph of arbitrary mutable objects, “copy recursively” also needs a policy for shared references and cycles.
+
+`Arrays.asList(new int[]{1,2,3})` produces a list containing one int-array object. Generic T is a reference type here; the call does not box every primitive array element into a List of Integer. To build that value list, use a suitable primitive stream with boxing or an explicit loop. This is a frequent interaction between generics, arrays and varargs.
+
+### Sorting establishes a precondition for binary search
+
+Arrays.binarySearch assumes the specified range is sorted under the same ordering used by the search. The API does not first verify or establish sorting. A negative result encodes an insertion point as `-(insertionPoint)-1`; it is not simply “minus the nearest index.” With duplicates, a matching index need not be the first occurrence. Use a lower-bound algorithm when the first equal position is required.
+
+For an ascending int array, lower bound maintains a half-open interval [low, high) containing the first possible position. Compare its midpoint with the target: values below the target move low past midpoint; other values move high to midpoint. At termination low is the first position whose value is at least the target, possibly length. Compute midpoint as `low + (high-low)/2` to avoid overflowing low+high. The algorithm uses O(log n) reads after sorting's separate cost.
+
+### Text algorithms need a declared unit
+
+A palindrome check over chars, code points and grapheme clusters solves three different problems. For a code-point palindrome, compare codePointAt(left) with codePointBefore(right), advance by each code point's UTF-16 width and stop when indexes meet. Case-insensitivity and accent normalization are additional domain policies, not automatic properties of Unicode iteration.
+
+A StringBuilder is an efficient local construction tool, but changes to its contents are not String immutability. Calling toString returns a String result; retaining a mutable builder in shared state still requires coordination. Treat encodings at byte boundaries, not as an alternative internal String equality policy.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Implement code-point string algorithms
+
+### Code-point-based interview algorithms
+
+<JavaExample file="StringInterviewAlgorithms.java" output={"true\ntrue\nfalse"} />
+
+`reverseCodePoints` walks backward using codePointBefore, appends a complete code point and subtracts its UTF-16 width. It runs O(n) time with O(n) output storage and preserves surrogate pairs. It deliberately does not preserve combining/emoji grapheme sequences as indivisible editing units.
+
+`firstUnique` counts code points in a LinkedHashMap, whose insertion order preserves first appearance. Its second traversal returns the first count of one, using OptionalInt for absence instead of a sentinel that might be valid input. Expected time is O(n), with O(k) storage for k distinct code points, under ordinary hashing assumptions. Null input is rejected; empty input reverses to empty and has no unique point. Case folding, normalization and grapheme equivalence are outside this exact code-point contract.
+
+### Array and String API example
+
+The following program is a complete executable example. Compile with `javac TextAndArrays.java` and run with `java TextAndArrays`.
+
+<JavaExample file="TextAndArrays.java" output={"3\n2\nJava\nJava 25"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Array and text pitfalls
+
+Do not index arbitrary international text as though one char always means one character. Do not use == for string content, assume substring mutates the original, or return an internal mutable array from a supposedly immutable API.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## String and array interview practice
+
+### Why can an Object-array assignment fail even when it compiles?
+
+<details>
+<summary>Explanation</summary>
+
+The variable type can accept a general Object, but the array object retains its actual component type. If that object was created as String[], storing an Integer violates its runtime type and produces ArrayStoreException. Compile-time reference covariance does not erase the array's component type.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can an Object[] reference still reject an Integer store?</summary>
+
+Its actual object can be a String[]. Reference-array covariance permits the assignment, but the runtime component check still enforces String-compatible stores. The result is ArrayStoreException, not an automatic conversion of the integer to text.
+
+</details>
+
+<details>
+<summary>Does `new String("java").equals("java")` depend on interning?</summary>
+
+No. String.equals compares contents. Identity is different: the newly created String is a distinct object from the literal. Application value comparisons should not depend on whether some construction path happened to return an interned reference.
+
+</details>
+
+<details>
+<summary>Can reversing individual chars corrupt text?</summary>
+
+Yes. Supplementary code points use surrogate pairs, and combining/emoji sequences can contain several code points. A char-by-char reversal can split pairs; even a code-point-aware reversal need not preserve user-perceived grapheme clusters. Define the unit the algorithm intends to reverse.
+
+</details>
+
+### Coding exercise
+
+Create a String[] viewed as Object[] and attempt an incompatible store. Then iterate text using codePoints and compare the number of iterations with length().
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What does a negative binarySearch result tell you?</summary>
+
+It encodes where the searched key would be inserted to maintain the required order. Recover the insertion point with `-result-1`. Do not use that formula for a nonnegative successful result or assume a duplicate match is the first equal element.
+
+</details>
+
+<details>
+<summary>How do you implement first-occurrence search without a linear cleanup scan?</summary>
+
+Use lower bound over the sorted range, then check whether the returned position is in bounds and equal to the target. This preserves O(log n) search rather than scanning backward through many duplicates.
+
+</details>
+
+<details>
+<summary>Why does an outer-array clone not protect a nested mutable matrix?</summary>
+
+Only the outer references are copied. The shared row arrays remain mutable aliases. Copy each row for an independent primitive matrix, and define whether null or ragged rows are permitted.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Array and text references
+
+- [String representation and operations](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/String.java)
+- [Unicode code-point operations](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Character.java)
+- [Array comparison utilities](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Arrays.java)
+- [Pattern matching and regex contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/regex/Pattern.java)

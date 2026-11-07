@@ -1,0 +1,131 @@
+---
+title: "BigDecimal"
+module: "libraries"
+group: "Numbers and time"
+summary: "Control decimal representation, scale, precision, rounding and exact conversions."
+order: 280
+version: "Java 8+"
+prerequisites: ["libraries/numbers-and-time"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Decimal value, scale and precision
+
+BigDecimal provides decimal arithmetic with explicit scale and precision. It is appropriate when base-ten representation and rounding policy are part of correctness, such as monetary calculations. It is immutable: arithmetic produces a new value rather than modifying the original operand.
+
+Before calculating, define units, accepted scale, rounding boundary and equality semantics. A type with exact decimal representation cannot decide those domain policies for the application.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Trace representation equality and rounding
+
+The example constructs decimal operands from strings and divides one by three with a scale of two and HALF_UP rounding. The result is 0.33. Omitting a rounding policy for this nonterminating decimal division can throw ArithmeticException even though the divisor is nonzero.
+
+The example also contrasts equals with compareTo and exact integer conversion. The outputs false and zero demonstrate representation-sensitive equality versus numeric ordering. Multiplying the decimal position by two minor-unit places yields 125; narrowing 1.25 directly to an exact int is rejected. Compare new BigDecimal(0.1), which captures an existing binary approximation, with constructing from "0.1".
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Exact arithmetic and conversion policy
+
+### Decimal representation is part of the contract
+BigDecimal represents an unscaled integer and a scale: `1.00` has unscaled value 100 and scale 2. Prefer decimal strings or `BigDecimal.valueOf(double)` when the input is a decimal quantity; `new BigDecimal(0.1)` captures the exact binary floating-point approximation of 0.1 rather than the short decimal spelling.
+
+Operations return new values. Calling `amount.add(fee)` without assigning the result leaves amount unchanged. `equals` includes scale, so 1.0 and 1.00 are unequal; compareTo returns zero for their numeric equivalence. This difference affects HashSet versus TreeSet membership. `stripTrailingZeros` can normalize representation, sometimes with a negative scale, but domain precision policy should be explicit rather than inferred from a display format.
+
+### Rounding is a business rule
+Dividing 1 by 3 without a rounding/precision policy throws ArithmeticException because the decimal expansion does not terminate. Specify a result scale and RoundingMode or a MathContext with significant-digit precision. Scale and precision answer different questions. HALF_UP and HALF_EVEN differ at ties; repeated tie rounding can accumulate different totals. Round at the required domain boundary rather than after every intermediate calculation without justification.
+
+For fixed minor units, a long can be simpler than decimal arithmetic, provided currency scale, overflow detection and division rules are explicit. `intValue()` can truncate or overflow; `intValueExact()` rejects a fractional or out-of-range result. Binary floating point remains appropriate for many scientific calculations where approximate arithmetic is the intended model.
+
+<Diagram client:visible definition={"flowchart TD\n A[Decimal string input] --> B[Unscaled integer and scale]\n B --> C[Arithmetic with precision policy]\n C --> D[Round at declared boundary]\n D --> E[Exact conversion or validated result]"} caption={"Follow the bigdecimal relationships described above."} />
+
+## Worked arithmetic policies and exact conversion
+
+### A decimal is an integer and a scale
+
+For unscaled value u and scale s, the represented value is u×10^-s. Scale can be negative; a normalized representation of a power of ten can therefore surprise code assuming scale is always a count of printed fractional digits. Precision is the number of significant digits and is a different quantity.
+
+Construct from the intended input representation. A decimal String captures a declared base-ten spelling. BigDecimal.valueOf(double) uses the double's canonical string conversion, while new BigDecimal(double) captures the exact binary floating value already supplied. Neither can restore information lost before that double was created.
+
+### Tie rounding examples
+
+At scale one, HALF_UP maps 1.25 to 1.3, while HALF_EVEN maps it to 1.2 because the retained last digit is even. HALF_EVEN maps 1.35 to 1.4. The choice is a domain rule; do not describe one as universally more correct. UNNECESSARY asserts that rounding must not be required and throws when the exact value does not fit.
+
+### Division and rounding boundaries
+
+An exact divide can reject a nonterminating decimal expansion such as 1/3. A scale-based divide specifies decimal places; a MathContext specifies significant-digit precision. Intermediate multiplication/division can need a policy even if the final display has two places. Specify whether taxes, discounts or allocations round per item, per group or at the total boundary.
+
+### Exact minor-unit conversion
+
+For a domain whose declared minor-unit scale is two, moving 1.25 right by two places and calling longValueExact yields 125. A value with extra fractional minor units is rejected by an exact conversion unless the domain explicitly rounds first. Currencies and other decimal domains can use different scales; avoid hard-coding two as a universal money rule.
+
+### Collection and API consequences
+
+Representation-sensitive equals/hashCode is intentional. If an API requires numeric equivalence independent of scale, use a value model that enforces a canonical policy. A TreeMap comparison policy alone can change membership without changing BigDecimal.equals, which affects general Map expectations. Document whether returned amounts preserve input scale, are normalized or are formatted only at a presentation boundary.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## BigDecimal arithmetic in Java
+
+<JavaExample file="BigDecimalExample.java" />
+
+For an exact minor-unit conversion, shift the decimal point according to the domain scale and use an exact integer conversion that rejects fractions/overflow. Do not silently truncate with intValue or assume every currency uses two decimal places. Perform intermediate arithmetic under the required precision and round at the declared boundary; repeated arbitrary rounding can change totals.
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## BigDecimal equality and rounding pitfalls
+
+equals includes scale while compareTo can treat different scales as numerically equivalent. Do not ignore that distinction in map/set keys. Avoid new BigDecimal(double) when the desired input is the human decimal spelling, and do not discard returned arithmetic results.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## BigDecimal interview practice
+
+<details>
+<summary>What is the difference between scale and precision?</summary>
+
+Scale describes the decimal-position representation; precision describes the number of significant digits. A result-scale overload and a MathContext do not specify the same arithmetic policy.
+
+</details>
+
+<details>
+<summary>Why can a numeric conversion need an Exact suffix?</summary>
+
+A narrowing conversion may otherwise discard fractional information or overflow. An exact conversion rejects data that does not fit the promised integer domain rather than inventing a truncated value.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>What does RoundingMode.UNNECESSARY assert?</summary>
+
+That the requested operation/result representation requires no rounding. It reports a failure when that assertion is false; it is not a request to silently keep arbitrary extra digits.
+
+</details>
+
+<details>
+<summary>Can valueOf repair a previously rounded double?</summary>
+
+No. It starts from the supplied double value. If an earlier calculation already lost the original decimal intent, selecting a later constructor cannot reconstruct it.
+
+</details>
+
+<details>
+<summary>Why might a library expose an amount value rather than raw BigDecimal?</summary>
+
+A value type can enforce currency/unit, accepted scale, rounding and equality policy consistently. BigDecimal supplies arithmetic representation but does not choose those domain invariants.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## BigDecimal references
+
+- [BigDecimal arithmetic and conversion](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/math/BigDecimal.java)
+- [RoundingMode tie rules](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/math/RoundingMode.java)

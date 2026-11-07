@@ -1,0 +1,197 @@
+---
+title: "Collection contracts and implementation choices"
+module: "collections"
+group: "Collection contracts"
+summary: "Choose collections by ordering, uniqueness, access and mutation requirements."
+order: 100
+version: "Java 8+"
+prerequisites: ["generics/bounds-wildcards-erasure"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## Collection interfaces and contracts
+
+List models an ordered sequence that can contain duplicates. Set models uniqueness according to its contract. Map associates unique keys with values and is not a subtype of Collection. Queue and Deque model insertion/removal policies rather than random access. Start with the required behavior before choosing an implementation by habit.
+
+ArrayList provides efficient indexed access and amortized append, but insertion in the middle moves later elements. LinkedList has constant-time relinking when a node position is already known, yet finding an indexed position still takes traversal. ArrayDeque is often a practical stack/queue implementation and rejects null elements.
+
+<span id="worked-example"></span>
+## Choose structures by required operations
+
+A LinkedHashSet removes duplicates while preserving insertion encounter order. An ArrayDeque supports stack-like push/pop and queue-like offer/poll, but the example uses only queue operations. Output follows those declared contracts, not accidental hash-table iteration order.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Ordering, complexity and ownership
+
+Hash collections and sorted collections use different notions of matching. A HashSet depends on equals/hashCode; TreeSet uses comparison. An unmodifiable collection prevents mutations through that interface, while immutability requires stable underlying state as well. Backed views remain connected to another data structure.
+
+Complexity is not a complete performance model. Memory layout, object allocation, cache locality and workload affect actual behavior. Fail-fast iterators report some structural interference on a best-effort basis; they do not make the collection thread-safe. Concurrent collection iteration must be studied under its specific contract.
+
+<Diagram client:visible definition={"flowchart TD\n R[Required behavior] --> L[Indexed sequence: List]\n R --> S[Uniqueness: Set]\n R --> M[Key to value: Map]\n R --> Q[Insertion and removal policy: Queue or Deque]"} caption={"Select a collection contract before selecting its implementation and performance tradeoffs."} />
+
+### Begin with the operations the problem needs
+
+Collection is the parent abstraction for groups of elements. List adds positional order and duplicates; Set adds membership uniqueness; Queue/Deque add work-order operations. Map models key/value association and is not a subtype of Collection. Select by required ordering, lookup, mutation and concurrency properties before comparing implementation constants.
+
+| Structure | Representation | Important costs and use |
+| --- | --- | --- |
+| ArrayList | Resizable reference array | O(1) index access; amortized O(1) append; O(n) middle shift |
+| LinkedList | Doubly linked nodes | O(n) indexed search; O(1) link changes once position is known |
+| HashSet / HashMap | Hash table | Expected O(1) key operations under suitable hashing; no order promise |
+| LinkedHashSet / LinkedHashMap | Hashing plus encounter-order links | Defined encounter order with extra links |
+| TreeSet / TreeMap | Balanced search tree | O(log n) comparison steps for core key operations; sorted/range queries |
+| ArrayDeque | Resizable circular array | Amortized O(1) end operations; no nulls |
+| PriorityQueue | Binary heap | O(1) peek; O(log n) offer/poll excluding occasional array growth |
+
+Costs assume bounded equality/comparison/hashing and exclude an occasional allocation expansion where noted. An indexed insertion into LinkedList first needs a traversal, so “LinkedList inserts in O(1)” omits the search cost. ArrayList usually has better traversal locality and avoids a node allocation per element. Measure a representative workload before claiming one is universally faster.
+
+### Uniqueness depends on the chosen relation
+
+HashSet stores elements as keys in a backing map with a shared marker value. `add` succeeds only when an equal key is absent. Hash-based membership needs consistent equals/hashCode. TreeSet uses comparison result zero. EnumSet uses a compact representation over one enum type and is useful for flags; EnumMap specializes keys from an enum. IdentityHashMap deliberately uses identity instead of value equality and is appropriate only when that is the intended relation, such as some graph-processing tasks.
+
+### Views, copies and unmodifiable collections
+
+| Expression | Structural changes | Source changes visible? | Null policy |
+| --- | --- | --- | --- |
+| `Arrays.asList(array)` | Fixed-size: set allowed; add/remove unsupported | Yes, backed by the array | Null elements allowed |
+| `Collections.unmodifiableList(list)` | Mutators through wrapper unsupported | Yes, backing-list changes remain visible | Follows stored elements |
+| `new ArrayList<>(list)` | Mutable independent container | Structural changes independent | Null elements allowed |
+| `List.of(...)` (9+) | Unmodifiable | No external backing collection | Rejects nulls |
+| `List.copyOf(list)` (10+) | Unmodifiable reference snapshot | Later source changes not reflected | Rejects nulls |
+
+Every row can still contain mutable objects. “Unmodifiable” describes mutation through the collection API, not deep immutability. A subList is a range view; structural changes to its parent outside the view's protocol can invalidate it. Map keySet/values/entrySet views are backed by the map, and removal through supported view operations removes mappings.
+
+### Iteration is a protocol
+
+Use an iterator's own remove when supported, rather than modifying a collection behind an enhanced-for loop. Fail-fast detection is a best-effort debugging aid, not thread safety or a guaranteed concurrent-modification alarm. Synchronizing individual wrapper methods does not make a whole iteration atomic: a synchronized collection wrapper normally requires locking its documented mutex around traversal. Snapshot and weakly consistent iterators have different guarantees, covered in concurrent collections.
+
+### Sequenced collections, Java 21+
+
+SequencedCollection, SequencedSet and SequencedMap describe a defined encounter order and provide first/last/reversed operations as applicable. A reversed view changes traversal orientation and can remain backed by the original. Sorted collections already have a comparison-based encounter order; an unordered HashMap does not become ordered merely because several observed runs look stable.
+
+### Interview selection exercise
+
+Choose a structure for: a FIFO work list, top k scores, sorted range lookup, and duplicate detection while preserving first appearance. A reasonable answer uses ArrayDeque, a size-k min-heap, TreeMap/NavigableMap, and LinkedHashSet respectively. Explain how each required operation leads to the choice, including the cost of maintaining the chosen order.
+
+## Choosing by a complete operation sequence
+
+### Identify the dominant sequence, not one isolated call
+
+For a workload that repeatedly appends and scans, compact storage and traversal locality can matter more than constant-time pointer relinking. For one that repeatedly asks for the smallest pending item, maintaining a heap can avoid sorting the whole set after every insertion. For one that asks for all keys in a time interval, an ordered map can expose a range rather than filtering an entire hash table.
+
+Include construction, lookup, mutation, iteration and result-ordering costs in the comparison. Creating a HashSet for one membership query may cost more total work than scanning a small existing list, even though subsequent hash lookups have a better expected growth model. The benchmark chapter separates those questions rather than claiming one universally fastest container.
+
+### Define equality and ordering before selecting storage
+
+HashSet/HashMap rely on equals/hashCode. TreeSet/TreeMap use comparison-zero equivalence for membership. IdentityHashMap intentionally uses reference identity. These are distinct relations. If a domain treats differently cased identifiers as equivalent, normalize at a boundary or supply an appropriate value object; do not assume every collection applies the same normalization.
+
+A Comparator used only for display sorting does not change HashSet membership. A Comparator used by TreeSet does. That distinction often explains why replacing one container changes element counts despite apparently equivalent iteration output.
+
+### Choose ownership as part of the API
+
+A backed view, shallow copy, unmodifiable snapshot and deeply immutable value are four different promises. Arrays.asList is a fixed-size array-backed list; Collections.unmodifiableList is a wrapper; new ArrayList detaches the container; List.copyOf is an unmodifiable reference snapshot with null restrictions. None copies arbitrary mutable elements automatically.
+
+An API returning a live view must document that later mutations can be observed. An API promising a quote/history snapshot should not expose such a view accidentally. A concurrent container adds particular operation guarantees but does not make referenced values immutable or multi-call protocols atomic.
+
+### Worked selection decisions
+
+For undo/redo stacks, a pair of deques can model last-action order. For distinct values in first-appearance order, use LinkedHashSet. For top k candidates, keep a size-k heap and account for final output ordering. For sorted range queries, a NavigableMap exposes inclusive/exclusive boundaries explicitly. For a bounded producer/consumer handoff, choose a BlockingQueue with an actual capacity; neither an ordinary Queue name nor an unbounded priority queue implies backpressure.
+
+### An interview answer that can be defended
+
+State the input size/distribution, required operations, equality relation, order promise, mutation ownership and concurrency protocol. Then justify the implementation and mention the operation that remains expensive. This gives a reviewer enough information to challenge a real tradeoff rather than a memorized Big-O slogan.
+
+<span id="java-implementation"></span>
+## Collection and set implementation examples
+
+### Set membership using a hash table
+
+<JavaExample file="SimpleHashSet.java" output={"true\nfalse\ntrue\n1\nfalse"} />
+
+This example uses the complete MyHashMap from the HashMap chapter as its storage engine; compile both source files together. Set logic needs only one shared marker value. `add` returns true when put did not find an existing marker. Equal-but-distinct keys replace that marker without adding another logical element. `remove` checks whether the marker was returned. Null keys work because every stored value is the non-null marker; absence is therefore unambiguous. Complexity follows the backing table's hashing and resizing assumptions, and the set omits ordering, iterators and concurrency.
+
+### Collection API example
+
+The following program is a complete executable example. Compile with `javac CollectionChoices.java` and run with `java CollectionChoices`.
+
+<JavaExample file="CollectionChoices.java" output={"[b, a]\nfirst"} />
+
+<span id="common-mistakes"></span>
+## Misleading complexity and iteration assumptions
+
+Do not choose LinkedList solely because a requirement mentions insertion, promise HashSet ordering, or assume an unmodifiable view is a snapshot. Check whether nulls are permitted and whether comparison is consistent with intended equality.
+
+<span id="exercises-and-interview-questions"></span>
+## Collection-selection interview questions
+
+### Why can ArrayList outperform LinkedList for many practical traversals?
+
+<details>
+<summary>Explanation</summary>
+
+Its backing array holds references contiguously and avoids allocating a separate link node for every entry. Traversal often benefits from locality. A theoretical relinking advantage only applies after the required position has been located; indexed access in LinkedList still traverses.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why can LinkedList insertion at index n/2 be linear?</summary>
+
+Finding that position requires traversal. Relinking is constant time only once the node/iterator position is already available. Report the cost of locating plus modifying, rather than quoting the pointer update alone.
+
+</details>
+
+<details>
+<summary>Why does `Arrays.asList` allow set but reject add?</summary>
+
+It is a fixed-size view backed by the original array. Replacing a component fits that storage model; changing logical length does not. It is neither a fully mutable ArrayList nor a deeply immutable snapshot.
+
+</details>
+
+<details>
+<summary>Does absence of ConcurrentModificationException prove correct concurrent access?</summary>
+
+No. Fail-fast detection is best-effort. A program can race without throwing, and a single-threaded misuse can throw. Correctness requires the collection's documented coordination or concurrency semantics.
+
+</details>
+
+### Coding exercise
+
+Compare a list, LinkedHashSet and TreeSet using duplicate inputs. Supply a comparator and explain how a zero comparison affects uniqueness even when equals differs.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why is a data-structure replacement sometimes a semantic change?</summary>
+
+The replacement may change membership equivalence, encounter order, null policy, supported mutations or iterator semantics. Matching one lookup result does not establish equivalence of those contracts.
+
+</details>
+
+<details>
+<summary>How would you decide whether to prebuild an index?</summary>
+
+Compare the full cost of building and retaining it against the expected number of future queries and mutation/update work. For a one-off small scan, an index can be unnecessary overhead; repeated queries can justify it.
+
+</details>
+
+<details>
+<summary>What is the first question before claiming thread safety?</summary>
+
+Identify the complete shared invariant and which operations must be atomic together. Then choose a protocol/container whose documented guarantees actually cover that invariant.
+
+</details>
+
+<span id="references"></span>
+## Primary collection references
+
+- [Collection framework and interfaces](https://dev.java/learn/api/collections-and-streams/collections-framework/)
+- [ArrayList representation and complexity](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/ArrayList.java)
+- [LinkedList traversal and node operations](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedList.java)
+- [HashSet backing map](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/HashSet.java)
+- [Sequenced collections](https://openjdk.org/jeps/431)

@@ -1,0 +1,5 @@
+---
+import {getCollection} from 'astro:content';import SiteLayout from '../layouts/SiteLayout.astro';import MyLearning from '../components/MyLearning.jsx';import {url} from '../lib/paths';
+const lessons=(await getCollection('lessons')).sort((a,b)=>a.data.order-b.data.order).map(l=>({id:l.id,title:l.data.title,module:l.data.module,href:url('learn/'+l.id+'/')}));
+---
+<SiteLayout title="Notes and bookmarks" summary="Your saved notes, bookmarked topics and study progress."><MyLearning lessons={lessons} client:load/></SiteLayout>

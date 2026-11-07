@@ -1,0 +1,119 @@
+---
+title: "Volatile variables and safe publication"
+module: "concurrency"
+group: "Threads and correctness"
+summary: "Prove visibility through volatile publication, distinguish immutable snapshots from shared mutation, and analyze double-checked locking."
+order: 350
+version: "Java 8+ · source analysis OpenJDK 25"
+prerequisites: ["concurrency/memory-model"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## What volatile guarantees
+
+Volatile connects accesses to one variable to the Java Memory Model's synchronization rules. A write to a volatile variable happens-before subsequent reads of that variable in the synchronization order. Through program order and transitivity, ordinary writes preceding publication can become visible to code following the observing read. This is a statement about permitted observations, not an instruction to describe every CPU cache operation literally.
+
+Individual volatile reads/writes have their specified atomicity and ordering. A read–calculate–write expression such as count++ is still several actions. Two threads can read zero and both write one. A volatile flag can publish completed initialization while failing to coordinate a compound update that happens later. Choose the invariant before choosing the keyword.
+
+<span id="worked-example"></span>
+## Publish one immutable snapshot
+
+Suppose base and fee must be read as one configuration generation. Storing them in two separate volatile fields allows a reader to combine the old base with the new fee between writer updates. Instead, construct a Snapshot containing both fields and publish one volatile reference. A reader captures that reference once and uses only that object's fields.
+
+| Step | Writer | Reader |
+| --- | --- | --- |
+| 1 | Construct Snapshot(40,2) | May still see no snapshot |
+| 2 | Write volatile current | |
+| 3 | | Read current into one local |
+| 4 | | Use base and fee from that captured object |
+
+If the reader calls read twice, it may deliberately see different generations. The single-local pattern is therefore part of obtaining a consistent pair. It does not require locking the entire read path because the published object is immutable under this contract.
+
+<Diagram client:visible definition={"flowchart TD\n C[Construct and validate both fields] --> V[Volatile reference write]\n V -->|synchronizes with| R[Reader captures reference once]\n R --> S[Read fields from the same immutable snapshot]\n M[Later mutable changes] -. require a new protocol .-> S"} caption="Publication orders preceding initialization. Subsequent mutable changes are a separate synchronization problem." />
+
+<span id="java-implementation"></span>
+## Complete publication implementation
+
+<JavaExample file="VolatilePublicationLab.java" output={"42"} />
+
+Snapshot validates nonnegative amounts and checks overflow before retaining its final fields. publish rejects null and performs the volatile write. read performs one volatile read and can report null before initial publication. Main starts a writer and polls until it observes a non-null reference; its monotonic timeout prevents an unexplained endless demonstration. The observation occurs before join, so the reader's proof uses volatile publication rather than accidentally relying on join alone.
+
+Thread.yield is not part of that proof. It is a scheduling hint in the illustrative bounded polling loop. A real wait-for-configuration API can use a latch, condition or completed future to avoid repeated polling. The finally join only cleans up the owned writer after the observation/failure path.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Final fields and construction escape
+
+Correctly constructed final fields have special initialization-safety guarantees. They are not a general substitute for safe publication and do not make mutable referents permanently safe. A final List reference can still name a list that another thread mutates. Constructing a snapshot with an externally mutable array and exposing that array can defeat the intended immutability even though the reference itself is final.
+
+Do not let this escape during construction through a callback, listener registration or a started thread that reads the partially built object. A reader can observe default or incomplete state before the constructor establishes its invariant. Prefer constructing privately, validating, and publishing the completed value at an explicit boundary.
+
+## Double-checked locking and initialization holders
+
+A conventional double-checked singleton uses a volatile shared reference, a local fast-path read, synchronized initialization and a second null check under the lock. Without the second check, two contenders can construct separate objects. Without the volatile publication on the unlocked read path, construction synchronization alone does not establish the intended publication edge for those readers.
+
+```java
+private static volatile Service instance;
+static Service instance() {
+    Service local = instance;
+    if (local == null) {
+        synchronized (Service.class) {
+            local = instance;
+            if (local == null) {
+                local = new Service();
+                instance = local;
+            }
+        }
+    }
+    return local;
+}
+```
+
+This excerpt assumes a compatible Service type and an initialization policy that permits a single global instance. A static holder can often express the same lazy one-time requirement more clearly through class initialization. Neither approach makes mutable Service operations thread-safe afterward. Lazy initialization also needs a failure policy: retrying constructor failure versus remembering a class-initialization error are different behaviors.
+
+<span id="common-mistakes"></span>
+## Boundaries, costs and stronger alternatives
+
+Use volatile for independent state flags, immutable snapshot replacement or a suitable publication protocol. Use a lock for a multi-step invariant requiring exclusion. Use an atomic variable when one compare/update operation expresses the transition. Making an array reference volatile does not make each array element volatile, and separate volatile fields do not form an atomic record.
+
+Do not turn a visibility problem into a performance slogan about main memory. The language-level proof remains the same across supported architectures, while actual barriers, optimizations and costs vary. jcstress can search for outcomes under many schedules; an outcome not observed by one run is not thereby forbidden by the model.
+
+<span id="exercises-and-interview-questions"></span>
+## Interview questions and coding solution
+<details>
+<summary>Can volatile stop a loop safely?</summary>
+
+A loop repeatedly reading a volatile cancellation flag can observe a published request, but must still check at suitable intervals and release its resources. A thread blocked in an unrelated call needs that operation's cancellation mechanism too.
+
+</details>
+
+<details>
+<summary>Why read the snapshot reference into a local?</summary>
+
+It selects one generation. Repeated volatile reads can return different snapshots, so independently reading base and fee from different read calls can recreate a mixed-generation result.
+
+</details>
+
+<details>
+<summary>How would you repair two independently volatile configuration fields?</summary>
+
+Group the state in one immutable value, validate it fully and replace one volatile reference. Capture that reference once per read operation. If the update depends on current state, use a lock or CAS on the whole state to avoid lost writer updates.
+
+</details>
+
+<details>
+<summary>Does a volatile reference repair a mutable-key map?</summary>
+
+No. Publication and map key identity are separate contracts. Mutating a key can invalidate lookup even on a single thread, while later mutable value updates still need a concurrency policy.
+
+</details>
+
+<span id="references"></span>
+## Primary references
+
+- [Concurrency memory-consistency properties](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/package-info.java)
+- [Atomic-reference alternatives](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/atomic/AtomicReference.java)
+- [JMM experimental harness](https://github.com/openjdk/jcstress)

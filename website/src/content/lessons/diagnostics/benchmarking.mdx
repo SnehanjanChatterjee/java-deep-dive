@@ -1,0 +1,242 @@
+---
+title: "Benchmarking and performance reasoning"
+module: "diagnostics"
+group: "Measurement"
+summary: "Measure a defined workload without confusing elapsed time with algorithmic proof."
+order: 610
+version: "Java 8+"
+prerequisites: ["diagnostics/investigation-tools"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Performance questions and measurement models
+
+A benchmark must state its question, inputs, workload distribution and measured outcome. Throughput, average latency and tail latency answer different questions. A microbenchmark isolates a small operation; a load test measures a larger system under a workload. Neither substitutes automatically for the other.
+
+The JVM changes behavior as code warms up, compiles and optimizes. Dead-code elimination can remove an unused computation, constant folding can replace known work, and measuring setup together with the operation can answer the wrong question. JMH supplies infrastructure and samples to address many common traps, but a benchmark can still measure an inappropriate workload.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Separate observable work from timing claims
+
+The program computes a deterministic checksum that remains observable. It does not print elapsed nanoseconds or claim a speed result. In a JMH benchmark, setup, parameters, forks, warmup and result consumption would be configured explicitly.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Warmup, allocation and workload validity
+
+<Diagram client:visible definition={"flowchart TD\n Q[Defined performance question] --> W[Representative workload]\n W --> H[Harness with warmup and forks]\n H --> M[Measurements and consumed results]\n M --> A[Variability and interpretation]"} caption={"A benchmark needs a defined question and controlled workload; one elapsed-time sample does not prove a general improvement."} />
+
+### Define a falsifiable benchmark question
+
+“How do ArrayList.contains and HashSet.contains compare for a middle-position hit and a miss at these sizes?” is a measurable question. “Which collection is fastest?” is not. The lookup source, key distribution, hit rate, equality cost, construction cost and result metric must be stated. A microbenchmark excludes setup deliberately; if the real application constructs a set for only one lookup, a lookup-only result does not answer its total-cost question.
+
+### Runnable JMH project
+
+The course includes an independent Maven project at `java-examples/benchmarks` with a packaged `study.bench.LookupBenchmark` class, pinned JMH 1.37 dependencies, annotation processing and an executable shaded benchmark JAR. It requires JDK 17+ and uses a project-local Maven cache/settings. Download the benchmark project from the link below; its code is shown in the next subsection.
+
+<a href={`${import.meta.env.BASE_URL.replace(/\/?$/, '/')}examples/lookup-benchmarks.zip`} download>Download the complete JMH project</a>
+
+Run from that project's directory:
+
+```bash
+mvn clean package
+java -jar target/benchmarks.jar 'study.bench.LookupBenchmark.*'
+java -jar target/benchmarks.jar 'study.bench.LookupBenchmark.*' -prof gc
+```
+
+The full experiment intentionally uses warmup, multiple measurement iterations and two independent JVM forks. For a harness smoke run only, override with `-wi 1 -i 1 -w 200ms -r 200ms -f 1`; do not report that short run as a reliable performance comparison. Run `-h` and `-lprof` to inspect the selected harness's options and available profilers.
+
+### Benchmark source
+
+```java
+package study.bench;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+import org.openjdk.jmh.annotations.Benchmark;
+import org.openjdk.jmh.annotations.BenchmarkMode;
+import org.openjdk.jmh.annotations.Fork;
+import org.openjdk.jmh.annotations.Level;
+import org.openjdk.jmh.annotations.Measurement;
+import org.openjdk.jmh.annotations.Mode;
+import org.openjdk.jmh.annotations.OutputTimeUnit;
+import org.openjdk.jmh.annotations.Param;
+import org.openjdk.jmh.annotations.Scope;
+import org.openjdk.jmh.annotations.Setup;
+import org.openjdk.jmh.annotations.State;
+import org.openjdk.jmh.annotations.Warmup;
+
+/** Compares lookup-only hit/miss workloads, excluding construction. @author Snehanjan Chatterjee */
+@State(Scope.Thread)
+@BenchmarkMode(Mode.AverageTime)
+@OutputTimeUnit(TimeUnit.NANOSECONDS)
+@Warmup(iterations = 3, time = 1)
+@Measurement(iterations = 5, time = 1)
+@Fork(2)
+public class LookupBenchmark {
+    @Param({"16", "1024"}) public int size;
+    @Param({"hit", "miss"}) public String scenario;
+    private List<Integer> list;
+    private Set<Integer> set;
+    private Integer key;
+
+    /** Builds a stable data set outside the measured invocation. */
+    @Setup(Level.Trial)
+    public void setup() {
+        list = new ArrayList<>(size);
+        set = new HashSet<>();
+        for (int value = 0; value < size; value++) { list.add(value); set.add(value); }
+        key = "hit".equals(scenario) ? size / 2 : -1;
+    }
+
+    /** Measures scanning membership and returns the result for harness consumption. */
+    @Benchmark public boolean listContains() { return list.contains(key); }
+
+    /** Measures hash membership and returns the result for harness consumption. */
+    @Benchmark public boolean setContains() { return set.contains(key); }
+}
+```
+
+### What each annotation controls
+
+`@State(Scope.Thread)` provides separately owned state for each benchmark thread. `@Param` supplies sizes and hit/miss cases. `@Setup(Level.Trial)` builds the collections once per trial, outside measured lookup calls. `@Benchmark` marks measured methods. AverageTime with nanosecond output measures mean operation cost under this harness, not end-to-end p99 request latency. Warmup allows compilation/profile evolution before measured iterations; forks provide fresh JVM processes and reduce cross-benchmark profile contamination.
+
+### Prevent the common optimizer traps
+
+Return the boolean result so JMH consumes it. For several independent results, use Blackhole rather than leaving computations unused. Avoid compile-time-constant workloads that can be folded into a result. Do not put a large manual repetition loop inside a benchmark just to improve timer resolution; the harness already performs repeated invocation and loop structure can change optimization. Building a collection inside the measured method answers a different question and adds allocation/GC cost.
+
+### Interpret results without inventing certainty
+
+JMH reports score, units, measurement count and an error estimate. A lower average time in one run is not a universal algorithmic conclusion. Inspect variation across forks/iterations, GC allocation metrics and whether the observed difference is large enough for the intended use. Keep JDK, flags, collector, CPU, system load and input parameters with a saved report. Do not compare two runs where unrelated VM options and code both changed.
+
+The benchmark uses Integer keys; autoboxing/equality behavior and cached ranges are part of the selected workload. It does not test large custom keys, adversarial collisions, concurrent access, set construction or cache eviction. Expand the workload only when the new question is explicit. A profiler can explain where time/allocations went; a timing score alone cannot establish the cause.
+
+### Complexity and practical cost coexist
+
+Linear contains scans can benefit from locality, while hashing pays hash/equality and table-access overhead. As n grows the scaling models differ, but the crossover and actual nanoseconds require measurement. A speedup in a method consuming 1% of total request time has a small end-to-end ceiling even if that method becomes nearly free. Profile the application before investing in micro-optimizing a negligible fraction.
+
+### Interview follow-up
+
+Explain why a cold `System.nanoTime` loop can measure class loading/JIT work, eliminate unused computation, or mix setup with lookup. Then describe how the supplied JMH state, result return, warmup and forks address those specific confounders. The harness supports the experiment; it does not validate whether its workload represents the real problem.
+
+## Designing a comparison that answers its stated question
+
+### Include the cost the application actually pays
+
+The supplied lookup benchmark builds data outside measurement. That correctly isolates membership queries, but does not answer whether constructing a set for a single lookup is worthwhile. A second benchmark can include construction deliberately; label it as a different workload rather than comparing its score directly with a lookup-only operation.
+
+Hit location changes an array scan's work. A first-element hit, middle hit and miss are different distributions. Key hashing/equality cost, object locality and allocation behavior also matter. Integer-key measurements do not establish results for long Strings or custom keys whose hashCode walks a graph.
+
+### State scopes and shared contention
+
+Thread-scoped state gives each benchmark thread its own data. Benchmark-scoped state can deliberately introduce shared access, but the operation must be valid under that sharing model. An unsynchronized mutable collection is not an acceptable concurrent throughput experiment merely because the harness runs it. Contention tests need the actual shared invariant represented by their state and synchronization.
+
+### Result consumption and setup can still be wrong
+
+Returning a result helps the harness prevent dead-code elimination. It does not make constant inputs representative or prevent every optimization. Excessive invocation-level setup can dominate tiny measured operations and change the question. Manual loops can expose a different optimizer workload than independent production calls. Use harness mechanisms and inspect profiles/generated behavior when a result looks implausible.
+
+### Report variability and practical relevance
+
+Keep JDK/runtime flags, collector, machine/workload parameters, forks, warmup and measurement settings with the result. Inspect multiple forks/iterations rather than selecting one fastest sample. An average operation time does not represent end-to-end tail latency. Allocation profilers can help explain cost, but a timing difference by itself does not prove its cause.
+
+### Solved interpretation exercise
+
+If HashSet.contains is faster for repeated misses at size 1024, the supported conclusion is about that measured lookup workload. It does not establish that HashSet is preferable for indexed order, sorted ranges, tiny one-off inputs or concurrent mutation. To evaluate a proposed application change, include the required semantics and the fraction of end-to-end time the operation actually occupies.
+
+A faster microbenchmark can still be irrelevant if the real bottleneck is I/O or queueing. Use application profiling to choose the target, then use a focused benchmark to test a narrower implementation hypothesis.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Run the benchmark teaching examples
+
+The following program is a complete executable example. Compile with `javac ObservableWork.java` and run with `java ObservableWork`.
+
+<JavaExample file="ObservableWork.java" output={"499500"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Benchmarking pitfalls
+
+Do not time one iteration with a cold JVM and generalize it, ignore allocation costs, or use a benchmark that never consumes its result. Do not publish invented throughput improvements or confuse a faster sample with a statistically reliable conclusion.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Performance interview practice
+
+### Why can a benchmark of a pure method appear implausibly fast?
+
+<details>
+<summary>Explanation</summary>
+
+If inputs are constant or the result is unused, optimization may fold or eliminate the computation. The benchmark then measures remaining scaffolding rather than the intended work. Parameterize realistic input and use the benchmark harness's supported result-consumption patterns.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>What changes if collection construction moves into the benchmark method?</summary>
+
+The measurement now includes allocation, population and related GC work in addition to contains. That can be the right end-to-end question, but it is a different experiment from the supplied lookup-only benchmark. State what the score includes.
+
+</details>
+
+<details>
+<summary>Why return a benchmark result?</summary>
+
+The harness consumes it, helping prevent the intended computation from becoming dead code. Returning a result alone does not prevent all constant folding or fix an unrealistic workload; inputs and state design still matter.
+
+</details>
+
+<details>
+<summary>Does a JMH average-time score represent request p99?</summary>
+
+No. It summarizes the configured microbenchmark's operation timing. Tail request latency depends on arrival patterns, queuing, contention, I/O and system behavior. Use an appropriate load/latency experiment for that question.
+
+</details>
+
+### Coding exercise
+
+Create a JMH comparison of two collection operations with explicit setup and realistic sizes. Explain what is included in the measurement and inspect whether allocation dominates the result.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why might benchmark scope change the result?</summary>
+
+It changes ownership and sharing. Thread state can avoid contention that a shared application structure experiences; benchmark-scoped state can introduce it. The scope must match the question and use a valid concurrency protocol.
+
+</details>
+
+<details>
+<summary>What is the supported conclusion from a short smoke run?</summary>
+
+That the harness can construct and execute the selected benchmark under that setup. It is not a reliable performance ranking, especially with tiny warmup/measurement counts.
+
+</details>
+
+<details>
+<summary>Why publish input distributions?</summary>
+
+A scan, cache or branch-heavy algorithm can have very different costs for hits, misses, positions and key shapes. A single average without its workload distribution is difficult to interpret or reproduce.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Benchmark references
+
+- [JMH project and build guidance](https://github.com/openjdk/jmh)
+- [JMH dead-code elimination sample](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_08_DeadCode.java)
+- [JMH result consumption and Blackhole](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_09_Blackholes.java)
+- [JMH state and fixture sample](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_05_StateFixtures.java)
+- [JMH forks sample](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_12_Forking.java)

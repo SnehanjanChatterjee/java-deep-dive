@@ -1,0 +1,145 @@
+---
+title: "TreeSet"
+module: "collections"
+group: "Sets"
+summary: "Define ordered uniqueness with comparator contracts, tree navigation and backed views."
+order: 190
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/choosing-collections","collections/treemap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Comparison-based uniqueness
+
+TreeSet stores unique elements in sorted order. Its membership relation is comparison result zero, using either natural ordering or an explicit Comparator. It implements NavigableSet and is backed by an ordered map, with elements as keys and a shared marker value.
+
+Use it when both uniqueness and sorted neighbor/range operations matter. LinkedHashSet preserves encounter order without sorting; HashSet supplies no encounter order. Calling all three a set does not make their ordering and membership policies interchangeable.
+
+<span id="worked-example"></span>
+## Sorted membership and neighbor examples
+
+<JavaExample file="TreeSetExample.java" />
+
+The hash set retains two BigDecimal representations, while the tree set retains one comparison-equivalent value. Lower than 20 is 10; ceiling of 20 includes the exact value 20. Descending traversal visits 30, 20 and 10. The reversed view is backed by the same set.
+
+The example demonstrates a contract difference rather than recommending inconsistent equality. A general Set client expects equality-based semantics, so choose an ordering consistent with equals where that contract matters. If the domain means numeric equality independent of scale, normalize values deliberately at its boundary.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Comparator laws and backed views
+
+### Membership delegates to ordered keys
+
+The backing TreeMap stores each element as a key. Add searches using the comparator, creates a mapping only when no comparison-zero key exists, and reports whether membership changed. Contains and remove use the same relation. The set wrapper does not need to implement a second balancing algorithm.
+
+### Comparator requirements
+
+The sign of comparing a with b must oppose comparing b with a. Comparison must be transitive, and elements equivalent under comparison must compare consistently against every third element. A comparator that only compares age treats all equal-age people as one set member. Add a stable tie-breaker if distinct IDs must coexist. Returning random values or consulting changing external state can invalidate tree navigation.
+
+### Neighbor and range operations
+
+Floor/ceiling include equality; lower/higher do not. Head/tail/subset views enforce bounds. Changing a view changes the backing set. A descending view reverses the ordering perspective, so lower/higher operations must be interpreted in that view's ordering rather than assuming ascending numeric meaning.
+
+### Complexity and ownership
+
+Core membership operations require O(log n) comparison steps. Traversal is O(n), excluding callback/comparator work. Changing an element's ordering fields after insertion can make the stored placement inconsistent with future searches. Final references do not prevent that mutation. Immutable elements or removing/reinserting around legitimate changes preserve a clearer ownership policy.
+
+<Diagram client:visible definition={"flowchart LR\n E[Element] --> C[Comparator]\n C --> Z{Comparison zero?}\n Z -->|yes| S[Existing membership]\n Z -->|no| T[Insert ordered key and rebalance]\n T --> V[Sorted and range views]"} caption={"TreeSet: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="treeset" />
+
+## When equality and comparison disagree
+
+### A concrete symmetry trap
+
+Consider a TreeSet of String using case-insensitive ordering with member `java`, and an ordinary HashSet containing `JAVA`. Both sets have one member. The tree's membership query can consider the hash set's value present, while the hash set's equality-based membership can reject the tree's value. An equals implementation based on containsAll can then produce asymmetric results. This is not permission to ignore Set's equality contract; it demonstrates why comparison equivalence should agree with equals for general Set semantics.
+
+The same category appears with BigDecimal scales. Decide whether the domain means numeric equivalence or representation equality before choosing keys/elements. Canonicalizing the input can be appropriate, but normalization must itself be well-defined and preserve the intended information.
+
+### Views reverse an ordering perspective
+
+NavigableSet lower/higher are defined using that set's order. In a descending view, “lower” is not automatically “smaller numeric value under ascending order.” Write a tiny ordered sequence in the view's traversal direction before predicting neighbor operations. Inclusive flags belong to the specified range endpoints, not to a visual convention about left/right on the page.
+
+### Nulls and comparators
+
+Natural ordering of ordinary comparable elements rejects null. A supplied comparator can deliberately order null, but every participating operation must use that policy consistently. Do not infer a TreeSet null policy solely from the fact that HashSet accepts null or from observing one custom comparator.
+
+### Implementation as composition
+
+A sorted-set wrapper can delegate to an ordered map with a shared marker, but inherits the map's search/balance/view semantics. Implementing a balanced set therefore requires either a valid balanced-map dependency or a full tree storage protocol. Adding a comparator to a hash-set wrapper does not make its membership or traversal sorted.
+
+### Practice solution structure
+
+To retain users by age and stable ID, compare age first and ID second, using comparison helpers rather than subtraction. Write tests for equal age/different ID, same ID policy, extreme ages, neighbor queries, range endpoints and mutation attempts. Whether equal IDs with changed ages should coexist is a domain identity question that the comparator alone cannot resolve coherently without a declared model.
+
+<span id="java-implementation"></span>
+## TreeSet implementation and source walkthrough
+
+The runnable example is complete. For a custom sorted set, define the element equivalence policy first, then delegate to a correctly implemented ordered map with a shared marker. Reuse the map's search and balancing logic, just as SimpleHashSet reuses hash-table storage. A wrapper around an unbalanced tree inherits its worst-case height and must not promise TreeSet's logarithmic core operations.
+
+To implement comparator-based duplicate detection, search for comparison zero before adding. For removal, return whether a marker was removed, not whether an arbitrary user value was non-null. Explain why a sorted set does not need both a comparator and a separate hash index for ordinary membership.
+
+The production source is useful for understanding how subset/descending wrappers preserve the shared map and bounds. Copying into a new TreeSet can detach the container, but comparator and element mutation policies still matter.
+
+<span id="common-mistakes"></span>
+## Ordering and mutation pitfalls
+
+Do not silently discard comparator ties when the domain needs distinct values, mutate keys, or treat a subset as a detached collection. Null support depends on the chosen comparison policy. Thread-safe iteration requires a deliberate protocol; best-effort fail-fast is not one.
+
+<span id="exercises-and-interview-questions"></span>
+## TreeSet interview questions and exercises
+
+<details>
+<summary>How do you retain two users with the same age?</summary>
+
+Compare by age and then by a stable unique identifier, if that is the intended order and equivalence. A comparator using only age intentionally makes those users equivalent for TreeSet membership.
+
+</details>
+
+<details>
+<summary>Why can contains return false after element mutation?</summary>
+
+Search follows current comparison results through a tree built using older ordering state. The node can remain retained in a location that no longer corresponds to that search path.
+
+</details>
+
+<details>
+<summary>What should a sorted-set coding exercise prove?</summary>
+
+Ordering, duplicate policy, correct size changes, boundary neighbors, empty behavior and preservation after removal. If balancing is promised, also establish the height/repair invariants; an in-order output alone is insufficient.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Can Set.equals become asymmetric with an inconsistent comparator?</summary>
+
+It can when the two sets perform membership using different equivalence relations. That behavior illustrates violation of the intended general Set relation; align equality/ordering rather than depending on call direction.
+
+</details>
+
+<details>
+<summary>What is a useful sorted-set property test?</summary>
+
+After each mutation, traversal should be ordered under the comparator and contain exactly the expected equivalence classes. Test cardinality and neighbor/boundary behavior as well; a sorted output with missing distinct values can still reveal a bad comparator policy.
+
+</details>
+
+<details>
+<summary>Why is subtraction a dangerous comparator?</summary>
+
+The subtraction can overflow and reverse the sign, violating ordering laws. Integer.compare or comparator composition expresses sign-safe comparison over extreme values.
+
+</details>
+
+<span id="references"></span>
+## Primary sorted-set references
+
+- [TreeSet backing map and views](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/TreeSet.java)
+- [NavigableSet contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/NavigableSet.java)
+- [Comparator laws](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Comparator.java)

@@ -1,0 +1,187 @@
+---
+title: "Exception contracts and resource management"
+module: "reliability"
+group: "Failures and resource ownership"
+summary: "Preserve failure information and close resources deterministically."
+order: 80
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Failures as explicit contracts
+
+Checked exceptions participate in a method's declared failure contract. Unchecked exceptions commonly represent invalid use or failures that are not usefully forced into every signature. Error types generally describe serious runtime conditions rather than routine recoverable business cases. A classification does not by itself decide whether a particular caller can recover.
+
+Try-with-resources closes AutoCloseable resources in reverse declaration order. If the body and close both fail, the body failure remains primary and the close failure is suppressed. This is different from replacing the original failure in a finally block. Deterministic resource management applies to files, sockets and similar external resources; garbage collection does not guarantee timely closure.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Trace a body failure and cleanup failure
+
+The body throws a failure and the resource also fails during close. The catch block prints the primary message and the suppressed count. The original failure remains visible rather than being overwritten by cleanup.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Checked exceptions, causes and suppression
+
+<Diagram client:visible definition={"flowchart TD\n B[Body failure] --> P[Primary exception]\n C[Close failure] --> S[Suppressed exception]\n S -->|attached to| P\n P --> H[Caller handles preserved failure]"} caption={"When the body and cleanup both fail, try-with-resources preserves the body failure and attaches cleanup failures as suppressed exceptions."} />
+
+### Choose an exception contract deliberately
+
+Throwable has Error and Exception branches; RuntimeException and its subclasses are unchecked. Other Exception subclasses are checked and must be caught or declared. Errors are also unchecked. Checked does not mean “recoverable” and unchecked does not mean “ignore”: the distinction controls compiler obligations. An API should express whether callers are expected to handle a particular failure or whether it indicates a violated contract.
+
+Use `throw` to raise a value and `throws` to declare possible checked failures. Catch a specific subtype before a broader type; reversing that order makes the later catch unreachable. Multi-catch alternatives cannot have a subtype relationship. Overriding methods cannot broaden the checked exceptions promised by the overridden signature.
+
+### Translate errors without destroying the cause
+
+If a file-backed settings API promises a settings-level exception, wrapping an IOException can preserve the abstraction: `throw new SettingsLoadException("Cannot load settings", cause)`. Keep the cause rather than replacing it with only `cause.getMessage()`. The cause describes why the primary operation failed. Suppressed exceptions instead record additional failures that were not chosen as primary. Logging and rethrowing at every layer duplicates reports; choose the boundary that owns reporting.
+
+### Try-with-resources, step by step
+
+Resources initialize left to right and close in reverse order. Only successfully initialized resources are closed. If a second resource constructor fails, the first still closes. If the body fails, that body failure remains primary and close failures become suppressed. If the body succeeds but several closes fail, the first close failure in reverse-close order becomes primary and the others are suppressed on it.
+
+| Event order for resources A then B | Primary failure | Suppressed failures |
+| --- | --- | --- |
+| Body throws X, B.close throws Y, A.close throws Z | X | Y, then Z |
+| Body succeeds, B.close throws Y, A.close throws Z | Y | Z |
+| B initialization throws X, A.close throws Z | X | Z |
+| Body and both closes succeed | None | None |
+
+The language generates this preservation logic; a simple finally block that throws during close can replace the original failure. The `ResourceFailureTrace.java` example demonstrates both two-resource paths without depending on external files.
+
+The complete `ResourceFailureTrace.java` source appears in the Java implementation section below.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant A as Resource A\n participant B as Resource B\n C->>A: initialize\n C->>B: initialize\n Note over C: body fails\n C->>B: close, failure suppressed\n C->>A: close, failure suppressed\n Note over C: propagate original body failure"} caption={"With a body failure, resources close in reverse order and their failures are retained as suppressed exceptions."} />
+
+### Ownership and finally
+
+A method that opens a resource usually owns closing it unless the API transfers ownership explicitly. Wrapping a stream can transfer effective closing responsibility because closing the wrapper often closes the underlying stream. Returning a lazily consumed Stream from `Files.lines` transfers a resource-backed value: its caller must close it after consumption. Garbage collection is not a reliable resource-lifecycle mechanism.
+
+Finally normally runs on return and exception paths, but process termination, VM failure or a path that never leaves the try can prevent it. Never return from finally: it can replace a result or suppress an exception. A broad catch that returns an empty value changes failure into apparent success and destroys the caller's ability to respond appropriately.
+
+### Interview debugging exercise
+
+A resource operation reports a close exception while its original parse error disappears. Identify whether a manually written finally block replaced it. Rewrite using try-with-resources and inspect `getCause()` separately from `getSuppressed()`. The correct answer should describe primary-failure selection, reverse closing and resource ownership, not just add another catch block.
+
+## Failure paths as part of the API
+
+### Decide which layer can respond meaningfully
+
+An exception should carry the operation's context and preserve the causal chain. A parser can reject an invalid representation; a storage adapter can translate an IOException into a domain-specific loading failure; the application boundary decides whether to report, retry or abort. Catching at every layer merely to log and rethrow duplicates diagnostics without adding recovery.
+
+Retry policy requires more than recognizing an exception class. Define whether the operation is idempotent, the total deadline, which partial effects may already exist and whether interruption cancels the retry loop. A timeout does not prove an external write never happened. Conversely, turning every invalid-input exception into a retry can repeatedly execute a permanently invalid request.
+
+### Resource ownership is transferred explicitly
+
+A method receiving a caller-owned stream should not close it without a declared ownership transfer. A method that opens a stream should usually close it or return an object whose API clearly transfers that responsibility. Wrappers often close the wrapped resource, so stacking wrappers does not mean each participant independently owns cleanup.
+
+A resource-backed Stream is especially easy to misuse because ordinary collection streams often need no explicit close. `Files.lines` and `Files.walk` are different: consumption can be lazy and their underlying resources require deterministic closure. Do not return such a stream from inside a try-with-resources block and expect the caller to consume it after the block has already closed it.
+
+### Chained and suppressed failures answer different questions
+
+A cause explains why the primary operation failed at another abstraction level. Suppressed failures retain additional problems, frequently from cleanup. Both can exist on the same exception graph. A diagnostic formatter should preserve both relationships and avoid recursive cycles if formatting arbitrary custom Throwable graphs.
+
+### Explain the two-resource example completely
+
+For resources initialized A then B, closure happens B then A. If the body fails, that failure remains primary and closing failures are appended as suppressed exceptions. If only closes fail, B's close failure wins first and A's is suppressed. If B construction fails, B is never a successfully opened resource while A is still closed. Finally remains useful for other owned state, but throwing/returning there can mask the outcome chosen earlier.
+
+### Coding exercise solution
+
+Implement a small loader that owns a Reader and translates a checked read failure while preserving its cause. Put construction in the resource declaration, parsing in the body and ownership documentation at the API boundary. Test constructor failure, body failure, close failure, and simultaneous body/close failure independently; asserting only an exception message misses suppression and cause semantics.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Implement resource-failure traces
+
+### Primary and suppressed failure trace
+
+<JavaExample file="ResourceFailureTrace.java" output={"body\nclose B\nclose A\nclose B\nclose A"} />
+
+### Introductory example
+
+The following program is a complete executable example. Compile with `javac ResourceFailures.java` and run with `java ResourceFailures`.
+
+<JavaExample file="ResourceFailures.java" output={"body\n1"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Exception-handling and ownership pitfalls
+
+Avoid blanket catch-and-ignore handlers, throwing from finally without considering the original exception, or assuming a resource is closed because its wrapper object becomes unreachable. A stack trace is diagnostic evidence; do not discard it during translation.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Exception and resource interview practice
+
+### Which exception is thrown when both the body and close fail?
+
+<details>
+<summary>Explanation</summary>
+
+The try-with-resources body exception is primary. Closing exceptions are attached using suppressed exceptions. If there is no body failure, a close failure can become the primary exception. Multiple resources close in reverse order, which can produce more suppressed failures.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Two resources A then B are opened; body and both closes fail. Which failure escapes?</summary>
+
+The body exception remains primary. B closes first, then A, and their exceptions are suppressed on the primary in that order. getCause describes a causal chain; getSuppressed describes additional failures retained rather than selected as primary.
+
+</details>
+
+<details>
+<summary>What happens if resource B fails during initialization?</summary>
+
+B was not successfully initialized, so it is not closed by that resource declaration. A was initialized and is closed. A close failure is suppressed on B's initialization failure. Resource initialization order is therefore part of the failure trace.
+
+</details>
+
+<details>
+<summary>Why is returning from finally dangerous?</summary>
+
+It can replace a pending return value or exception, hiding the original outcome. Cleanup belongs in a construct that preserves the primary operation's failure. Finally also cannot guarantee execution after process termination or a VM failure.
+
+</details>
+
+### Coding exercise
+
+Add a second resource that records closing order. Test normal completion, body-only failure, close-only failure and simultaneous failures. Inspect both cause and suppressed exceptions.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why not catch Error as ordinary validation failure?</summary>
+
+An Error can describe a VM/linkage/resource condition outside the operation's ordinary input contract. Catching Throwable and returning a success-like default hides those failures. Handle a narrowly understood boundary only when the application can actually maintain its invariants.
+
+</details>
+
+<details>
+<summary>What does adding throws change at runtime?</summary>
+
+The checked throws declaration constrains compilation and documents a failure contract. It does not install a handler or force every possible failure to have that type. Unchecked exceptions and errors can still propagate.
+
+</details>
+
+<details>
+<summary>How do you test that the original failure was preserved?</summary>
+
+Assert the primary exception type and cause identity/type, and separately inspect its suppressed array in the expected close order. A wrapper with only the old message can pass a superficial message assertion while losing essential diagnostics.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Exception and resource references
+
+- [Releasing I/O resources](https://dev.java/learn/api/io/java-io/reading-writing/common-operations/)
+- [Throwable causes and suppressed exceptions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Throwable.java)
+- [AutoCloseable contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/AutoCloseable.java)

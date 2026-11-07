@@ -1,0 +1,164 @@
+---
+title: "The Java Memory Model and safe publication"
+module: "concurrency"
+group: "Threads and correctness"
+summary: "Separate visibility, ordering and atomicity when reasoning about shared state."
+order: 340
+version: "Java 8+"
+prerequisites: ["concurrency/thread-lifecycle"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import KnowledgeCheck from '../../../components/KnowledgeCheck.jsx';
+import InterleavingLab from '../../../components/InterleavingLab.astro';
+import {url as lessonUrl} from '../../../lib/paths';
+
+<span id="concepts"></span>
+## What the Java Memory Model defines
+
+The Java Memory Model defines the rules for how threads interact through shared variables: which writes a read may observe, and which relationships constrain the order of those observations. It is a language-level contract, not a diagram of the heap or a promise that each thread literally owns a separate copy of every field. Compilers and processors can optimize execution as long as the required observable behavior is preserved.
+
+Consider a worker that updates a counter and an owner that prints its value. Two questions arise: can concurrent updates overwrite one another, and has the worker finished before the owner reads? A correct answer needs both an update protocol and a completion/publication protocol.
+
+**Visibility** concerns which writes a reader can observe. **Ordering** concerns the required relationships between actions. **Atomicity** concerns whether an operation can be observed as indivisible. Solving one does not automatically solve the others.
+
+Happens-before relationships connect actions such as monitor unlock/lock on the same monitor, volatile write/read, thread start, and successful join. These are reasoning rules, not promises that the hardware executes every source statement in the written order. Correct synchronization allows implementations to optimize while preserving required observable behavior.
+
+<span id="worked-example"></span>
+## Build the proof around the complete operation
+
+The following program uses AtomicInteger for an indivisible update and join to wait for completion. Compile with `javac MemoryVisibility.java` and run with `java MemoryVisibility`. Its output is one because the worker performs one increment and the owner reads only after successful join.
+
+<JavaExample file="MemoryVisibility.java" output={"1"} />
+
+Replacing the counter with volatile alone would not make count++ indivisible when several workers update it. Removing join would let the owner read before the update occurs, even though the counter itself is atomic. With only one incrementing worker and a read after successful join, an ordinary counter can also be correct: choose synchronization for the actual access pattern rather than adding an atomic type by habit.
+
+The <a href={lessonUrl('learn/concurrency/thread-lifecycle/')}>thread lifecycle chapter</a> explains start, join and cooperative termination. Here the question is which ordering and indivisibility guarantees make a particular result valid.
+
+### First distinguish a race condition from a data race
+
+A race condition means correctness depends on an uncontrolled relative timing. A data race is the more specific memory-model situation of conflicting accesses to the same variable, at least one a write, without a happens-before ordering. Thread-safe methods can still form a race condition: two callers can both observe an absent key before independently performing a later insert. Making individual accesses visible does not make a multi-step decision atomic.
+
+### Construct a happens-before proof
+
+| Relationship | What becomes ordered |
+| --- | --- |
+| Program order | Earlier actions in one thread precede its later actions for memory-model reasoning |
+| Monitor unlock → later lock on the same monitor | Protected writes become visible to the acquiring thread |
+| Volatile write → subsequent read of the same volatile variable | Writes before publication become visible after the observing read |
+| `Thread.start()` | Actions before start precede the started thread's actions |
+| Successful thread termination detection by join | Worker actions precede actions after join returns |
+| Task submission and Future result retrieval | Submission publishes to task; completed computation publishes through get |
+| Transitivity | A→B and B→C establish A→C |
+
+Elapsed time, a sleep call, or observing a convenient value in a debugger is not a substitute for an ordering edge. A successful test run is not a proof that a racy program permits only the observed result.
+
+### Safe publication with a volatile reference
+
+The complete `SafePublicationLab.java` source appears in the Java implementation section below.
+
+The writer constructs a Snapshot, then stores its reference in a volatile field. The reader waits for a non-null volatile value and reads the initialized payload through that reference. Construction writes happen before the volatile publication; observing that publication orders the reader's later actions. The final payload also benefits from final-field initialization guarantees, provided construction does not leak this. Do not generalize either property into permission for subsequent unsynchronized mutation.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant W as Writer\n participant V as Volatile reference\n participant R as Reader\n W->>W: Construct Snapshot with value 42\n W->>V: Publish its reference\n R->>V: Read the published reference\n V-->>R: Same Snapshot\n R->>R: Read initialized value 42"} caption="Construction precedes volatile publication. The reader that observes that publication can then read the initialized snapshot; the arrow is a happens-before argument, not a timing assumption." />
+
+The second part deliberately splits each increment into read and write, with a barrier ensuring both threads read zero first. Each writes one. This coordinated demonstration guarantees the lost-update interleaving; the original data-racy `count++` merely permits such an outcome. Joining workers ensures the final observation is after their completion.
+
+### Lost update trace
+
+| Step | Thread A | Thread B | Shared count |
+| --- | --- | --- | --- |
+| 1 | Read 0 | | 0 |
+| 2 | | Read 0 | 0 |
+| 3 | Compute and write 1 | | 1 |
+| 4 | | Compute and write 1 | 1 |
+
+Making count volatile still permits this schedule. AtomicInteger.incrementAndGet coordinates the whole read-modify-write operation. A synchronized block can additionally protect a relationship between multiple fields. For a balance transfer, atomically changing two balances is a larger invariant than updating either field independently.
+
+<InterleavingLab />
+
+### Construction and later mutation are different boundaries
+
+Correct final-field construction supplies specific initialization-safety guarantees, but publishing this before construction finishes can expose incomplete state. A final reference to a mutable collection does not protect later collection updates. Use an explicit publication protocol and a separate policy for subsequent mutation.
+
+The <a href={lessonUrl('learn/concurrency/volatile-publication/')}>volatile and safe-publication chapter</a> develops immutable snapshot replacement, final-field boundaries and double-checked initialization. The <a href={lessonUrl('learn/concurrency/atomics-cas/')}>atomics chapter</a> develops indivisible conditional transitions. Those mechanisms are alternatives for particular invariants, not interchangeable declarations that make every operation thread-safe.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Sequential consistency, data races and outcome experiments
+
+A correctly synchronized program has the sequential-consistency guarantee described by the Java Memory Model: its executions can be reasoned about as interleavings consistent with each thread's program order. This does not mean every legal compiler/hardware implementation literally executes every source instruction in that order. It means the implementation must preserve the specified observations. A data race removes that convenient reasoning guarantee; it does not merely make one update occasionally slow.
+
+A useful litmus discussion is message publication: writer stores data=42 then ready=true; reader checks ready and, if true, reads data. With ordinary racy fields, source order alone is not a publication proof. With ready volatile and the reader observing that publication, the preceding data write is ordered before the subsequent read. Do not claim a set of observed runs exhausts the outcomes allowed by the model.
+
+jcstress runs actor-style concurrency tests under varied conditions and classifies outcomes. It is valuable for finding an unexpected result and documenting the expected/forbidden states. It does not replace the normative memory-model argument or establish correctness by failing to observe a rare result. The older JSR-133 cookbook is historical compiler guidance; its processor mappings are explicitly not a current hardware reference.
+
+The dedicated volatile/publication and atomics chapters develop these protocols independently, with complete examples and bounded failure behavior.
+
+<span id="java-implementation"></span>
+## Run publication and lost-update examples
+
+### Publication and lost-update trace
+
+<JavaExample file="SafePublicationLab.java" output={"42\nlost update=1"} />
+
+## Atomic access is narrower than atomic behavior
+
+Reads and writes of references and most primitive variables are individually atomic under the language rules. The specification permits some non-volatile long/double accesses to be treated as separate halves; do not infer a portable guarantee from one VM's commonly observed implementation behavior. Volatile long/double accesses supply the relevant indivisible-access guarantee. None of this turns a compound increment, two-field update or collection operation into an atomic transaction.
+
+A data race does not mean every imaginable observation becomes legal. Intra-thread semantics and the memory model's other constraints still apply. The useful discipline is to derive an ordering and atomicity proof for the intended operation rather than treating a racy run as evidence of either safety or unlimited behavior.
+
+<span id="common-mistakes"></span>
+## Invalid memory-model arguments
+
+Do not use sleep as a visibility mechanism, assume a debugger's timing proves correctness, or describe volatile as a replacement for all synchronization. Synchronizing different objects does not protect one shared invariant.
+
+<KnowledgeCheck client:visible question={"Does volatile int count make count++ an atomic increment?"} options={["Yes, all volatile expressions are atomic", "No, the read-modify-write sequence can lose updates", "Only when the JVM is warmed up"]} correct={1} explanations={["The volatile access rules do not combine the read, addition and write into one atomic operation.", "Two threads can read the same old value and both write the same incremented value. Use an appropriate atomic operation or shared lock.", "JIT warmup does not change the required synchronization contract."]} />
+
+<span id="exercises-and-interview-questions"></span>
+## Memory-model interview questions and exercises
+
+<details>
+<summary>Why is volatile not sufficient for a transfer between two balances?</summary>
+
+Each access can have visibility/ordering guarantees without making two updates one transaction. A reader could observe an intermediate relationship. Protect the joint invariant with one protocol, such as one lock or one atomically replaced immutable state value.
+
+</details>
+
+<details>
+<summary>Why does successful join matter even when a field is atomic?</summary>
+
+Atomicity does not wait for work to occur. Without completion coordination the reader may correctly observe the old value before the worker updates it. Join establishes completion and a happens-before edge to the final observation.
+
+</details>
+
+<details>
+<summary>Can Thread.sleep publish an ordinary shared flag?</summary>
+
+No. It controls waiting time, not the required synchronization relationship for another thread's write. Use a volatile variable, lock, latch or other documented publication mechanism, depending on the invariant.
+
+</details>
+
+### Coding exercise and complete reference solution
+
+Implement the same two-worker increment problem with one shared intrinsic monitor and with AtomicInteger. Each worker performs a fixed number of increments. The owner may inspect the final results only after both workers finish. Empty work must produce zero and a requested result that cannot fit int must be rejected before threads start.
+
+<JavaExample file="CounterComparisonLab.java" output={"2000\n2000"} />
+
+LockedCounter.increment holds its receiver monitor over the whole read/add/write. Its getter follows the same monitor protocol. AtomicInteger.incrementAndGet supplies the indivisible update without a user-written synchronized block. The two increments are deliberately separate counters; there is no promise that an observer during execution sees matching intermediate values across them.
+
+count validates the iteration count and checks twice that count for overflow before launching either thread. The two workers share both counter objects, while their loop indexes are thread-local. Successful joins establish that every requested increment has completed and publish their actions before the final observations. The expected result is exactly twice the per-worker count. This is a correctness comparison, not a benchmark: no speed ranking follows from its identical totals.
+
+If an owner is interrupted while joining, InterruptedException propagates. These finite arithmetic workers still terminate on their own; this small API does not claim interruption forcibly cancels them. A task with blocking/external work needs the explicit cancellation/cleanup ownership discussed in the lifecycle chapter.
+
+A correct review identifies both proofs: no increments are lost, and observation follows completion. Merely checking that the output happens to match during one racy run would establish neither.
+
+<span id="references"></span>
+## Primary memory-model references
+
+- [Concurrency package memory-consistency rules](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/package-info.java)
+- [Future completion publication](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/Future.java)
+- [Final-field and ordering implementation guidance](https://gee.cs.oswego.edu/dl/jmm/cookbook.html)
+- [OpenJDK jcstress](https://github.com/openjdk/jcstress)
+
+- [jcstress progress litmus examples](https://github.com/openjdk/jcstress/blob/master/jcstress-samples/src/main/java/org/openjdk/jcstress/samples/jmm/basic/BasicJMM_04_Progress.java)

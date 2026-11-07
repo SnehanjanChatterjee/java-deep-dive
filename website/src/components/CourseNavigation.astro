@@ -1,0 +1,37 @@
+---
+import type { CollectionEntry } from 'astro:content';
+import { CaretDownIcon as CaretDown, BookmarkSimpleIcon as BookmarkSimple } from '@phosphor-icons/react';
+import { modules } from '../data/modules';
+import { url } from '../lib/paths';
+import { getModuleGroups } from '../lib/course';
+interface Props { lessons: CollectionEntry<'lessons'>[]; currentId?: string; catalog?: boolean; sections?: {id:string;title:string;group:string}[]; stages?:string[][]; }
+const { lessons, currentId, catalog = false } = Astro.props;
+const activeModule = lessons.find(lesson => lesson.id === currentId)?.data.module;
+---
+<div class="course-navigation-heading">
+  <a class="course-home" href={url()} aria-current={catalog ? 'page' : undefined}>Java course</a>
+  <p>{modules.length} modules · {lessons.length} topics</p>
+</div>
+<nav class="course-tree" aria-label="Course topics" data-course-tree data-catalog={catalog ? 'true' : undefined}>
+  {modules.map((module, index) => {
+    const groups=getModuleGroups(lessons,module.id);
+    return (
+    <details class:list={["course-module", {"current-module":module.id === activeModule}]} name="course-modules" data-course-module={module.id} open={module.id === activeModule}>
+      <summary aria-controls={'topics-' + module.id}>
+        <span class="course-module-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span>
+        <span class="course-module-title">{module.title}</span>
+        <CaretDown size={14} className="course-module-chevron"/>
+      </summary>
+      <div class="course-topic-list" id={'topics-' + module.id}>
+        {groups.map(group=><section class="course-topic-group-section" aria-label={group.title==='Topics'?undefined:group.title}>
+          {groups.length>1&&<h3 class="course-topic-group">{group.title}</h3>}
+          {group.lessons.map(lesson=><a href={url('learn/'+lesson.id+'/')} data-course-topic={lesson.id} aria-current={lesson.id===currentId?'page':undefined}>{lesson.data.title}</a>)}
+        </section>)}
+      </div>
+    </details>
+    );
+  })}
+</nav>
+<div class="course-navigation-footer">
+  <a href={url('learning/')}><BookmarkSimple size={16}/>Notes and bookmarks</a>
+</div>

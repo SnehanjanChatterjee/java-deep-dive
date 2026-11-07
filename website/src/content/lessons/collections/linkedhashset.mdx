@@ -1,0 +1,146 @@
+---
+title: "LinkedHashSet"
+module: "collections"
+group: "Sets"
+summary: "Remove duplicates while preserving encounter order and maintaining stable membership."
+order: 180
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/hashset","collections/linkedhashmap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Uniqueness with encounter order
+
+LinkedHashSet combines value uniqueness with a defined encounter order. It preserves the first insertion position of an element while that element remains present. Choose it when a result must remove duplicates without rearranging the first appearances, such as an ordered list of distinct search terms.
+
+The structure is not sorted. Comparator rules do not control membership; equals and hashCode do. A duplicate add returns false, while removing and later re-adding creates a new insertion position. The null element is permitted.
+
+<span id="worked-example"></span>
+## Trace first-appearance ordering
+
+<JavaExample file="LinkedHashSetExample.java" />
+
+The first output is `[B, A, C]`. Adding another A returns false and keeps that order. Removing then reinserting A yields `[B, C, A]`. This distinguishes a duplicate membership attempt from a new insertion after absence.
+
+A HashSet can remove duplicates without promising this order. A TreeSet can remove comparison-equivalent values while sorting them. Selecting LinkedHashSet therefore expresses a concrete result contract instead of relying on coincidentally stable HashSet iteration.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Membership and encounter links
+
+### Membership and encounter links
+
+An ordered backing map stores each set element as a key with one shared marker value. Its hash table supports exact membership; its encounter-order links support traversal. A new membership must enter both representations exactly once. A duplicate finds the existing key and must not add a new node or move ordinary insertion order.
+
+### Removal invariant
+
+Deleting an element removes its key from the table and reconnects its predecessor/successor in the order chain. Removing the first or last element updates the appropriate endpoint. Removing the only element clears both endpoints. An iterator must follow the supported mutation protocol, rather than traverse detached links after arbitrary external structural changes.
+
+### Cost and storage
+
+Expected constant-time membership assumes appropriate hashing and bounded equality cost. Traversal follows live encounter entries, so it is proportional to size rather than requiring every empty hash bucket to be visited. The extra order links consume space and require update bookkeeping. This tradeoff buys specified semantics, not a universal runtime speedup.
+
+### Copies and changing elements
+
+An independent container copy preserves references to the same element objects. Mutating an equality-relevant field can break future membership lookup even though encounter iteration can still reveal the retained object. Unmodifiable wrappers do not deep-copy those objects. Define stable element identity and snapshot ownership separately.
+
+### Modern sequenced APIs
+
+Java 21 introduces sequenced collection APIs, including explicit encounter-position and reversed-view operations. These are additional operations, not evidence that ordinary add refreshes recency. Access order is a LinkedHashMap configuration and should not be assumed for a LinkedHashSet created using its normal constructors.
+
+<Diagram client:visible definition={"flowchart LR\n H[Hash index] --> B[First distinct B]\n H --> A[Distinct A]\n H --> C[Distinct C]\n B <--> A\n A <--> C\n D[Duplicate B] -. existing membership .-> B"} caption={"LinkedHashSet: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="linkedhashset" />
+
+## Encounter order as a maintained invariant
+
+### One live membership, one order position
+
+An ordered set must coordinate its membership index and encounter chain. A new unequal member enters both exactly once. A duplicate changes neither cardinality nor ordinary insertion position. Removing a member deletes the index entry and reconnects its order neighbors. Reinserting after absence creates a new encounter position.
+
+That invariant gives first-appearance deduplication a short correctness argument. Process inputs left to right: the first time an equivalence class is encountered it is appended; subsequent equal inputs find existing membership and leave the chain unchanged. Traversal therefore yields distinct equivalence classes in first-occurrence order.
+
+### Input order must actually exist
+
+Constructing from a List preserves that list's defined encounter sequence. Constructing from an unordered HashSet cannot recover the original ingestion history. The constructor can preserve only the encounter order it receives. This distinction matters when deterministic output is part of a public API or a test fixture.
+
+### Order is not equality or sorting
+
+Set equality remains about membership rather than order. Two LinkedHashSets can compare equal while traversing in different sequences. Use a List result or an explicit sequence comparison when order itself is a value requirement. Sorting requires an ordering policy and a sorted representation or later sort; LinkedHashSet does not compare values to choose their positions.
+
+### Modern positioning operations
+
+SequencedSet adds first/last/reversed concepts on newer Java. Explicit positioning and ordinary add are distinct operations. A reversed view can remain backed by the original structure, so removing through it changes membership. Do not call a reversed view a detached reverse-ordered copy unless a copy was actually constructed.
+
+### Coding exercise with a reference solution
+
+Given token input, normalize each token according to the declared domain policy, reject or retain blanks explicitly, add accepted tokens to a LinkedHashSet and return a new list from its traversal. Normalization precedes membership because changing values afterward can break the set's equality/hash assumptions. If the API promises a snapshot, return an appropriate immutable/container copy and state the element ownership policy.
+
+<span id="java-implementation"></span>
+## Implement ordered membership
+
+The complete usage source above demonstrates observable ordering without inspecting private table storage. To implement the abstraction manually, compose a membership index with a doubly linked sequence and preserve one indexed node per ordered live entry. The full LinkedLruCache example demonstrates index/link coordination; insertion-order set logic should omit access-driven movement and keep only marker values.
+
+Trace duplicate insertion, absent removal and reinsertion before implementing. Duplicate insertion changes neither size nor order. Removing an absent key is a no-op. Reinsertion after removal appends one new live membership. A custom implementation must also choose iterator/concurrent-modification behavior explicitly rather than inheriting undocumented assumptions from its index.
+
+<span id="common-mistakes"></span>
+## Ordered-set pitfalls and ownership
+
+Do not confuse first-appearance ordering with alphabetical order or access recency. Do not assert particular HashSet order as a substitute. Iteration order does not imply a thread-safe snapshot, and a final reference to an element does not freeze its logical identity.
+
+<span id="exercises-and-interview-questions"></span>
+## LinkedHashSet interview questions and exercises
+
+<details>
+<summary>How would you deduplicate while preserving first appearance?</summary>
+
+Add inputs to a LinkedHashSet in encounter order. If the input itself has no defined encounter order, the result cannot reconstruct an intended earlier order that was never provided.
+
+</details>
+
+<details>
+<summary>Does reading an element move it?</summary>
+
+Ordinary membership observation does not convert insertion order into access order. If recency is needed, use an explicitly designed access-order map/cache and account for lookup-induced mutation.
+
+</details>
+
+<details>
+<summary>What should removal tests check beyond size?</summary>
+
+Check forward encounter order, removed membership absence, surviving collision membership and endpoint behavior. A size counter can be correct while order links still lose or retain the wrong entry.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Can two equal ordered sets iterate differently?</summary>
+
+Yes. Set equality ignores encounter sequence. If order is part of the result value, compare a sequence representation rather than assuming Set.equals checks it.
+
+</details>
+
+<details>
+<summary>Can LinkedHashSet make unordered ingestion deterministic?</summary>
+
+It preserves the order supplied by its source. If the source does not promise one, the result cannot reconstruct an intended historical order. Sort or supply a defined encounter source when determinism is required.
+
+</details>
+
+<details>
+<summary>Why normalize before deduplication?</summary>
+
+Membership must compare the intended canonical values. Mutating equality-relevant state after insertion can invalidate hashing, and deduplicating raw values before normalization can retain values the normalized domain considers equivalent.
+
+</details>
+
+<span id="references"></span>
+## Primary LinkedHashSet references
+
+- [LinkedHashSet contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedHashSet.java)
+- [Ordered backing map](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedHashMap.java)

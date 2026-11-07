@@ -1,0 +1,101 @@
+---
+title: "AQS, LockSupport and synchronizer internals"
+module: "concurrency"
+group: "Locks and coordination"
+summary: "Connect state transitions, wait queues and park/unpark to a complete shared synchronizer."
+order: 390
+version: "Java 8+ · source analysis OpenJDK 25"
+prerequisites: ["concurrency/locks-interruption", "concurrency/atomics-cas"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## State policy and waiting machinery are different responsibilities
+
+AbstractQueuedSynchronizer (AQS) is a framework for building blocking synchronizers around an integer state and a wait queue. The subclass defines what state means and when acquisition/release succeeds. AQS supplies the contended waiting, cancellation and wakeup machinery. It does not decide that state must mean a mutex, that every synchronizer is fair, or that every successful acquisition consumes one permit.
+
+Examples of different state meanings include a reentrant hold count, remaining shared permits, and a one-way closed/open event. The OneShotSignal implementation below deliberately chooses the last: state zero means closed, state one means permanently open. There is no reset operation and no thread owns the event.
+
+## Trace a contended acquire and a release
+
+An acquiring thread first attempts the subclass policy. If acquisition cannot succeed, the framework can enqueue it and arrange a waiting/retry protocol. Release changes the state under that policy and makes eligible successors able to retry. Being awakened is not the same as owning the protected resource: the acquisition condition must succeed.
+
+For a shared event, opening permits multiple queued and future acquirers to pass. For a mutex, one successful exclusive acquisition excludes competitors until a matching release. A queue implementation can support FIFO-style waiting while a nonfair acquisition policy still permits barging; queue order alone is not a fairness promise.
+
+<Diagram client:visible definition={"flowchart TD\n A[Acquire shared] --> T{Subclass permits acquisition?}\n T -->|yes| P[Return successfully]\n T -->|no| Q[Join waiting/retry protocol]\n Q --> W[Park when appropriate]\n R[Open: CAS state 0 to 1] --> S[Release and signal eligible waiters]\n S --> W\n W --> T"} caption="AQS owns the waiting protocol; the subclass's state policy determines whether an awakened acquirer may proceed." />
+
+## LockSupport permits are not a counting semaphore
+
+LockSupport associates at most one available permit with a thread. park can consume an available permit immediately; unpark makes it available if absent. An unpark before a later park on a started thread can prevent blocking, which helps avoid a narrow lost-wakeup race. Multiple unparks do not accumulate an arbitrary number of credits. Unparking a thread before it has started is not a reliable publication/start protocol.
+
+Park can also return because of interruption or a spurious return; timed variants additionally return when their waiting budget expires. It does not tell the caller which happened, and it does not automatically clear interruption like an InterruptedException-producing wait. A loop must recheck the predicate and honor the chosen interruption policy. A thread that keeps parking with its interrupted status set can return immediately repeatedly and busy-loop.
+
+Park does not release an intrinsic monitor or a ReentrantLock the caller holds. Waiting while retaining a lock needed by the producer of the desired state can prevent progress. The blocker argument aids diagnosis; it is not itself a monitor that park acquires/releases.
+
+The permit protocol does not replace safe publication of the condition being awaited. Publish that condition through a volatile field, an atomic operation or the synchronizer's acquire/release protocol. In OneShotSignal, visibility comes from the AQS state transition and successful acquisition; unpark alone is not the justification for reading the payload.
+
+## Complete one-shot shared synchronizer
+
+<JavaExample file="OneShotSignal.java" output={"42\nfalse"} />
+
+The public wrapper offers interruptible await, bounded await and idempotent open. Sync is nested and private, so callers cannot bypass the wrapper and reinterpret raw state. Its serialVersionUID addresses the inherited serializable base; this exercise does not publish a serialization compatibility protocol for the wrapper.
+
+### tryAcquireShared expresses the predicate
+
+The method reads AQS state. While zero it returns negative to refuse. Once one, it returns positive to allow shared acquisition and potential propagation. It does not decrement the state because this event remains open for every future caller. Returning zero/negative indiscriminately would change the framework's propagation/availability contract.
+
+### tryReleaseShared publishes one transition
+
+Opening uses compareAndSetState(0,1). The first successful transition returns true, allowing releaseShared to signal eligible waiters. Repeated opens return false without changing state. Future callers still observe the already-open state and pass; idempotence does not mean the event re-closes or consumes an opening.
+
+### Await, timeout and interruption
+
+The ordinary await delegates to acquireSharedInterruptibly. Timed await validates nonnegative duration and non-null unit, then delegates to tryAcquireSharedNanos. Zero is an immediate availability test: closed returns false and open can succeed. A timeout is not opening, cancellation of the writer or proof of application failure; it is one caller's bounded wait result.
+
+The main program writes a plain array element before opening. The shared release/acquire protocol publishes that preceding write to the successful waiter. Joining is still used to own worker cleanup, but the payload read after await is justified by the synchronizer protocol, not an arbitrary sleep. Tests and observed output complement that argument rather than proving every memory-model outcome by repetition.
+
+## Ownership, fairness and conditions
+
+AQS does not automatically give the wrapper reentrancy. An exclusive lock subclass must define owner tracking, state increment/decrement and invalid-release behavior. A shared event has no release-by-owner rule. Copying an acquire method from one synchronizer into another without preserving its state meaning can make a superficially working implementation incorrect.
+
+Conditions are a further protocol for suitable exclusive synchronizers. Await releases the associated lock state and later reacquires it; condition signalling does not hand ownership to the waiter. A condition wait set is different from the main synchronizer acquisition queue. Our open event has no condition API because it does not represent that exclusive ownership model.
+
+OpenJDK's node fields and signalling helpers evolve across releases. Learn the state/predicate/wait/repair responsibilities first, then read the selected version's acquire/release paths. Do not describe an old JDK's private method names as a Java language guarantee.
+
+## Interview questions and worked reasoning
+
+<details>
+<summary>Does unpark mean the thread can enter its critical section?</summary>
+
+No. It supplies a scheduling permit. The awakened code still needs a predicate/acquisition check. Another contender may have consumed the state, and a park return can have several causes.
+
+</details>
+
+<details>
+<summary>Why must a custom synchronizer define state precisely?</summary>
+
+The integer has no universal business meaning. Reentrant counts, available permits and a one-way event require different acquire/release transitions. The waiting machinery cannot repair an inconsistent state policy.
+
+</details>
+
+<details>
+<summary>Does an internal FIFO queue guarantee a fair lock?</summary>
+
+No. Fast-path acquisition and subclass policy can permit barging. Fairness is an explicit acquisition contract and still does not make OS scheduling perfectly fair or eliminate deadlock cycles.
+
+</details>
+
+<details>
+<summary>What is the coding exercise's complete solution?</summary>
+
+The source above supplies a one-way event: negative shared-acquire result until state one, one CAS release transition, interruptible/timed wrappers and no reset. Test open-before-await, several acquiring callers, repeated opens, zero timeout, invalid arguments and interruption. Adding reset would require a generation/phase protocol; changing state back to zero alone can race with existing waiters and is not the same exercise.
+
+</details>
+
+## Primary synchronizer references
+
+- [AQS subclass contracts and state/queue machinery](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/AbstractQueuedSynchronizer.java)
+- [LockSupport permit and park/unpark contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/locks/LockSupport.java)
+- [CountDownLatch shared one-way state](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CountDownLatch.java)

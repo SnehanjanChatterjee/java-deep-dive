@@ -1,0 +1,115 @@
+---
+title: "CompletableFuture"
+module: "concurrency"
+group: "Tasks and executors"
+summary: "Compose dependent work, combine independent results and own failures and cancellation."
+order: 470
+version: "Java 8+"
+prerequisites: ["concurrency/executors-futures"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## Completion graphs and ownership
+
+CompletableFuture models a value or exceptional completion and supports a graph of dependent operations. Construct the dependency graph before choosing worker counts. A stage can be asynchronous to its caller while a caller that invokes get still blocks.
+
+Separate three responsibilities: where work executes, how successful values are composed and how failure/cancellation is owned. The graph is not automatically a structured task lifetime, and cancelling a dependent stage does not mean every underlying remote operation stopped.
+
+<span id="worked-example"></span>
+## Trace dependent and independent work
+
+The first stage obtains userId 42 on the explicitly supplied pool. thenCompose launches a score stage depending on that ID and flattens its result. An independent label stage can execute without waiting for the score; thenCombine joins their successful values into score=43.
+
+The second example explicitly fails a source future. handle produces a recovered dependent value, but the original future remains exceptionally completed. This is important when several consumers share the source: recovering one branch does not rewrite history for the others.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Completion and failure mechanics
+
+### CompletionStage operators by responsibility
+| Operation | Purpose |
+| --- | --- |
+| thenApply | Transform a successful value |
+| thenCompose | Chain a dependent stage without nesting |
+| thenCombine | Combine two successful independent results |
+| allOf | Represent completion of all supplied futures, without typed result collection |
+| exceptionally | Recover from exceptional completion |
+| handle | Map either success or failure into a new result |
+| whenComplete | Observe either outcome while normally preserving it; observer failure can affect the dependent stage |
+
+Non-async continuations may run in a completing thread or immediately in the attaching caller when the source is already complete. Async methods use their configured/default executor; pass one when ownership and capacity matter. `join` reports CompletionException and is not the interruptible checked-exception equivalent of get. CompletableFuture.cancel treats cancellation as exceptional completion and does not interrupt its underlying computation through the mayInterrupt flag. `orTimeout` (9+) completes the future exceptionally but does not automatically stop remote or background work.
+
+### execute, submit and Future failures
+An exception escaping a Runnable passed to execute can reach the worker thread's uncaught-exception handler. submit normally wraps work in a FutureTask, which captures the failure and exposes it through ExecutionException from get. Ignoring that Future can hide failures. `get(timeout, unit)` times out the caller's wait; it does not by itself cancel the operation. `cancel(true)` requests interruption when the implementation owns a running thread, but the task must cooperate. Future.get can also throw CancellationException for cancellation.
+
+`shutdown` refuses new work while allowing accepted work to complete. `awaitTermination` waits for termination after shutdown. `shutdownNow` requests interruption and returns queued tasks that never commenced; it does not forcibly kill workers or guarantee every returned Future is completed/cancelled. On an interrupted shutdown wait, request cancellation, preserve interruption and give cleanup ownership a clear boundary.
+
+<Diagram client:visible definition={"flowchart LR\n U[User ID stage] --> S[Dependent score stage]\n S --> C[thenCombine]\n L[Independent label stage] --> C\n C --> R[Final result]\n X[Exceptional source] --> H[handle: recovered dependent result]"} caption={"Follow the completablefuture relationships described above."} />
+
+### Completion is one selected outcome
+
+CompletableFuture stores one completion outcome and dependent completion actions. Competing complete, completeExceptionally and cancel calls race to select that outcome; only one wins. A dependent branch can transform or recover its own result without rewriting the shared source. This distinction is important when two consumers attach different failure policies.
+
+A non-async action can execute in the attaching caller when its source is already complete, or in a thread completing the source later. Avoid holding an application lock while attaching behavior that can synchronously reenter unrelated application code. An Async suffix chooses scheduling policy; it does not by itself provide cancellation ownership or an isolated thread pool.
+
+### Recovery, observation and failure composition
+
+If a source succeeds but a whenComplete observer throws, that observer failure can make the dependent stage fail. If the source already failed and its observer also throws, the source failure is the propagated primary exceptional outcome under the documented policy. Preserve that distinction rather than asserting that whenComplete always ignores callback exceptions.
+
+handle receives either value or failure and returns a new outcome. exceptionally operates on exceptional completion. Recovery should map a failure to a legitimate alternative under the domain contract; returning an arbitrary default can conceal data corruption. Exceptions from an async supplier are represented in completion, so ignoring the returned stage can hide them.
+
+allOf is not a fail-fast structured scope. It represents completion after all supplied futures complete, then reports exceptional completion if applicable. A failed input does not automatically cancel siblings. It also returns Void, requiring a separate typed-result collection strategy after successful aggregate completion. anyOf selects one completion, which can be failure; it does not necessarily mean the first successful answer.
+
+### Waiting, deadlines and underlying work
+
+get is an interruptible wait with checked ExecutionException/InterruptedException behavior. join reports CompletionException for exceptional completion and does not provide get's checked interruption protocol. Neither method should be buried inside a worker that must execute its own queued dependency.
+
+orTimeout and completeOnTimeout affect completion state, not arbitrary remote request lifetime. A streaming network operation can continue consuming resources after a stage completes with a timeout unless its own cancellation/close protocol is invoked. Cancellation of one dependent stage is not a universal graph-wide cancellation mechanism. Choose one owner responsible for outstanding operations, deadlines, cleanup and final observation.
+
+<span id="java-implementation"></span>
+## Implement composition and recovery
+
+<JavaExample file="CompletableFutureLab.java" />
+
+The main thread waits on final results while workers do not block on sibling tasks queued to their own pool. Finally owns shutdown, bounded termination waiting and interruption preservation. A real application also needs an operation-specific deadline and failure-reporting policy; abandoning a Future is not a complete error strategy.
+
+### Trace two failure branches without timing assumptions
+
+<JavaExample file="CompletionOutcomeLesson.java" output={"fallback\nsource failed=true\nobserved cause=source\nall still waiting=true\nall cause=source"} />
+
+The source is explicitly completed exceptionally. One branch recovers to fallback; another observer itself throws, yet its already-failed source remains the primary cause. The aggregate remains pending while other is pending, then fails when other completes. This deterministic trace isolates completion semantics from executor scheduling. Alter one input at a time to explain a different outcome.
+
+<span id="common-mistakes"></span>
+## Completion graph mistakes
+
+Do not assume non-async continuations always run on a new worker, ignore exceptional completion, or block a constrained executor on its own queued dependency. allOf yields completion rather than an automatically typed list of results. orTimeout completes a future but does not prove a remote action was cancelled.
+
+<span id="exercises-and-interview-questions"></span>
+## CompletableFuture interview questions
+
+<details>
+<summary>Why use thenCompose for a future-returning function?</summary>
+
+It flattens the dependent stage. thenApply treats that stage as an ordinary value and creates another layer, changing the resulting type and requiring another level of composition.
+
+</details>
+
+<details>
+<summary>How do handle and whenComplete differ?</summary>
+
+handle deliberately maps either outcome into a new result. whenComplete primarily observes an outcome and normally preserves it, but an observer that throws can affect its dependent stage. Failure handlers are behavior, not harmless logging decorations.
+
+</details>
+
+### Coding exercise with reference solution
+
+Create one failed source with a recovered branch, a throwing observation branch and an allOf aggregate that also depends on an incomplete sibling. CompletionOutcomeLesson is the complete reference solution. Predict which stages are complete after the source failure and why recovery does not make the shared source successful.
+
+<span id="references"></span>
+## Primary completion contracts
+
+- [CompletableFuture completion policies](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CompletableFuture.java)
+- [CompletionStage dependency semantics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/CompletionStage.java)

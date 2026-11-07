@@ -1,0 +1,91 @@
+{
+  "chapters": [
+    [
+      "start",
+      "What is a HashMap?",
+      "Foundations"
+    ],
+    [
+      "api",
+      "HashMap operations",
+      "Foundations"
+    ],
+    [
+      "keys",
+      "Keys, equality and null values",
+      "Foundations"
+    ],
+    [
+      "structure",
+      "HashMap internal structure",
+      "Internals"
+    ],
+    [
+      "hash",
+      "Hashing and bucket selection",
+      "Internals"
+    ],
+    [
+      "put",
+      "How put() and get() work",
+      "Internals"
+    ],
+    [
+      "resize",
+      "Capacity and resizing",
+      "Internals"
+    ],
+    [
+      "trees",
+      "Collisions and tree bins",
+      "Internals"
+    ],
+    [
+      "implementation",
+      "Implement HashMap in Java",
+      "Implementation"
+    ],
+    [
+      "performance",
+      "Performance and complexity",
+      "Interview preparation"
+    ],
+    [
+      "pitfalls",
+      "Iteration and thread safety",
+      "Interview preparation"
+    ],
+    [
+      "practice",
+      "Exercises and interview questions",
+      "Interview preparation"
+    ],
+    [
+      "sources",
+      "References and further reading",
+      "Reference"
+    ]
+  ],
+  "stages": [
+    [
+      "Foundations",
+      "Understand key\u2013value storage"
+    ],
+    [
+      "Internals",
+      "Follow hashing and growth"
+    ],
+    [
+      "Implementation",
+      "Build HashMap in Java"
+    ],
+    [
+      "Interview preparation",
+      "Analyze, explain and practise"
+    ],
+    [
+      "Reference",
+      "Study the API and source"
+    ]
+  ]
+}

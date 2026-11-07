@@ -1,0 +1,212 @@
+---
+title: "Files, encodings, NIO and networking"
+module: "libraries"
+group: "Files and encodings"
+summary: "Manage bytes, text, buffering and network boundaries explicitly."
+order: 300
+version: "Java 8+ · HTTP client Java 11+"
+prerequisites: ["reliability/exceptions-and-resources"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Bytes, characters and I/O ownership
+
+Byte streams transfer bytes; readers and writers interpret text through a charset. Buffering reduces small underlying operations but introduces flushing and lifetime considerations. A Path identifies a filesystem location, while Files supplies operations; neither guarantees that a subsequent operation sees the same filesystem state as an earlier check.
+
+NIO channels and buffers expose a position/limit model. After writing into a buffer, flip makes the written region available for reading; clear prepares the buffer for further writing without erasing its bytes. Nonblocking I/O uses readiness and state machines, not an assumption that every read completes an entire message.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Read a file and switch buffer modes
+
+The example writes UTF-8 text to a temporary file, reads it with the same charset and deletes it in finally. It then demonstrates ByteBuffer position/limit changes for a small integer payload. The temporary path is generated locally and not hard-coded.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Partial I/O, framing and HTTP boundaries
+
+A network connection carries a byte stream or protocol messages whose boundaries must be interpreted correctly. Reads can return partial data. Configure connection and request/read deadlines deliberately. Java's standard HTTP client is available from Java 11; reuse clients where appropriate, inspect status codes, and close/consume streaming bodies under the API's ownership rules.
+
+A file existence check followed by opening is subject to a time-of-check/time-of-use race. Prefer the actual operation and handle its documented failure. For large files, avoid reading all content into memory simply because a convenience API exists.
+
+<Diagram client:visible definition={"flowchart TD\n B[Bytes] --> C[Explicit charset]\n C --> T[Text]\n W[Buffer writes] --> F[flip: limit becomes written length]\n F --> R[Buffer reads]"} caption={"Text decoding requires a charset. A buffer's flip changes its position/limit state rather than erasing its contents."} />
+
+### Bytes, characters, paths and ownership
+
+InputStream/OutputStream handle bytes; Reader/Writer handle characters through an encoding boundary. Path identifies a location in a file-system provider, while Files performs operations. `readAllBytes` is convenient for a bounded small file; it is not an appropriate default for arbitrarily large input. Buffered sequential processing bounds working memory. Files.lines and Files.walk return resource-backed streams that need closing after traversal.
+
+A read is allowed to return fewer bytes than requested. Loop until the required count is obtained or EOF is reached; never assume one read fills a message. With InputStream, `-1` means EOF; with a zero-length request, zero is possible. Channels, especially nonblocking ones, can return zero without EOF. Similarly, channel writes may consume only part of a buffer. A protocol must define framing: fixed length, delimiter or length prefix, including a maximum accepted length.
+
+### Buffer state is an explicit state machine
+
+ByteBuffer maintains `0 <= position <= limit <= capacity`. Relative put/get advance position. `flip` changes limit to the amount written and position to zero. `clear` resets the write range without erasing existing bytes. `compact` moves unread bytes to the beginning and prepares to append more after them. `rewind` resets position for rereading while retaining the limit.
+
+| Action on capacity 8 | Position | Limit | Meaning |
+| --- | --- | --- | --- |
+| allocate | 0 | 8 | Ready to write |
+| putInt(42) | 4 | 8 | Four bytes written |
+| flip | 0 | 4 | Ready to read those four bytes |
+| getInt | 4 | 4 | Written data consumed |
+| clear | 0 | 8 | Ready for next write |
+
+Calling getInt immediately after putInt without flip tries to read from the next position, not from the just-written bytes. Byte order must agree with the protocol. Direct buffers can support native I/O interactions but carry allocation/lifecycle costs; they are not automatically faster for every workload.
+
+<Diagram client:visible definition={"stateDiagram-v2\n [*] --> Writing\n Writing --> Reading: flip sets limit and resets position\n Reading --> Writing: clear when all data consumed\n Reading --> Writing: compact retains unread bytes\n Writing --> Writing: partial channel read\n Reading --> Reading: partial channel write"} caption={"A buffer alternates between writing data into it and reading data out; flip, clear and compact have different preservation rules."} />
+
+### Complete bounded channel-copy exercise
+
+The complete `ChannelCopyLab.java` source appears in the Java implementation section below.
+
+The outer loop reads into an 8-byte buffer. After flip, the inner loop writes until no bytes remain, handling partial writes. Clear then prepares the next read. The method owns neither supplied channel; its caller opens and closes them. The main method owns temporary files, closes its channels with try-with-resources and removes the files in finally. Working storage is O(buffer capacity), and copying n bytes is O(n) I/O work.
+
+### HTTP client boundaries, Java 11+
+
+A reusable HttpClient manages connections and client-wide policy. HttpRequest supplies URI, method, headers and request timeout; the client connect timeout covers connection establishment and is not a complete per-request deadline. An HTTP response with status 404 or 500 is still a received response, not automatically an IOException. Inspect status and decide which body to accept.
+
+```java
+final HttpClient client = HttpClient.newBuilder()
+        .connectTimeout(Duration.ofSeconds(3)).build();
+final HttpRequest request = HttpRequest.newBuilder(URI.create("https://example.com/"))
+        .timeout(Duration.ofSeconds(5)).GET().build();
+final HttpResponse<String> response = client.send(request,
+        HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+if (response.statusCode() != 200) {
+    throw new IOException("Unexpected HTTP status: " + response.statusCode());
+}
+```
+
+This excerpt needs imports from java.net, java.net.http, java.time, java.io and java.nio.charset. It performs a real network operation, so its response and timing are environment-dependent. For a streaming body handler, the application must close the returned stream. A String body buffers the response, so bound acceptable sizes where inputs are untrusted. Propagate interruption rather than continuing a cancelled request. Retry only with an explicit idempotency and overall-deadline policy; a failed wait does not prove a remote write never happened.
+
+### File-path safety
+
+`normalize` is lexical and does not resolve symlinks. A normalized path that starts with a base path can still reach elsewhere through a symlink. Define whether links are permitted and use real-path or secure-directory operations where the threat model requires them. Do not teach string prefix checks as complete file authorization.
+
+## Framing and partial input in a complete parser
+
+<JavaExample file="CoreFramedText.java" output={"0\n1\n8364\n0"} />
+
+### Read boundaries are not message boundaries
+
+TCP/stream reads can split a protocol header or a UTF-8 sequence at any point. The parser uses a four-byte big-endian length prefix followed by that many payload bytes, with a maximum accepted length. It only decodes a payload when the complete frame is available. The source models input chunks in memory so the output does not depend on a live network.
+
+### Trace preservation of incomplete input
+
+The first chunk contains the length 3 and only the first byte of the euro sign. extract marks the prefix position, sees the missing body bytes and resets to that position without emitting a frame. compact preserves the unread header/body prefix; subsequent put appends the remaining bytes. After flip, extract reads one complete frame and strict UTF-8 decoding returns code point 8364. No bytes remain.
+
+### Bounds and failure behavior
+
+Negative/oversized lengths fail before a payload allocation. The parser requires big-endian prefix interpretation and uses a bounded payload view. Malformed UTF-8 is reported instead of replaced silently. Completed earlier frames may already have advanced the input position when a later frame fails; this API does not promise batch rollback. A connection owner needs a policy for invalid protocol input rather than retrying indefinitely against the same malformed bytes.
+
+### Buffer capacity is a separate constraint
+
+The short demonstration uses a small buffer because its one payload is small. A real accumulator must be able to hold a complete accepted frame or grow within the declared bound after validating the prefix. compact cannot create capacity. A nonblocking channel can also return zero without EOF, requiring readiness/backpressure coordination rather than a tight retry loop.
+
+### Ownership and text boundaries
+
+A slice shares the underlying bytes while maintaining its own position/limit. It does not copy or extend the parent's lifetime. The decoder consumes that temporary bounded view, while the parser advances the parent deliberately after successful decoding. Charset choice comes from the protocol, not the local machine's default.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Implement bounded channel and HTTP examples
+
+### Complete bounded channel copy
+
+<JavaExample file="ChannelCopyLab.java" output={"copied 5 bytes\nhello"} />
+
+### Complete HTTP text-fetch example, Java 25
+
+<JavaExample file="modern/HttpFetch.java" />
+
+Compile with Java 25 and run `java HttpFetch https://example.com/`. This performs a real network request; no fixed body or timing is promised. The example closes both client and body, accepts only status 200 and reads at most one byte beyond a 1 MiB body limit so an oversized result can be rejected. The chosen format is UTF-8 demonstration text; a general HTTP application needs the actual media-type/charset contract.
+
+The request timeout does not establish a complete deadline for arbitrarily slow consumption of a streaming body after headers have arrived. A production streaming operation needs an explicit body-consumption/deadline/cancellation policy as well. The bounded read here protects memory, not every possible waiting-time scenario.
+
+### Introductory example
+
+The following program is a complete executable example. Compile with `javac FilesAndBuffers.java` and run with `java FilesAndBuffers`.
+
+<JavaExample file="FilesAndBuffers.java" output={"Mira\n42"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## I/O and protocol pitfalls
+
+Do not equate a char with a byte, rely on platform-default encodings, assume a socket read returns a complete message, or forget to close a stream returned by Files.lines. clear does not zero a ByteBuffer.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## I/O interview practice
+
+### What is the difference between flip and clear on a buffer?
+
+<details>
+<summary>Explanation</summary>
+
+flip sets limit to the current position and resets position to zero, making the data just written available for reading. clear sets position to zero and limit to capacity, preparing the entire buffer for writing. Neither operation erases the underlying data.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why loop after a channel write?</summary>
+
+A successful write may consume only part of the remaining buffer. Keep writing until hasRemaining is false, under the blocking-channel contract used by the example. Nonblocking zero-progress handling requires readiness/backpressure logic rather than a busy-spin copy loop.
+
+</details>
+
+<details>
+<summary>Does ByteBuffer.clear erase sensitive bytes?</summary>
+
+No. It resets position/limit for writing. Previously stored bytes can remain in memory and can be read through appropriate access paths. Erasure is a distinct operation and still has broader copying/lifetime considerations.
+
+</details>
+
+<details>
+<summary>Is HTTP 500 normally reported as IOException by HttpClient?</summary>
+
+A valid HTTP response with a 500 status is still a response. Inspect the status and implement the application's failure policy. Transport failure, interruption and an unsuccessful HTTP status represent different outcomes.
+
+</details>
+
+### Coding exercise
+
+Process a text file with Files.lines inside try-with-resources. On Java 11+, send a request with an explicit timeout to a controlled test endpoint and handle both success and non-success statuses.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why reset to before the length prefix when the body is incomplete?</summary>
+
+The next parsing attempt must read the same frame from a coherent starting position. Consuming the header alone would require separately retained parser state; this buffer-based design instead retains the whole incomplete frame.
+
+</details>
+
+<details>
+<summary>Why can a partial UTF-8 character not be decoded independently?</summary>
+
+A multi-byte code point requires its complete encoding. Decoding an arbitrary read chunk as a full standalone string can reject or replace a split sequence. Preserve state/bytes until the protocol or incremental decoder has enough input.
+
+</details>
+
+<details>
+<summary>Does a read returning zero mean EOF?</summary>
+
+Not for a general channel, especially nonblocking I/O. EOF is reported separately. The event loop must wait for appropriate readiness or follow a bounded progress policy rather than spin.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## I/O API references
+
+- [Buffered text and charset handling](https://dev.java/learn/api/io/java-io/reading-writing/buffered-text/)
+- [Buffer state contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/Buffer.java)
+- [Channel partial-write contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/nio/channels/WritableByteChannel.java)
+- [HTTP client lifecycle and requests](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpClient.java)
+- [HTTP request timeout](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpRequest.java)

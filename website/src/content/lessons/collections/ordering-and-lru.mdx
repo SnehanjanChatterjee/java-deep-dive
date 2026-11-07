@@ -1,0 +1,168 @@
+---
+title: "LRU cache implementation"
+module: "collections"
+group: "Implementation practice"
+summary: "Combine a key index and recency list, implement constant-time updates, and prove eviction behavior."
+order: 220
+version: "Java 8+"
+prerequisites: ["collections/hashmap", "collections/linkedhashmap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+import {url as lessonUrl} from '../../../lib/paths';
+
+<span id="concepts"></span>
+
+## Define the cache and its eviction contract
+
+A cache retains values so a later lookup can reuse them. A bounded cache must decide which entry to remove when a new entry exceeds its capacity. **Least recently used (LRU)** chooses the entry whose last successful access is oldest. This policy differs from insertion order: an old entry can become most recent when it is read.
+
+The implementation in this chapter supports `get`, `put` and `size`. A successful get refreshes recency. Putting an existing key replaces its value and refreshes recency without increasing size. A miss returns null and changes nothing. New insertion can evict one least-recent entry. Capacity must be positive, and null keys/values are rejected so null has one unambiguous lookup meaning.
+
+These rules describe a nonconcurrent, count-bounded teaching cache. They do not include time expiry, asynchronous loading, memory-weight limits or automatic coordination of the mutable objects stored as values. Establish this scope before selecting data structures.
+
+<span id="worked-example"></span>
+
+## Trace access, replacement and eviction
+
+Read each order from least recent on the left to most recent on the right. Capacity is two:
+
+| Operation | Result | Recency after operation | Why |
+| --- | --- | --- | --- |
+| put(A, 1) | No value returned | A | New membership |
+| put(B, 2) | No value returned | A → B | B is newer |
+| get(A) | 1 | B → A | Successful read refreshes A |
+| get(missing) | null | B → A | A miss does not create a node |
+| put(A, 9) | No value returned | B → A | Replacement retains one A mapping |
+| put(C, 3) | No value returned | A → C | B is least recent and is removed |
+
+A test that checks only size misses most of this contract. The cache can have two entries while retaining the wrong victim, returning an old replacement value or keeping duplicate list nodes. Check subsequent lookups and evictions as well as cardinality.
+
+<CollectionTrace kind="lru" />
+
+<span id="mechanics-and-tradeoffs"></span>
+
+## Use an index and a doubly linked recency list
+
+A hash index locates the entry for a key. A doubly linked list places entries in recency order. They contain references to the **same Node objects**: the index is not a separate copy of each cached value. Once lookup supplies the node, removing it from the middle of a doubly linked list needs no search for its predecessor.
+
+Two sentinel nodes make endpoint updates uniform. `head.next` is the least-recent real node and `tail.previous` is most recent. The empty list connects head directly to tail. Sentinels are never stored as key mappings or counted in size; their internal null fields do not contradict rejection of user null keys.
+
+<Diagram client:visible definition={"flowchart TD\n I[Hash index: key to existing Node] --> A[A node]\n I --> B[B node]\n H[Head sentinel] <--> B\n B <--> A\n A <--> T[Tail sentinel]\n G[Get A] --> R[Detach A and append at recent end]\n R --> K[Index membership and size stay unchanged]"} caption="The index finds a node; the recency chain controls movement and eviction. Both representations must describe the same live entries." />
+
+### Preserve the joint invariant
+
+Every indexed key has exactly one live recency node, and every real recency node is indexed under its key. For adjacent nodes X and Y, `X.next == Y` agrees with `Y.previous == X`. Head and tail remain attached, and size never exceeds the configured capacity after a successful put returns.
+
+These are stronger requirements than making the map itself thread-safe. Replacing the hash index with ConcurrentHashMap would not coordinate list movement and eviction. The whole invariant needs one protocol if concurrent access is introduced.
+
+<span id="java-implementation"></span>
+
+## Complete single-file Java implementation
+
+<JavaExample file="LinkedLruCache.java" output={"1\nnull\n3\n2"} />
+
+The file contains the cache, a nested static Node and a deterministic main demonstration. It uses a built-in HashMap as the permitted lookup index and implements its own recency list; it does not extend LinkedHashMap. If the task also forbids library map storage, implement the preceding hash table as the index under that additional constraint. The list and eviction invariants remain the same.
+
+### Constructor and node representation
+
+The constructor rejects capacity below one, stores the bound, and connects the two sentinels. Each real node holds a stable key reference, mutable value, previous and next. Static nesting avoids an unnecessary outer-instance reference. A final key reference does not make equality-related state inside the key immutable; key identity must remain stable during membership.
+
+### get: locate, detach, append, return
+
+`get` rejects a null key and asks the index for its node. A missing node returns null immediately. A present node is unlinked and appended before tail, then its value is returned. It stays in the index throughout, and no real node is allocated or removed. Accessing the already-most-recent node is still correct under these operations; avoiding that unnecessary relink is an optional local optimization, not a different eviction policy.
+
+### put: replacement and insertion are different branches
+
+Validate both inputs before mutating membership. An existing node receives the new value, is detached and appended, and returns without changing cardinality. Allocating another node for this branch would create a stale list entry that might later be evicted under the same key.
+
+For a new key, create one node, add it to the index and append it. Only this branch can exceed the count limit. If it does, `head.next` identifies the victim; remove that key from the index and unlink its node. Because positive capacity and a successful new insertion imply at least one real node exists, the victim is not a sentinel.
+
+### unlink and append: four neighboring references
+
+`unlink` makes the previous node skip forward to the successor, and the successor skip backward to the predecessor. `append` fills the detached node's two links, joins the previous recent node to it and updates tail's previous link. Reuse these helpers instead of maintaining slightly different pointer logic in get and put.
+
+The helpers take a known live node under the class's private invariant. They are not public APIs accepting arbitrary null, sentinel or already-corrupted nodes. Validation of public inputs and preservation of the internal invariant are separate responsibilities.
+
+## Capacity-one and repeated-update proofs
+
+Capacity one is a valuable boundary. Insert A, access A repeatedly, replace A and then insert B. Before B, there is still exactly one real A node. B insertion temporarily introduces a second real node; A is oldest, so eviction removes A from both structures. B must remain retrievable and size must be one.
+
+For a larger cache, replacing the least-recent key moves it to the recent end. The next new insertion must evict the next-oldest key, not the key just replaced. A missing get must not refresh another entry or consume capacity. The existing tests cover these observable decisions rather than asserting private pointer addresses.
+
+<span id="common-mistakes"></span>
+
+## Complexity, ownership and concurrent access
+
+Hash lookup is expected O(1) under suitable dispersion and bounded hashing/equality work. Detach, append and oldest-node selection are O(1) pointer operations. Thus get is expected O(1), while put is expected amortized O(1). An individual insertion that grows the index can redistribute O(n) entries and scan the bucket storage. Storage is O(capacity) in live entries plus index/list bookkeeping. This is not an unconditional worst-case constant-time guarantee for adversarial or expensive key methods.
+
+`get` is a write to recency state. A read lock that permits multiple simultaneous get operations can therefore corrupt the list. A synchronized wrapper around only index access is also insufficient. For a concurrent implementation, protect lookup, movement, membership changes and eviction together, while avoiding slow loading or arbitrary callbacks under that lock.
+
+Values can be mutable. Returning a cached object does not create a snapshot or make its later mutation safe. A count limit is not a memory-weight limit: two equally counted entries can retain very different object graphs.
+
+## Library-based LRU and production extensions
+
+<JavaExample file="LruCacheDemo.java" output={"false\n1"} />
+
+The library-based version selects access order with the third LinkedHashMap constructor argument and evicts after new insertion through removeEldestEntry. Its initial hash-table capacity is different from the cache's mapping-count limit. This is a compact API-based solution when library storage is allowed; the handwritten version exposes the links and method reasoning those hooks encapsulate.
+
+Loading, expiry and eviction are different policies. Two concurrent misses can launch duplicate loads unless a deliberate single-flight strategy coordinates them. A cancelled waiter need not own cancellation of a load other callers still need. Time-to-live describes freshness and can invalidate a recently accessed entry; LRU describes a victim under capacity pressure. Define how these policies interact before calling a bounded map a complete production cache.
+
+<span id="exercises-and-interview-questions"></span>
+
+## Interview questions and worked exercises
+
+<details>
+<summary>Why is a doubly linked list needed if the map already locates the node?</summary>
+
+The map supplies the node, not its predecessor in a singly linked list. Doubly linked nodes supply both neighbors for O(1) detachment. A singly linked implementation needs an additional predecessor strategy or a traversal, changing the representation and proof.
+
+</details>
+
+<details>
+<summary>Why can size look correct while eviction is wrong?</summary>
+
+A stale list node and a missing live node can leave counts coincidentally equal. Check the exact victim and later accesses/replacements, not just the number of keys. The index and chain must represent the same live set.
+
+</details>
+
+<details>
+<summary>Does a cache read require exclusive coordination?</summary>
+
+A successful get moves links. If several calls can overlap, those writes participate in the shared invariant. Treating all read-named methods as structurally read-only is incorrect for an access-order cache.
+
+</details>
+
+<details>
+<summary>Does a miss change recency?</summary>
+
+Not under this contract. It returns absence without creating or moving a node. A loader could later install a successful result, but that is a separate operation with its own failure and ownership rules.
+
+</details>
+
+<details>
+<summary>Should capacity zero silently evict everything?</summary>
+
+That is a possible separately specified API, but this implementation rejects nonpositive capacity. State the chosen contract and test it. Do not accidentally obtain a zero-capacity policy from an unchecked constructor value.
+
+</details>
+
+<details>
+<summary>How would the coding exercise be reviewed?</summary>
+
+Use capacity two: put A=1, B=2; get A; replace A=9; put C=3. Expect B absent, A=9, C=3 and size two. Then use capacity one and repeat replacement before another insertion. Test invalid capacity, null inputs, missing lookups and repeated hits. The complete source above is the reference solution; its private helpers preserve the joint invariant on each branch.
+
+</details>
+
+## Related structures and primary references
+
+Sorted range lookup belongs to <a href={lessonUrl('learn/collections/treemap/')}>TreeMap</a>. Heap-based priority selection belongs to <a href={lessonUrl('learn/collections/priorityqueue/')}>PriorityQueue</a>. Neither ordering substitutes for recency. Study <a href={lessonUrl('learn/collections/linkedhashmap/')}>LinkedHashMap</a> for access-generating operations and backed ordered views.
+
+<span id="references"></span>
+
+- [LinkedHashMap access order and eviction hook](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedHashMap.java)
+- [HashMap index assumptions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/HashMap.java)
+- [Map key and value contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Map.java)

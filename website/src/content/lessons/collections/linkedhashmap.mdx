@@ -1,0 +1,146 @@
+---
+title: "LinkedHashMap"
+module: "collections"
+group: "Maps"
+summary: "Understand insertion order, access order, entry links and eviction hooks."
+order: 150
+version: "Java 8+ · internals OpenJDK 25"
+prerequisites: ["collections/hashmap"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import CollectionTrace from '../../../components/CollectionTrace.astro';
+
+<span id="concepts"></span>
+## Hash lookup with encounter order
+
+LinkedHashMap combines hash-based key lookup with a defined encounter order. The default order is insertion order; a special constructor selects access order. Choose it when predictable traversal matters without requiring sorted keys. The order is maintained by links, not by sorting a HashMap after each operation.
+
+Like HashMap, it permits null keys/values and is not synchronized. Ordered traversal does not mean stable snapshots, immutable values or concurrent reads. In access-order mode, a lookup can change ordering state.
+
+<span id="worked-example"></span>
+## Insertion-order and access-order examples
+
+<JavaExample file="LinkedHashMapExample.java" />
+
+Replacing A in the insertion-ordered map keeps the order `[A, B]`. In access-order mode, reading A moves it to the recent end, producing `[B, C, A]`. containsKey(B) does not generate an access, so the order remains `[B, C, A]`.
+
+The distinction matters when evaluating eviction. A map can contain a key without that membership test refreshing its recency. Not every read-like API has the same order effect; use the selected JDK's documented access-generating methods rather than guessing based on method names.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Entry links, access hooks and eviction
+
+### Two structures, one entry identity
+
+The hash table locates an entry by key. Additional before/after links maintain the encounter-order chain. A new entry is registered in both structures. Replacing a value does not require a new logical key; access-order policy can move that existing entry's order position.
+
+### Access and removal hooks
+
+The implementation integrates order maintenance with hash-map update hooks. Moving a node detaches it from its current neighbors and attaches it at the recent end, repairing endpoints when necessary. Removing a key deletes both its bucket membership and its order links. Resizing rearranges hash-table storage without inventing a new insertion history.
+
+### Eviction policy
+
+removeEldestEntry can request removal after a new mapping is inserted. A capacity-bound policy returns size greater than the configured limit. Updating an existing mapping does not necessarily invoke the same new-entry eviction path. Access-order construction plus this hook yields a compact LRU exercise, but does not add expiration, deduplicated loading or concurrent ownership.
+
+### Traversal cost and modification
+
+Encounter-order traversal follows the linked entries rather than scanning empty buckets. It is proportional to entries visited, while HashMap traversal can include capacity. Extra links have storage/update cost. In access-order mode, get can be a structural order change for iterator purposes. A read lock that assumes every get leaves structure untouched is therefore unsuitable.
+
+<Diagram client:visible definition={"flowchart LR\n H[Hash index] --> A[A entry]\n H --> B[B entry]\n A <--> B\n B <--> C[C entry]\n G[Get A in access order] --> M[Detach A and append after C]"} caption={"LinkedHashMap: representation and state transitions described in the accompanying trace."} />
+
+<CollectionTrace kind="linkedhashmap" />
+
+## Access-order details and cache API boundaries
+
+### An access is defined by the contract
+
+Operations such as get, put, compute and merge can count as accesses in an access-ordered map under their documented conditions. Collection-view traversal and containsKey do not generally refresh recency. Replacing an insertion-order mapping is not the same as deleting then reinserting it. Check the selected JDK's access rules instead of classifying methods by whether their names sound read-only.
+
+The implementation can avoid relinking an entry already at the recent end. That optimization does not justify treating cache gets as harmless shared reads: another get can move a different entry and modify order links/bookkeeping. Correct concurrency must cover all participating accesses and updates.
+
+### Index and order remain coordinated during growth
+
+Rehashing redistributes bucket links according to stored hashes, while encounter order is preserved through the separate entry chain. Bucket position and encounter position are different coordinates. A test that assumes encounter order equals bucket order validates an accident, not LinkedHashMap's representation.
+
+### A subclass exposes more than eviction
+
+A small removeEldestEntry subclass is useful to demonstrate library-based size eviction. It also inherits a large mutable Map API. Newer sequenced positioning methods can deliberately alter order, which may not fit an abstraction promising strict recency-driven eviction. Composition can expose only get/put/invalidate under the cache's contract and make ownership of loading/eviction clearer.
+
+### Cache misses and duplicate loading
+
+Two concurrent misses can both compute an expensive value before either installs it. Synchronizing a map's individual get and put calls does not make that whole load protocol atomic. A production cache needs a deliberate strategy for per-key load deduplication, cancellation, failure retention and resource limits. LRU ordering alone solves none of those policies.
+
+### Exercise solution
+
+For an insertion-order export, copy incoming entries into a LinkedHashMap and document the source encounter policy. For a recency cache, select access order, validate a live-entry bound and evict the least-recent entry only when the bound is exceeded. For a from-scratch solution, use one node identity shared by a key index and doubly linked list; updating a key must move the existing node rather than leak a duplicate order node.
+
+<span id="java-implementation"></span>
+## Access-order cache implementation
+
+<JavaExample file="LruCacheDemo.java" />
+
+The nested Cache selects access order with the third constructor argument true. Its validated capacity is a count of live mappings, not hash-table bucket capacity. removeEldestEntry compares size with that bound after new insertion. Reading A before inserting C changes which entry is oldest.
+
+For a from-scratch coding task, use the full LinkedLruCache class, which explicitly maintains the index and doubly linked recency list. Its unlink and append methods show the link operations that a library subclass hides. The separate LRU chapter explains the combined invariant and eviction trace in detail.
+
+A subclass using LinkedHashMap is a library-based solution. If an interviewer forbids built-in map storage or asks specifically for manual links, state that constraint and use the appropriate implementation; the two approaches should not be presented as equivalent amounts of implementation work.
+
+<span id="common-mistakes"></span>
+## Ordered-map failure cases
+
+Do not confuse insertion order, access order and sorted order. Replacing an existing insertion-order key does not move it to the end. containsKey does not refresh access recency. Access order is not automatically thread-safe; coordinate the full lookup/relink/eviction protocol.
+
+<span id="exercises-and-interview-questions"></span>
+## LinkedHashMap interview questions and exercises
+
+<details>
+<summary>Why can get invalidate an access-order iterator?</summary>
+
+The operation can change encounter-order links and associated modification bookkeeping. Although the associated value is only read, the container structure is updated.
+
+</details>
+
+<details>
+<summary>Does initial capacity bound cache entries?</summary>
+
+No. Initial hash-table capacity is a storage sizing input. Eviction requires an explicit mapping-count/weight policy, such as removeEldestEntry in the teaching cache.
+
+</details>
+
+<details>
+<summary>Why use LinkedHashMap instead of TreeMap for insertion order?</summary>
+
+TreeMap orders by comparisons, independent of insertion history. LinkedHashMap maintains a separate order chain, which expresses the required encounter order without sorted-key semantics.
+
+</details>
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why can two coordinate systems coexist in one map?</summary>
+
+The table locates candidates by hash while separate before/after links define encounter order. Changing capacity can change bucket coordinates without changing insertion/access history.
+
+</details>
+
+<details>
+<summary>What does removeEldestEntry fail to specify for a production cache?</summary>
+
+It does not by itself define expiration, weighted memory bounds, concurrent access, load deduplication or failure/cancellation policy. A mapping-count eviction hook is one small mechanism.
+
+</details>
+
+<details>
+<summary>Why might composition be safer than a public cache subclass?</summary>
+
+It can expose only operations that preserve the cache contract, rather than inheriting order-positioning and mutation methods whose semantics were never considered by the cache API.
+
+</details>
+
+<span id="references"></span>
+## Primary LinkedHashMap references
+
+- [LinkedHashMap order hooks and access rules](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/LinkedHashMap.java)
+- [HashMap storage foundation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/HashMap.java)

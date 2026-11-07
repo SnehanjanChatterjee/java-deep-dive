@@ -1,0 +1,114 @@
+---
+title: "Intrinsic monitors, wait and notification"
+module: "concurrency"
+group: "Locks and coordination"
+summary: "Protect compound state with one monitor and implement a closeable guarded mailbox without missed conditions."
+order: 370
+version: "Java 8+ · source analysis OpenJDK 25"
+prerequisites: ["concurrency/memory-model"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## A monitor protects an invariant
+
+Every object can serve as an intrinsic monitor. synchronized acquires that monitor and releases it on normal or exceptional block exit. An instance synchronized method locks its receiver; a static synchronized method locks the declaring Class object. Locking two different instances does not protect a shared static field merely because the methods have the same name.
+
+Mutual exclusion and publication are related but separate benefits. One owner at a time can update the protected invariant, and unlock followed by a later lock of the same monitor creates a happens-before path. All participating reads and writes must follow the protocol. A getter reading the field without the monitor is not repaired by a synchronized setter elsewhere.
+
+Monitors are reentrant: a thread already holding a monitor may enter it again. Each acquisition still has to be balanced by exit. Reentrancy does not make callbacks safe: a callback can observe an invariant temporarily broken by its caller, reenter unexpectedly or request another lock in a conflicting order.
+
+<span id="worked-example"></span>
+## A condition is state, not an event
+
+Suppose a mailbox has one slot and a closed flag. A producer may proceed when the slot is free and the mailbox is open. A consumer may proceed when there is a value, or finish when closure plus emptiness is observed. Notifications do not store these facts. The fields themselves are the durable condition.
+
+Always check the predicate under the same monitor that guards the mutation. Testing it outside and entering the lock afterward creates a race between the test and action. A notification delivered before a thread calls wait is not remembered as a token; correct predicate checking avoids depending on such tokens.
+
+```java
+synchronized (monitor) {
+    while (!predicate()) {
+        monitor.wait();
+    }
+    performGuardedChange();
+}
+```
+
+This is a pattern excerpt, with predicate and change operating on state protected by monitor. wait atomically releases that monitor while suspending and reacquires it before returning or throwing the relevant interruption outcome. It does not release unrelated locks held by the thread.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Why wakeup requires a while loop
+
+| Event | State consequence |
+| --- | --- |
+| Producer inserts a value and notifies | A consumer becomes eligible to compete |
+| Another consumer acquires the monitor first | It may consume the only value |
+| Original awakened consumer later acquires | The slot can already be empty again |
+| Consumer rechecks in while | It waits safely rather than returning nonexistent data |
+
+Spurious wakeups are another reason for the loop. notify/notifyAll do not transfer ownership immediately; the notifier retains the monitor until it exits. A woken thread must reacquire before using guarded state. Sleep has none of this release/reacquire behavior.
+
+<Diagram client:visible definition={"flowchart TD\n L[Acquire mailbox monitor] --> P{Value present or closed?}\n P -->|no| W[wait releases monitor]\n W --> R[Wake and reacquire]\n R --> P\n P -->|yes| D[Drain one value or observe closed empty]\n D --> N[Notify contenders and release]"} caption="A consumer loops on the protected predicate after every wakeup, because a notification is not ownership of a value." />
+
+<span id="java-implementation"></span>
+## Complete closeable monitor mailbox
+
+<JavaExample file="MonitorMailbox.java" output={"message\nnull\nclosed"} />
+
+put first rejects null, because null represents an empty slot. It waits while occupied and still open. After waking it checks closure before writing, so a producer awakened by close does not insert late work. A successful put publishes the item, then wakes contenders to recheck their predicates.
+
+take waits while empty and open. If a value exists, including after closure, it saves and clears that value before notifying. If closed and empty, it returns null as the terminal result. close sets the terminal flag and wakes all waiters. The policy is drain-on-close: already accepted data survives closure, while future writes fail. This is a declared teaching contract, not the only possible queue shutdown policy.
+
+The code uses one monitor and one wait set for producers and consumers. notifyAll avoids waking only a waiter whose predicate still cannot proceed. A broader bounded queue can instead use separate Conditions for notEmpty/notFull, discussed in the locks chapter. A notification must follow the state change under the same lock.
+
+<span id="common-mistakes"></span>
+## Interruption, ownership and exception paths
+
+Calling wait or notify without owning the target monitor throws IllegalMonitorStateException. Calling them on an object different from the synchronized object is a common source of that failure. A normal contended synchronized entry is not an interruptible acquisition: interrupting a BLOCKED entrant does not make that entry throw InterruptedException.
+
+In this mailbox, an interrupted wait propagates InterruptedException before the method performs its guarded write/read. It does not silently return an invented value. An interrupt is not rollback of operations that already completed. If a larger operation removes an item and then fails while processing it, retry/acknowledgement semantics belong to that larger protocol.
+
+## Timed waits and choosing alternatives
+
+A timed guarded wait must maintain one remaining-time budget using monotonic elapsed time. Restarting the full timeout after every notification can wait much longer than requested. A timeout bounds the wait policy, not an exact real-time return deadline, because lock reacquisition and scheduling can add delay.
+
+Use an existing BlockingQueue when its contract fits instead of writing a queue solely to demonstrate synchronization in application code. Implementing the mailbox is useful in an interview because it makes predicate, ownership, closing and interruption reasoning visible. It is deliberately not a complete production blocking queue with fairness, capacity policies and iterator support.
+
+<span id="exercises-and-interview-questions"></span>
+## Interview questions and coding solution
+<details>
+<summary>Why not use if around wait?</summary>
+
+The predicate may be false after a spurious wakeup or after another contender changes state first. Recheck under the monitor in a loop; the notification itself does not authorize proceeding.
+
+</details>
+
+<details>
+<summary>Why notifyAll instead of notify here?</summary>
+
+One monitor wait set contains both producer and consumer conditions. Waking an arbitrary waiter can select one that cannot progress while a useful waiter remains asleep. notifyAll lets contenders recheck; separate condition queues can target a class of waiter more precisely.
+
+</details>
+
+<details>
+<summary>What should happen when close races with a blocked put?</summary>
+
+The put wakes, reacquires the monitor and observes closed before writing. It fails explicitly. If it had already inserted before close obtained the monitor, the value is accepted and remains drainable under this contract.
+
+</details>
+
+<details>
+<summary>How do you test a blocked consumer without sleeps?</summary>
+
+Start a consumer with a coordination signal, arrange a put or close, capture either result or failure, and join with a bounded test timeout. Assert the observable contract, not an arbitrarily sampled Thread.State.
+
+</details>
+
+<span id="references"></span>
+## Primary references
+
+- [Object wait/notify ownership and wakeup contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Object.java)
+- [BlockingQueue established alternatives](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/concurrent/BlockingQueue.java)

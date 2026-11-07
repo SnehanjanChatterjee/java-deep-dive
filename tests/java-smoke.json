@@ -1,0 +1,362 @@
+[
+  {
+    "class": "CompileRun",
+    "expected": "14"
+  },
+  {
+    "class": "TypeConversions",
+    "expected": "-2147483648\n-126\ntrue"
+  },
+  {
+    "class": "ParameterValues",
+    "expected": "Mira"
+  },
+  {
+    "class": "TextAndArrays",
+    "expected": "3\n2\nJava\nJava 25"
+  },
+  {
+    "class": "CompositionExample",
+    "expected": "90"
+  },
+  {
+    "class": "ValueContracts",
+    "expected": "1"
+  },
+  {
+    "class": "OutcomeModel",
+    "expected": "SUCCESS:saved"
+  },
+  {
+    "class": "ResourceFailures",
+    "expected": "body\n1"
+  },
+  {
+    "class": "GenericCopy",
+    "expected": "[1, 2]"
+  },
+  {
+    "class": "CollectionChoices",
+    "expected": "[b, a]\nfirst"
+  },
+  {
+    "class": "DynamicArrayDemo",
+    "expected": "20\n30\n2"
+  },
+  {
+    "class": "LruCacheDemo",
+    "expected": "false\n1"
+  },
+  {
+    "class": "FunctionalValues",
+    "expected": "java\nfallback"
+  },
+  {
+    "class": "StreamAggregation",
+    "expected": "{java=2, jvm=1}"
+  },
+  {
+    "class": "DecimalAndTime",
+    "expected": "0.33\n2025-01-02"
+  },
+  {
+    "class": "FilesAndBuffers",
+    "expected": "Mira\n42"
+  },
+  {
+    "class": "MemoryVisibility",
+    "expected": "1"
+  },
+  {
+    "class": "LatchCoordination",
+    "expected": "2"
+  },
+  {
+    "class": "AsyncComposition",
+    "expected": "42\n15"
+  },
+  {
+    "class": "BoundedQueueDemo",
+    "expected": "first\nsecond\nthird"
+  },
+  {
+    "class": "ResourceBound",
+    "expected": "1\n2"
+  },
+  {
+    "class": "InitializationOrder",
+    "expected": "7\nstatic\ninstance"
+  },
+  {
+    "class": "ReferenceLifetime",
+    "expected": "1"
+  },
+  {
+    "class": "ThreadInspection",
+    "expected": "TERMINATED"
+  },
+  {
+    "class": "ObservableWork",
+    "expected": "499500"
+  },
+  {
+    "class": "ReflectionExample",
+    "expected": "Hello Mira"
+  },
+  {
+    "class": "ModuleBoundary",
+    "expected": "JAVA"
+  },
+  {
+    "class": "ValidatedIdentifier",
+    "expected": "42\nrejected"
+  },
+  {
+    "class": "ContractExample",
+    "expected": "7\n4\nrejected"
+  },
+  {
+    "class": "CompatibleApi",
+    "expected": "Hello Mira\nWelcome Mira"
+  },
+  {
+    "class": "ScoreTracker",
+    "expected": "97\ntrue\n2"
+  },
+  {
+    "class": "ImmutableSchedule",
+    "expected": "1000\n1000\ntrue"
+  },
+  {
+    "class": "ResourceFailureTrace",
+    "expected": "body\nclose B\nclose A\nclose B\nclose A"
+  },
+  {
+    "class": "GenericAlgorithms",
+    "expected": "[3, 1, 2]\n3\n[3, 1, 2]"
+  },
+  {
+    "class": "SimpleArrayList",
+    "expected": "20\n30\n2\nnull"
+  },
+  {
+    "class": "IntMinHeap",
+    "expected": "1\n2\n3\n4"
+  },
+  {
+    "class": "LinkedLruCache",
+    "expected": "1\nnull\n3\n2"
+  },
+  {
+    "class": "StreamCollectorLab",
+    "expected": "count=4, total=10\n{even=2, odd=2}"
+  },
+  {
+    "class": "TimeBoundaryLab",
+    "expected": "0\n2\n1.0 equals 1.00: false\n1.0 compares to 1.00: 0"
+  },
+  {
+    "class": "ChannelCopyLab",
+    "expected": "copied 5 bytes\nhello"
+  },
+  {
+    "class": "SafePublicationLab",
+    "expected": "42\nlost update=1"
+  },
+  {
+    "class": "ExecutorSaturationLab",
+    "expected": "rejected\ncompleted=3"
+  },
+  {
+    "class": "MetadataLab",
+    "expected": "true\nHello Mira\nHello Mira\nHello Mira\nHello Mira"
+  },
+  {
+    "class": "SimpleHashSet",
+    "expected": "true\nfalse\ntrue\n1\nfalse"
+  },
+  {
+    "class": "OptimisticPoint",
+    "expected": "5.0\n10.0"
+  },
+  {
+    "class": "CompletableFutureLab",
+    "expected": "score=43\nrecovered\ntrue"
+  },
+  {
+    "class": "StringInterviewAlgorithms",
+    "expected": "true\ntrue\nfalse"
+  },
+  {
+    "class": "ArrayListExample",
+    "expected": "[10, 15, 20, 30]\n15\n[10, 30]\n[99, 30]"
+  },
+  {
+    "class": "LinkedListExample",
+    "expected": "[A, B, C]\nC\n[A, B]\nB"
+  },
+  {
+    "class": "HashSetExample",
+    "expected": "2\nfalse\n[B, A, C]\n[B, C, A]"
+  },
+  {
+    "class": "TreeMapExample",
+    "expected": "[10, 20, 30]\n20\n30\n[10, 30]"
+  },
+  {
+    "class": "TreeSetExample",
+    "expected": "2\n1\n10\n20\n[30, 20, 10]"
+  },
+  {
+    "class": "LinkedHashMapExample",
+    "expected": "[A, B]\n[B, C, A]\n[B, C, A]"
+  },
+  {
+    "class": "ArrayDequeExample",
+    "expected": "A\n[B, C]\ntop\nnull"
+  },
+  {
+    "class": "PriorityQueueExample",
+    "expected": "1\n1\n2\n3\n4\n4"
+  },
+  {
+    "class": "LinkedHashSetExample",
+    "expected": "[B, A, C]\nfalse\n[B, A, C]\n[B, C, A]"
+  },
+  {
+    "class": "DoublyLinkedList",
+    "expected": "B\nC\nreused"
+  },
+  {
+    "class": "RingDeque",
+    "expected": "A\nC\nstart\nB\nnull"
+  },
+  {
+    "class": "ConcurrentMapExample",
+    "expected": "2000\n2000\n2000\nnull rejected"
+  },
+  {
+    "class": "BigDecimalExample",
+    "expected": "false\n0\n0.33\n125\nfraction rejected"
+  },
+  {
+    "class": "CoreDispatchLab",
+    "expected": "child-object\nchild-string\nlong\nInteger\nvarargs"
+  },
+  {
+    "class": "CoreArrayOwnershipLab",
+    "expected": "9\nfalse\ntrue\n1\ncomponent rejected"
+  },
+  {
+    "class": "CoreErasureLab",
+    "expected": "JAVA\n1\ntrue"
+  },
+  {
+    "class": "CoreCheckout",
+    "expected": "2500\npolicy rejected"
+  },
+  {
+    "class": "CoreTimeResolution",
+    "expected": "3600\n12:00\n13:00\ngap rejected"
+  },
+  {
+    "class": "CoreFramedText",
+    "expected": "0\n1\n8364\n0"
+  },
+  {
+    "class": "CoreInitializationLab",
+    "expected": "7\nloaded without initialization\ninitialized\n42\nfirst initialization failure\nlater erroneous class"
+  },
+  {
+    "class": "CoreSlidingWindow",
+    "expected": "[3, 3, 5, 5, 6, 7]"
+  },
+  {
+    "class": "CoreTopK",
+    "expected": "[5, 6, 7]"
+  },
+  {
+    "class": "CorePurchaseCollector",
+    "expected": "{A=2:300, B=1:300}\n{A=2:300, B=1:300}"
+  },
+  {
+    "class": "CoreAuthenticatedEncryption",
+    "expected": "message\ntamper rejected"
+  },
+  {
+    "class": "CoreRetentionLab",
+    "expected": "16\n16\n32\n0"
+  },
+  {
+    "class": "CoreHotLoop",
+    "expected": "true\ntrue"
+  },
+  {
+    "class": "CoreOptionalBoundary",
+    "expected": "443\n8080\ninvalid port"
+  },
+  {
+    "class": "TaskCancellationLesson",
+    "expected": "true\ncancelled result\ncleanup finished"
+  },
+  {
+    "class": "ForkJoinRangeSum",
+    "expected": "5\n0"
+  },
+  {
+    "class": "CloseableWorkQueue",
+    "expected": "A\nB\nnull"
+  },
+  {
+    "class": "SnapshotIterationLesson",
+    "expected": "[A, B]\n[changed, B, C]\nold-new"
+  },
+  {
+    "class": "ThreadContextLesson",
+    "expected": "outer\ninner\nouter\nnull"
+  },
+  {
+    "class": "CompletionOutcomeLesson",
+    "expected": "fallback\nsource failed=true\nobserved cause=source\nall still waiting=true\nall cause=source"
+  },
+  {
+    "class": "ThreadLifecycleLab",
+    "expected": "NEW\nTERMINATED\ntrue"
+  },
+  {
+    "class": "VolatilePublicationLab",
+    "expected": "42"
+  },
+  {
+    "class": "AtomicCounterLab",
+    "expected": "true\nfalse\n1\nfalse"
+  },
+  {
+    "class": "MonitorMailbox",
+    "expected": "message\nnull\nclosed"
+  },
+  {
+    "class": "ConditionMailbox",
+    "expected": "null\nmessage\nnull"
+  },
+  {
+    "class": "SynchronizerLab",
+    "expected": "41"
+  },
+  {
+    "class": "OrderedTransferLab",
+    "expected": "200"
+  },
+  {
+    "class": "CounterComparisonLab",
+    "expected": "2000\n2000"
+  },
+  {
+    "class": "OneShotSignal",
+    "expected": "42\nfalse"
+  },
+  {
+    "class": "ScheduledWorkLab",
+    "expected": "cancelled=true\nfailed runs=1"
+  }
+]

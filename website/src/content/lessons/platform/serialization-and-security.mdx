@@ -1,0 +1,192 @@
+---
+title: "Serialization, validation and security boundaries"
+module: "platform"
+group: "Data and trust boundaries"
+summary: "Recognize trust boundaries and preserve object invariants when data enters a system."
+order: 640
+version: "Java 8+"
+prerequisites: ["reliability/exceptions-and-resources"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Reconstruction and trust boundaries
+
+Serialization turns an object representation into transferable data; deserialization reconstructs data or objects. Native Java serialization has compatibility and security implications beyond simply implementing Serializable. Untrusted serialized input can cause dangerous object construction or resource consumption, so avoid treating deserialization as harmless parsing.
+
+serialVersionUID participates in native serialization compatibility, but a matching UID is not a complete semantic compatibility guarantee. A reconstructed object must still satisfy domain invariants. Prefer deliberately designed formats and validation for external boundaries, with appropriate size/depth limits and filtering where native serialization is unavoidable.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Filter, reconstruct and validate a value
+
+The filtered reconstruction example accepts a bounded Score graph, validates restored score state and rejects an unrelated serialized collection. The allow-list, graph metrics, readObject validation and top-level type check each enforce a different boundary. The ordinary identifier example later isolates syntax/range validation; it is not presented as a deserialization implementation.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Serialization graphs and security policies
+
+<Diagram client:visible definition={"flowchart TD\n U[External input] --> P[Parse bounded representation]\n P --> V[Validate domain invariants]\n C[Caller context] --> A[Authorize operation]\n V --> O[Operation]\n A --> O"} caption={"Successful parsing is not proof of valid domain state or authorization. Both checks are required at the appropriate boundary."} />
+
+### What native serialization actually records
+
+Serializable is a marker interface. ObjectOutputStream writes a graph using object identities and handles, preserving shared references and cycles rather than writing every repeated reference as an unrelated object. Default serialization includes eligible non-static, non-transient instance fields. Static state belongs to the class, not the serialized object. Transient fields return to defaults unless custom logic restores them; transient is not encryption and does not guarantee a secret never appears elsewhere in a graph or custom write method.
+
+Ordinary Serializable reconstruction does not simply invoke each serializable class's normal constructor. The first nonserializable superclass's accessible no-argument constructor participates, while serialization mechanisms restore serializable state. Records have different serialization construction semantics involving their canonical constructor. Externalizable exposes an explicit format protocol and construction requirements; it is not automatically safer.
+
+### Compatibility and invariants
+
+Declare serialVersionUID deliberately for a type using native serialization. A mismatching UID can cause InvalidClassException. Keeping the same UID allows some structural evolution but cannot guarantee business invariants or meaningful defaults for a new field. Removing/changing fields and custom read/write logic need explicit compatibility analysis. Never change a UID merely to silence a compatibility failure without understanding the stored representation.
+
+A custom `readObject` should validate restored state and reject invalid objects with InvalidObjectException. The constructor's ordinary validation is not a sufficient defense for conventional Serializable classes. A serialization proxy can reconstruct through a controlled public invariant boundary, but still needs a secure format/allow-list policy and does not make arbitrary object graphs trustworthy.
+
+### Executable filtered reconstruction, Java 25
+
+The complete `modern/FilteredSerialization.java` source appears in the Java implementation section below.
+
+The code round-trips a bounded immutable Score and rejects a serialized ArrayList. The byte-array length is checked before creating ObjectInputStream. A per-stream ObjectInputFilter bounds graph depth, references and array length, and permits only the expected Score class. A callback with no class information can still carry graph metrics; the filter checks those before returning UNDECIDED. A final top-level type check rejects an unexpected result even if no class callback supplied that information.
+
+`Score.readObject` restores fields then validates the score range. `readResolve`/custom hooks can alter reconstruction behavior in other classes, which is why a broad package allow-list is weaker than a deliberately narrow type policy. Filtering is one layer, not a guarantee that every allowed class's behavior is harmless. Do not deserialize arbitrary internet data just because a stream filter exists.
+
+<Diagram client:visible definition={"flowchart TD\n B[Bound input byte length] --> F[Filter class and graph metrics]\n F --> R[Restore allowed representation]\n R --> V[Validate object invariants]\n V --> T[Check top-level type]\n T --> U[Use expected domain value]\n F -->|reject| X[Explicit failure]\n V -->|invalid| X"} caption={"Native reconstruction requires bounded input, a deliberate type/graph policy and domain validation; serialVersionUID is not a security boundary."} />
+
+### Security API distinctions
+
+A cryptographic hash detects changes only when the expected digest is trusted; an attacker who can replace both content and digest defeats that check. An HMAC authenticates using a shared secret. A digital signature verifies origin/integrity with a public key and corresponding private-key signing operation. Encryption protects confidentiality, while authenticated encryption additionally protects integrity. Password storage needs a purpose-built salted password-hashing/KDF scheme, not a fast general-purpose SHA digest.
+
+Use SecureRandom for security-sensitive randomness. Nonce uniqueness and key ownership are essential for modes such as AES-GCM; random-looking data alone does not prove a construction is secure. Prefer established protocols/libraries and rotation/storage policies to hand-built crypto. This chapter teaches boundaries and API reasoning, not a complete cryptography course.
+
+### TLS, validation and obsolete advice
+
+TLS peer certificate validation and hostname verification establish who the encrypted channel reaches. Disabling either to make an error disappear breaks that property. Distinguish the truststore used to trust peers from a keystore holding identity keys. Parsing a certificate does not itself establish trust.
+
+Validate lengths, ranges and canonical forms at input boundaries; authorize operations separately using authenticated caller context. The Security Manager is permanently disabled in Java 24+, so old advice to install one as an in-process sandbox is obsolete on Java 25. Process/container isolation and explicit resource boundaries are different operational controls.
+
+### Interview questions
+
+Why can an invalid object bypass constructor validation through native deserialization? Why do transient and serialVersionUID solve different problems? Why can a successful TLS handshake still be unsafe if hostname verification was disabled? Explain each guarantee precisely rather than naming an API as a complete security solution.
+
+## Object graphs, authenticated data and trust decisions
+
+### Native reconstruction is graph processing
+
+Serialization records object identities/handles so repeated references and many cycles can be preserved. Reconstruction can invoke type-specific hooks and bypass ordinary Serializable constructors, which is why constructor validation alone is insufficient. Enums and records have their own serialization rules; records use canonical-constructor semantics and ignore some ordinary serialization hooks.
+
+A matching serialVersionUID permits particular compatibility processing; it does not prove restored business state is valid. Filters restrict classes/graph metrics, while invariant validation checks the resulting domain value. Both are layers. A broad package allow-list can still admit classes with unsafe behavior or excessive resource use. Prefer a deliberately designed external representation when possible.
+
+### Authentication is separate from encryption
+
+A digest only detects tampering when the expected digest is trusted. HMAC uses a shared secret to authenticate data; signatures verify with a public key corresponding to the signer's private key. Encryption protects confidentiality, while authenticated encryption additionally rejects modified ciphertext under its protocol. Password hashing is a different intentionally expensive/salted derivation problem, not an application of a fast digest to a password String.
+
+<JavaExample file="CoreAuthenticatedEncryption.java" output={"message\ntamper rejected"} />
+
+The example uses standard AES-GCM through JCE with a fresh ephemeral key and 12-byte nonce. It decrypts the original message, then rejects a modified authentication tag/ciphertext. It does not print random ciphertext or claim a complete wire format. A production protocol must guarantee nonce uniqueness for the key's lifetime, define associated data and own key storage/rotation. Reusing a nonce with the same key can break GCM's security properties.
+
+### TLS trust is an identity decision
+
+A parsed certificate is not automatically trusted. Peer-chain validation and hostname verification establish different necessary properties of the expected endpoint. Disabling checks to remove an error preserves encryption bytes while losing the intended identity guarantee. Truststores and identity keystores have different roles; neither should be replaced with hard-coded secret material in course examples.
+
+### Solved design exercise
+
+At an external boundary, bound input size, parse a deliberately restricted representation, validate domain invariants, authenticate the relevant caller/message and authorize the operation. Each step answers a different question. An integer can parse successfully but violate a range; a valid ID can still be unauthorized; encrypted data can still be modified unless integrity is authenticated. Keep these guarantees explicit rather than calling one API “secure input.”
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Run filtered reconstruction and validation
+
+### Filtered serialization with invariant validation
+
+<JavaExample file="modern/FilteredSerialization.java" output={"42\nrejected"} />
+
+### A separate identifier-validation boundary
+
+The executable example validates a bounded positive identifier before using it. It demonstrates the ordinary input-validation boundary rather than deserializing untrusted objects. Rejecting invalid data early prevents downstream assumptions from silently becoming false.
+
+The following program is a complete executable example. Compile with `javac ValidatedIdentifier.java` and run with `java ValidatedIdentifier`.
+
+<JavaExample file="ValidatedIdentifier.java" output={"42\nrejected"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Serialization and trust-boundary pitfalls
+
+Do not assume Serializable validates objects, use serialVersionUID as a security control, store secrets in source, or invent cryptographic constructions. Validation and authorization are independent: well-formed input may still be forbidden for a caller.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Serialization and security interview practice
+
+### Why is validation still needed after parsing succeeds?
+
+<details>
+<summary>Explanation</summary>
+
+Parsing establishes that the input fits a representation or syntax. Business invariants, size limits and access rules are separate. An integer can be syntactically valid while being outside an accepted range, and an otherwise valid identifier may refer to a resource the caller cannot access.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Why is serialVersionUID not input validation?</summary>
+
+It participates in serialization version compatibility, not the truth of restored domain values. A matching UID can accompany invalid or malicious state. Use a deliberate allowed representation, graph limits and invariant validation; prefer avoiding native reconstruction at untrusted boundaries.
+
+</details>
+
+<details>
+<summary>Why check the top-level result after applying a filter?</summary>
+
+The filter is invoked for particular reconstruction events and graph information; it is not a complete declaration that the eventual result has the expected application type. An explicit result-type check protects that separate boundary.
+
+</details>
+
+<details>
+<summary>Does transient encrypt a field?</summary>
+
+No. It excludes the field from default serialization. The value may still appear in another field, object, log or custom serialization path. Confidentiality requires a separate data-handling and cryptographic policy.
+
+</details>
+
+### Coding exercise
+
+Design a small immutable request value with range and length constraints. Test boundary values and explain where authorization belongs relative to parsing and validation.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Why can encrypted data still require integrity protection?</summary>
+
+Some encryption schemes alone do not authenticate modifications. Use an established authenticated construction/protocol with correct nonce/key handling rather than inventing a custom encryption-plus-checksum design.
+
+</details>
+
+<details>
+<summary>Does filtering native deserialization make every allowed class harmless?</summary>
+
+No. Allowed types can still have reconstruction hooks or semantic/resource risks. A filter narrows the graph; it does not validate every domain invariant or establish a complete trust policy.
+
+</details>
+
+<details>
+<summary>Why does a matching UID not prove compatibility?</summary>
+
+It is one version-compatibility input for the serialization mechanism. New defaults, changed invariants or type-specific read logic can still make the reconstructed state semantically incompatible.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Serialization and security references
+
+- [Serializable graph and compatibility contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/io/Serializable.java)
+- [ObjectInputStream reconstruction and hooks](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/io/ObjectInputStream.java)
+- [ObjectInputFilter graph metrics](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/io/ObjectInputFilter.java)
+- [Serialization filters](https://openjdk.org/jeps/290)
+- [Context-specific filter factories](https://openjdk.org/jeps/415)
+- [Security Manager permanently disabled](https://openjdk.org/jeps/486)
+- [SecureRandom contract](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/security/SecureRandom.java)

@@ -1,0 +1,188 @@
+---
+title: "Types, conversions and numeric behavior"
+module: "language"
+group: "Types and expressions"
+summary: "Separate primitive values, object references and conversion rules."
+order: 20
+version: "Java 8+"
+prerequisites: ["execution/compile-and-run"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts" aria-hidden="true"></span>
+
+## Primitive values, reference types and conversions
+
+Primitive variables store values such as integers and booleans. Reference variables hold references to objects or null. The declared type controls which operations are available at compile time; the runtime class describes the referenced object. Assignment conversion, arithmetic promotion, boxing and casting are different operations and should not be treated as interchangeable.
+
+Arithmetic on byte and short operands commonly promotes them to int. Integer arithmetic can overflow without raising an exception. Floating-point values approximate many decimal fractions, so direct equality is unsuitable for some calculations. Wrapper types permit null and introduce allocation/caching behavior that should not determine application equality.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Trace overflow, narrowing and boxing
+
+The maximum int plus one wraps to the minimum int. Casting a large int to byte keeps only the low eight bits and interprets them as a signed byte. The wrapper comparison uses equals rather than reference identity; this remains correct regardless of whether wrappers were cached.
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Promotion, precision and runtime casts
+
+<Diagram client:visible definition={"flowchart TD\n A[Variable] --> B[Primitive value]\n A --> C[Reference or null]\n C --> D[Object]\n C --> E[Unboxing]\n E --> F[Primitive value or null failure]"} caption={"Primitive values and references are different categories. Unboxing requires a non-null wrapper."} />
+
+### The type system before conversion rules
+
+Java has eight primitive types. `byte`, `short`, `int` and `long` are signed integers; `char` is an unsigned 16-bit UTF-16 code unit. `float` and `double` follow binary floating-point arithmetic. `boolean` has logical values and does not convert to or from a number. A reference's declared type can be a class, interface, array or type variable. `null` has no object to dereference.
+
+Fields and array components receive default values: zero, false or null. Local variables must be definitely assigned before use. `var` (Java 10+) asks the compiler to infer a local variable's static type; it does not make the variable dynamically typed. `var text = "hello"` remains a String variable and cannot later hold an Integer. `var value = null` supplies no usable inferred type.
+
+### Conversion decisions with examples
+
+| Expression | Result or failure | Reason |
+| --- | --- | --- |
+| `long n = 1;` | `1L` | Widening primitive conversion |
+| `byte n = 127;` | Accepted | Representable constant-expression assignment |
+| `int x = 127; byte n = x;` | Compile-time error | Ordinary variable assignment does not narrow implicitly |
+| `byte n = 1; n = n + 1;` | Compile-time error | Binary arithmetic promotes to int |
+| `byte n = 127; n += 1;` | `-128` | Compound assignment includes an implicit narrowing conversion |
+| `double x = 5 / 2;` | `2.0` | Integer division happens before assignment |
+| `double x = 5 / 2.0;` | `2.5` | A floating operand changes numeric promotion |
+| `Integer x = null; int y = x;` | `NullPointerException` | Unboxing dereferences the absent wrapper |
+| `Object x = "a"; Integer y = (Integer) x;` | `ClassCastException` | A cast checks the existing object; it does not convert it |
+
+`byte`, `short` and `char` normally promote to int in arithmetic. Then binary promotion prefers double, float, long, or int according to the operands. Shift operators promote operands separately; the shift distance uses only five bits for int and six for long. `1 << 32` is therefore `1`, not a 33-bit int value. `>>>` introduces zero bits; `>>` preserves the sign bit.
+
+### Overflow, literals and precision
+
+The type of an expression is determined before assigning the result. `long total = 50_000 * 50_000` multiplies two ints and overflows before conversion to long. `50_000L * 50_000` performs long arithmetic and yields `2_500_000_000L`. `Math.multiplyExact(50_000, 50_000)` detects the int overflow with `ArithmeticException`.
+
+A double can exactly represent integers only through a finite range of precision. Around `2^53`, adjacent long values can round to the same double. This is different from integer overflow: the floating result remains in range but loses distinguishing bits. Floating-point division by zero can produce infinity or NaN, while integer division by zero throws. NaN is unequal to itself under primitive `==`; use `Double.isNaN` when that is the property being tested.
+
+### Operators and control flow
+
+`&&` and `||` short-circuit; boolean `&` and `|` evaluate both operands. `value != null && value.isEmpty()` safely gates the dereference. Pre-increment changes a variable before yielding its value; post-increment yields its old value. Avoid expressions with several mutations: a correct answer should explain evaluation order rather than memorize a result.
+
+The conditional operator can trigger numeric promotion and unboxing across its alternatives. Prefer explicitly typed branches when null and wrappers are involved. In a switch statement, colon labels can fall through; arrow labels do not. A switch expression must yield a result on every required path. Pattern-switch behavior and null handling are developed in modern type modeling.
+
+### Explain rather than guess
+
+For each conversion question: identify the operand types, apply promotions, perform the operation in that type, and only then apply assignment conversion. This sequence explains why adding a cast after an overflow cannot recover the original mathematical value.
+
+## Reasoning through expression evaluation
+
+### Evaluation order is different from precedence
+
+Precedence determines how an expression groups; evaluation order determines when its operand computations occur. Java evaluates ordinary operand and argument expressions left to right. Parentheses can change grouping without making a later operand evaluate first. A left operand that throws can prevent the right operand from being evaluated. This is why a prediction answer should annotate each read, mutation and possible exception in order.
+
+```java
+int value = 1;
+final int total = value++ + ++value;
+// left yields 1 and stores 2; right stores/yields 3; total is 4, value is 3
+```
+
+This code is useful as a trace exercise, not a model for readable production arithmetic. Split state changes into separate statements when their order matters to domain behavior.
+
+### Division, remainder and signed boundaries
+
+Integer division truncates toward zero. Thus `-7 / 3` is -2 and `-7 % 3` is -1. The remainder is not a universally nonnegative mathematical modulo. `Math.floorMod` expresses a different operation useful for some cyclic indexes; an implementation still needs the correct divisor/domain assumptions. Adding a positive capacity to a negative result without checking for overflow is not a universal fix.
+
+The minimum signed int divided by -1 is a special overflow case: ordinary integer division produces the minimum int rather than throwing for overflow. Division by zero throws ArithmeticException. Do not infer the overflow behavior of one arithmetic operator from a different exact-arithmetic helper.
+
+### Representation and equality
+
+Primitive floating-point `+0.0 == -0.0` is true, while wrapper Double equality distinguishes their representations. Primitive NaN is unequal to itself, while Double's value-oriented methods use their own documented treatment. The comparison relation required by a hash collection is therefore not simply copied from primitive `==`.
+
+Wrapper caches are implementation/API details relevant to identity demonstrations. A correct application must not rely on two boxed numerical values sharing a reference. `Integer a = 1000; Integer b = 1000; a.equals(b)` expresses value comparison even when `a == b` is false. A wrapper can be null, so a seemingly harmless comparison with a primitive can first unbox and fail.
+
+### Control flow still obeys static types
+
+A classic switch statement can fall through colon labels; arrow rules avoid that fallthrough. A switch expression must provide a result on the required paths, using `yield` within a block where needed. Do not add a default merely to hide an unhandled domain alternative. Pattern switches add type/null/exhaustiveness rules, developed in the modern type-modeling lessons.
+
+Definite assignment applies even if a human expects a branch to run. Local variables do not receive the automatic default initialization used by fields and array elements. A `final` local must be assigned at most once along the permitted paths, while a final reference still permits mutation of its object.
+
+<span id="java-implementation" aria-hidden="true"></span>
+
+## Run the numeric-conversion examples
+
+The following program is a complete executable example. Compile with `javac TypeConversions.java` and run with `java TypeConversions`.
+
+<JavaExample file="TypeConversions.java" output={"-2147483648\n-126\ntrue"} />
+
+<span id="common-mistakes" aria-hidden="true"></span>
+
+## Numeric and null-handling pitfalls
+
+Do not use == for wrapper value equality, depend on wrapper caching, or assume a cast validates a value's business meaning. A null wrapper is not the number zero. Integer division truncates toward zero, while converting one operand to double changes the arithmetic operation.
+
+<span id="exercises-and-interview-questions" aria-hidden="true"></span>
+
+## Types and conversion interview practice
+
+### Why can widening a number lose information?
+
+<details>
+<summary>Explanation</summary>
+
+The target type can cover a wider numerical range while having insufficient precision to represent every integer exactly. A double has finite significant bits, so sufficiently large long values may round to the same floating-point value. Range and precision must be considered independently.
+
+</details>
+
+### Additional interview questions
+
+<details>
+<summary>Predict `long result = 50_000 * 50_000`.</summary>
+
+The int multiplication overflows to -1794967296, then that int is widened to long. A long destination does not change the arithmetic type of its operands. Use a long operand before multiplication or an exact arithmetic API with the required target width.
+
+</details>
+
+<details>
+<summary>Why does `byte b = 1; b += 1` compile while `b = b + 1` does not?</summary>
+
+Binary addition promotes b to int. Ordinary assignment cannot implicitly narrow that nonconstant int expression to byte. Compound assignment includes the narrowing conversion, which also means it can wrap rather than signal overflow.
+
+</details>
+
+<details>
+<summary>Is `final List<String> values` an immutable list?</summary>
+
+Final prevents reassignment of the values variable after initialization. It does not prevent add, remove or changes to mutable elements. An unmodifiable container and immutable elements are separate properties, and safe sharing adds publication/concurrency considerations.
+
+</details>
+
+### Coding exercise
+
+Test Math.addExact at the int boundaries and compare integer division with floating-point division. Add an explicit null-wrapper case and explain where the failure occurs.
+
+## Solved interview and debugging practice
+
+<details>
+<summary>Predict `-7 % 3` and explain a nonnegative cyclic-index alternative.</summary>
+
+The result is -1 because integer division truncates toward zero and remainder satisfies dividend = quotient×divisor + remainder. For a positive cycle size, Math.floorMod gives an appropriate nonnegative remainder. State the size/overflow contract instead of assuming `%` always produces an array index.
+
+</details>
+
+<details>
+<summary>Can a primitive comparison and wrapper equality disagree for doubles?</summary>
+
+Yes. Primitive equality considers positive and negative zero equal and NaN unequal to itself. Double.equals has representation-aware value semantics documented for wrappers. Choose the relation intentionally, especially when values become collection keys.
+
+</details>
+
+<details>
+<summary>Where does `Integer value = null; value == 0` fail?</summary>
+
+The comparison needs an int, so value is unboxed before equality can be evaluated. The null dereference produces NullPointerException. A fallback policy must be explicit; null is not automatically zero.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+
+## Type-system references
+
+- [Variables, primitive types and operators](https://dev.java/learn/language/constructs/basics/)
+- [Integer arithmetic and exact conversions](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Math.java)
+- [Floating-point values and NaN](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/Double.java)

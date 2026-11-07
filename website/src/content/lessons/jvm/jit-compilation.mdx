@@ -1,0 +1,119 @@
+---
+title: "JIT compilation, inlining and escape analysis"
+module: "jvm"
+group: "JIT and optimization"
+summary: "Explain profile-driven optimization and investigate it without confusing source shape with measured machine work."
+order: 590
+version: "Java 25 HotSpot concepts \u00b7 example Java 8+"
+prerequisites: ["jvm/memory-gc-jit"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Bytecode is an input to several execution paths
+
+A JVM can interpret bytecode and compile frequently used paths into native code. HotSpot can use tiered compilation to gather profiles and progressively optimize suitable methods/loops. The language contract specifies observable behavior; it does not require every source operation to survive as a corresponding native instruction.
+
+This distinction explains why a method can behave correctly while allocating less than a literal count of new expressions suggests, or why a warmed-up benchmark differs from a cold run. It does not mean the runtime may ignore required exceptions, synchronization or value results arbitrarily.
+
+## Profiles, hot methods and loop compilation
+
+The runtime collects information such as execution counts and observed receiver types. Frequently executed code can become a compilation candidate. On-stack replacement can compile a hot loop while an invocation is already running. Exact thresholds, compiler tiers and scheduling depend on the runtime/configuration; do not memorize one universal invocation count as the definition of JIT.
+
+Compiled assumptions can later become inappropriate. Loading another implementation or changing receiver distributions can affect a formerly simple call site. Deoptimization lets the runtime abandon optimized assumptions and reconstruct a suitable execution state. Recompilation or uncommon paths can therefore influence latency even without a source change.
+
+<Diagram client:visible definition={"flowchart TD\n B[Bytecode execution] --> P[Collect runtime profile]\n P --> C[Compile suitable hot code]\n C --> O[Optimize under guarded assumptions]\n O --> R[Continue optimized execution]\n O --> D[Assumption fails or uncommon path]\n D --> I[Deoptimize to valid execution state]\n I --> P"} caption="Optimization uses observed behavior and guards. Deoptimization preserves semantics when the optimized assumptions no longer fit." />
+
+## Inlining exposes more than call overhead
+
+Inlining places a callee's behavior into the optimizer's view of a caller. This can expose constants, eliminate redundant checks and enable escape analysis or other simplifications across what looked like a source-level boundary. A source method being small makes some opportunities plausible, but does not guarantee it will be inlined in every context.
+
+A monomorphic receiver profile can permit guarded specialization. A call site that sees many implementations can be harder to specialize. Polymorphism is a language feature; its measured cost depends on the optimized call site, surrounding work and runtime profile. Do not claim that every interface call pays one fixed virtual-call penalty.
+
+Inlining can also make a benchmark's intended computation disappear when its inputs/results allow folding or elimination. Returning an observable result and designing representative state are necessary controls, but still do not prove the benchmark answers an application-level question.
+
+## Complete optimization-constraint lab
+
+<JavaExample file="CoreHotLoop.java" output={"true\ntrue"} />
+
+LocalScore constructs a small Pair and immediately uses its two fields. If the object does not escape and optimization can see through the relevant calls, allocation/scalar state can potentially be eliminated. PublishedScore stores the object through a volatile static reference before computing the same numeric result. That publication is an additional observable operation and constrains optimization differently.
+
+The checksums match, and the published reference is present. The program does not print elapsed time or claim a speedup. The two paths intentionally have different observable semantics, so using their timing as proof that one equivalent application implementation is faster would be misleading.
+
+### What escape analysis can and cannot establish
+
+An allocation can escape through a return value, field, callback or retained alias. Analysis depends on what the optimizer can prove in its compiled view; incomplete inlining or other constraints can limit it. Scalar replacement can represent useful fields without a materialized object when identity/escape semantics permit.
+
+This is not a universal rule that all nonescaping objects move to the native stack. Some allocations remain, some disappear, and some can need materialization when execution deoptimizes. Explain the semantic constraints and inspect actual evidence instead of replacing “new” with “stack allocation” in every answer.
+
+## Inspect compilation without making timing claims
+
+Compile/run the lab on the selected JDK. HotSpot diagnostics such as `-XX:+PrintCompilation` can report compilation activity; `-XX:+UnlockDiagnosticVMOptions -XX:+PrintInlining` provides additional inlining diagnostics on supporting builds. Output includes runtime implementation detail and can vary. A log line should be interpreted with the method/tier/event it reports, not treated as a stable program output.
+
+A very short program may exit before an expected optimization occurs. A hot method can also have several compilation versions. Check the actual diagnostic output rather than asserting that the source's loop count guarantees a particular tier. Compilation logging itself changes the observation setup and is not a production performance benchmark.
+
+The benchmark chapter includes a complete JMH project with warmup/forks/state and result consumption. Use a harness for performance comparisons and profiles/diagnostics to investigate why a result occurs. Do not infer allocation elimination solely from unusually small elapsed time.
+
+## Common benchmark distortions
+
+Dead-code elimination removes work whose result is irrelevant. Constant folding replaces work whose outcome is known. Hoisting can move invariant computation out of a loop. Manual repetition can give the optimizer a different workload from independent application calls. Shared benchmark state can introduce contention absent from a thread-owned workload, or hide contention when the application actually shares it.
+
+Warmup is not a universal fixed waiting period. Record enough iterations/forks and variability to judge stability under the chosen setup. A measurement in nanoseconds per operation does not establish p99 request latency, and a micro-optimization in a negligible fraction of work has a small end-to-end ceiling.
+
+## Runtime memory and safepoints
+
+Compiled code occupies code-cache memory outside ordinary heap object storage. Metadata, thread stacks and native buffers are other process categories. Compilation and deoptimization can interact with safepoints/runtime coordination, but not every safepoint is a garbage collection. A stable heap is not proof that the whole JVM process has stable memory or latency.
+
+Collector flags, heap size, CPU load, JDK version and compilation policy can all affect a comparison. Change one hypothesis-relevant factor and keep the rest of the workload/configuration documented. A source diff plus one faster sample does not establish causality.
+
+## Interview questions with worked answers
+
+<details>
+<summary>Does every new expression cause a heap allocation in optimized execution?</summary>
+
+No. The optimizer can eliminate/materialize state differently when required semantics permit it. Source structure alone is not proof of actual allocation, and nonescape is not a blanket stack-placement guarantee.
+
+</details>
+
+<details>
+<summary>Why can inlining matter beyond the call instruction?</summary>
+
+It exposes callee behavior and values to optimization in the caller, enabling constant propagation, redundancy elimination and analysis across the former source boundary. The benefit depends on context, not only saving one call.
+
+</details>
+
+<details>
+<summary>What is deoptimization for?</summary>
+
+It abandons optimized assumptions when they no longer hold and returns to a valid execution state, potentially allowing later recompilation. It is part of preserving semantics under profile-driven optimization, not automatically a correctness bug.
+
+</details>
+
+<details>
+<summary>Why is the published path not a fair equivalent-work timing comparison?</summary>
+
+It performs a volatile publication the local path does not. Matching numeric results do not make all observable behavior equivalent. A performance comparison must include the actual required semantics, not remove them only from the supposedly faster branch.
+
+</details>
+
+<details>
+<summary>How do you investigate a suspiciously fast benchmark?</summary>
+
+Check whether results are consumed, inputs are nonconstant/representative, setup is outside or inside intentionally, loops changed optimization, and profiles/generated behavior match the intended operation. Repeat under an appropriate harness instead of trusting one timer sample.
+
+</details>
+
+## Coding/investigation exercise and solution
+
+Use the provided JMH lookup project to separate a lookup-only question from a construction-plus-lookup question. Keep size/hit distribution explicit and return the result. Then inspect compilation/allocation evidence under a recorded runtime. A useful conclusion says which workload was measured and what mechanism the evidence supports; it does not generalize to every collection or every Java release.
+
+For the CoreHotLoop lab, identify the fields/aliases that can escape and the volatile store that changes the contract. Predict which optimization is plausible, then compare that hypothesis with actual diagnostics. If a predicted inlining/allocation change is absent, report the limitation rather than inventing the desired result.
+
+## References
+
+- [HotSpot escape-analysis connection graph](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/opto/escape.hpp)
+- [HotSpot deoptimization implementation](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/runtime/deoptimization.cpp)
+- [Compiler control and diagnostic flags](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/hotspot/share/compiler/compilerDefinitions.cpp)
+- [JMH benchmark samples and guidance](https://github.com/openjdk/jmh)

@@ -1,0 +1,27 @@
+{
+  "name": "java-deep-dive",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "workspaces": [
+    "website"
+  ],
+  "scripts": {
+    "dev": "npm run prepare && npm run dev --workspace website -- --host 0.0.0.0 --port 4321",
+    "prepare": "node scripts/prepare-examples.mjs",
+    "build": "npm run prepare && npm run build --workspace website && node scripts/check-site.mjs",
+    "check": "npm run check --workspace website",
+    "test": "node --test tests/*.test.mjs",
+    "test:java": "bash scripts/test-java.sh",
+    "test:modern": "node scripts/test-modern.mjs"
+  },
+  "devDependencies": {
+    "cheerio": "1.0.0"
+  },
+  "optionalDependencies": {
+    "node-bin-darwin-arm64": "22.22.0"
+  },
+  "engines": {
+    "node": ">=22.19.0 <23"
+  }
+}

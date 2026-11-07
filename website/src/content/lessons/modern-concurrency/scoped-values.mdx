@@ -1,0 +1,91 @@
+---
+title: "Scoped values"
+module: "modern-concurrency"
+group: "Context and task lifetimes"
+summary: "Bind context to a bounded dynamic scope with explicit inheritance rules."
+order: 540
+version: "Java 25 \u00b7 final API"
+prerequisites: ["modern-concurrency/virtual-threads"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+<span id="concepts"></span>
+## Bounded context bindings
+
+ScopedValue shares a context value with callees during a bounded dynamic scope. It is final in Java 25. It is useful when intermediate methods should not need to carry a context argument solely to forward it, while explicit method parameters remain a clear default when practical.
+
+The accessible key controls which code can read the binding. The binding has a lifetime and can be shadowed by a nested binding. This does not freeze a mutable object stored as its value or make an arbitrary asynchronous callback inherit that context.
+
+<span id="worked-example"></span>
+## Trace binding and restoration
+
+Before the scoped action, isBound is false. ScopedValue.where binds request-42 while the supplied action runs; get reads that value in the dynamic scope. On return, isBound is false again. No matching remove call is required on the ordinary or exceptional exit path.
+
+Add a nested where for the same key and read inside and after it: the inner action observes its own binding, then the outer action again observes the outer value. This is shadowing over a bounded lifetime, not assignment to a globally mutable request variable.
+
+<span id="mechanics-and-tradeoffs"></span>
+## Scope, nesting and inheritance
+
+### Scoped values are bounded context bindings
+ScopedValue is final in Java 25. `ScopedValue.where(KEY, value).run(action)` binds a value during the action's dynamic execution; methods called within it can read through the same accessible key. A nested binding can shadow the value, and exiting restores the outer binding even after exceptions. Outside a binding, get fails; isBound allows an explicit policy.
+
+The binding is immutable, but an object stored in it can still be mutable. Prefer immutable context values. Scoped values avoid arbitrary long-lived set/remove protocols for this use case, while ThreadLocal remains useful for some per-thread mutable state. Ordinary newly created threads do not automatically inherit every scoped binding. StructuredTaskScope supports controlled inheritance from its owning scope; do not assume an arbitrary executor callback has captured the dynamic scope.
+
+### ThreadLocal lifetime and retained state
+ThreadLocal associates a value with a thread, rather than with one method invocation. In a reused platform worker, leaving a request-specific value installed can retain data and expose stale context to later work. Use a try/finally remove policy when a task owns a temporary binding. ThreadLocal map keys are weak, but retained values can still survive until stale entries are cleaned or the thread ends; weak keys alone are not a complete leak-prevention policy.
+
+InheritableThreadLocal copies context at thread creation, not automatically at every executor submission. Virtual-thread-per-task execution changes thread reuse but can multiply expensive per-thread values across large task counts. Scoped values address bounded context propagation; they do not replace every use of mutable thread-local state.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant O as Outer scope\n participant I as Inner scope\n C->>O: Bind value A\n O->>I: Shadow with value B\n I-->>O: Exit and restore A\n O-->>C: Exit and unbind"} caption={"Follow the scoped values relationships described above."} />
+
+<span id="java-implementation"></span>
+## Implement scoped context
+
+<JavaExample file="modern/ScopedValuesDemo.java" />
+
+For concurrent work, distinguish direct callees, ordinary newly created threads and subtasks created through the documented structured-scope inheritance mechanism. Capturing a lambda does not automatically capture every dynamic binding. Keep values immutable where possible and define task ownership before passing a scoped context into concurrent code.
+
+### Nested scopes and exceptional exit
+
+<JavaExample file="modern/ScopedNestingLesson.java" output={"outer\ninner\nouter\nbound=false"} />
+
+The outer run installs outer. The inner run temporarily shadows the same key with inner and throws. After the exception crosses the inner scope boundary, the catch inside the outer action observes outer again. Leaving the final outer boundary removes the dynamic binding. No task-specific mutable set/remove protocol is required for this lifetime.
+
+Only code with access to the key can read through it. Keep the key scoped according to the intended authority instead of making every context key globally accessible. The association is immutable within its binding, but the referenced object can still be mutable; sharing a mutable value needs its own concurrency policy.
+
+A Java 25 structured scope captures supported scoped bindings when the scope is opened and permits child inheritance under the documented lifetime constraints. Arbitrary executor tasks or manually created threads do not inherit every dynamic binding merely because a lambda was created inside it. Code that forks outside the appropriate binding lifetime can fail structure/lifetime checks. Use the selected JDK's ScopedValue and StructuredTaskScope contracts together rather than extrapolating from ThreadLocal inheritance.
+
+<span id="common-mistakes"></span>
+## Scoped-value mistakes
+
+Do not publish a key indiscriminately, store uncoordinated shared mutable state, assume all executors inherit bindings, or call get outside the bound scope without a policy. ThreadLocal still serves some mutable per-thread use cases; replacing it mechanically can change semantics.
+
+<span id="exercises-and-interview-questions"></span>
+## Scoped-value interview questions
+
+<details>
+<summary>What is restored after a nested binding throws?</summary>
+
+Exiting the inner dynamic scope restores the outer binding. Exiting the outermost scope leaves the key unbound. The lexical call structure gives the lifetime a clear boundary.
+
+</details>
+
+<details>
+<summary>Does immutable binding imply immutable data?</summary>
+
+No. The association is fixed during its scope, but a referenced object may remain mutable. Its mutation and sharing rules are a separate contract.
+
+</details>
+
+### Coding exercise with reference solution
+
+Bind outer context, run a nested binding that fails, catch the failure inside the outer action and observe restoration. ScopedNestingLesson is the complete solution. Its four outputs distinguish outer binding, shadowing, exceptional restoration and final unbound state.
+
+<span id="references"></span>
+## Primary scoped-value contracts
+
+- [ScopedValue lifetime and inheritance](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/lang/ScopedValue.java)
+- [Scoped values final release](https://openjdk.org/jeps/506)

@@ -1,0 +1,37 @@
+---
+interface Props { kind:string; }
+const {kind}=Astro.props;
+const traces:Record<string,{title:string;steps:[string,string,string][]}>={
+ arraylist:{title:'Insert into an array-backed list',steps:[['Before insertion','10 | 30 | empty | empty','Size is 2. Insert 20 at logical index 1. Capacity is 4, so no growth is needed.'],['Move the suffix','10 | 30 | 30 | empty','Copy the old value at index 1 to index 2. Overlapping copying preserves the old suffix. Size remains 2 while the mutation is in progress.'],['Store and commit size','10 | 20 | 30 | empty','Store 20 at index 1, then increase size to 3. All logical elements occupy the active prefix.']]},
+ linkedlist:{title:'Unlink the middle node',steps:[['Locate the node','A ↔ B ↔ C','The iterator already identifies B. Locating it by an arbitrary index would add traversal cost.'],['Repair forward link','A.next = C','Save the removed value. B.previous identifies A and B.next identifies C. Connect A to C.'],['Repair backward link','C.previous = A','Both directions must agree. Clear the detached node references and decrement size once. The surviving sequence is A ↔ C.']]},
+ hashset:{title:'Collision is not duplication',steps:[['Insert Aa','bucket 0: Aa','String Aa has hash 2112. At capacity 16 its spread hash selects bucket 0.'],['Insert BB','bucket 0: Aa → BB','BB also has hash 2112, but BB is not equal to Aa. Preserve both members; size is 2.'],['Insert another Aa','bucket 0: Aa → BB','An equal-but-distinct Aa matches the existing membership. Add returns false and size remains 2.']]},
+ treemap:{title:'Find the floor of 25',steps:[['Compare at root','root 20; candidate none','25 is greater than 20. Remember 20 as a possible floor and search right.'],['Compare at right child','node 30; candidate 20','25 is less than 30. Search left without replacing the smaller candidate.'],['Reach empty child','return 20','No closer eligible key exists along the search path. Floor returns 20; ceiling would instead be 30.']]},
+ linkedhashset:{title:'Preserve first appearance while removing duplicates',steps:[['Visit B then A','B → A','Each previously absent element enters the index and encounter chain once.'],['Visit B again','B → A','B is already present. A duplicate add changes neither size nor encounter order.'],['Visit C','B → A → C','C is new and is appended after the existing distinct elements.']]},
+ treeset:{title:'Comparison defines membership',steps:[['Insert decimal 1.0','ordered keys: 1.0','The first value creates a key in the backing sorted map.'],['Compare decimal 1.00','compareTo result: 0','The numeric comparison finds equivalent membership, even though BigDecimal.equals distinguishes scale.'],['Keep one membership','size: 1','No new tree node is needed. This differs from HashSet, which uses the equals/hash relation and retains both representations.']]},
+ linkedhashmap:{title:'Move an accessed entry to the recent end',steps:[['Before get A','A ↔ B ↔ C','The map uses access order. A is least recent and C most recent.'],['Find and detach A','B ↔ C','The hash index finds A. Repair its order neighbors without deleting its mapping.'],['Append the existing node','B ↔ C ↔ A','A is now most recent. Size remains 3. A subsequent containsKey(B) does not refresh recency.']]},
+ arraydeque:{title:'Wrap the head of a circular deque',steps:[['Before pollFirst','slots: B | C | empty | A','Head is 3 and tail is 2. Logical order is A, B, C despite wrapped physical positions.'],['Read and clear','slots: B | C | empty | empty','Save A and clear slot 3 so the backing array no longer retains it.'],['Advance with wraparound','head: 0; tail: 2','The logical sequence is B, C. The reserved empty slot distinguishes this representation from an explicit-size full ring.']]},
+ priorityqueue:{title:'Repair a heap after removing its minimum',steps:[['Before poll','heap array: 1 | 2 | 3 | 4','Save root 1. The complete-tree shape is represented by the active prefix.'],['Remove the last value','replacement: 4; active size: 3','Compare the root children 2 and 3. The smaller child must move up first.'],['Sift replacement down','heap array: 2 | 4 | 3','Place 4 beneath 2. The result is a valid heap even though its array is not sorted.']]},
+ lru:{title:'Evict the least recently used key',steps:[['Insert A then B','least A ↔ B most','Capacity is 2. Both map entries have one matching recency-list node.'],['Read A','least B ↔ A most','Detach A and append it at the recent end. A read changes list state.'],['Insert C and evict','least A ↔ C most','Adding C would exceed capacity. Remove B from both the index and the recency list.']]}
+};
+const trace=traces[kind];if(!trace)throw new Error('Unknown teaching trace: '+kind);
+---
+<section class="lab collection-trace" data-collection-trace aria-label={trace.title}>
+  <div class="eyebrow">GUIDED ALGORITHM TRACE</div><h3>{trace.title}</h3>
+  <p class="small">A conceptual trace of the stated representation. This illustration does not execute a JVM.</p>
+  <ol>{trace.steps.map(([title,state,explanation],index)=><li data-trace-step hidden={index!==0}><span class="eyebrow">STEP {index+1} / {trace.steps.length}</span><h4>{title}</h4><pre><code>{state}</code></pre><p>{explanation}</p></li>)}</ol>
+  <div class="lab-controls"><button class="secondary" data-trace-previous disabled>Previous step</button><span data-trace-status role="status" aria-live="polite">1 / {trace.steps.length}</span><button class="primary" data-trace-next>Next step</button></div>
+</section>
+<script>
+for(const trace of document.querySelectorAll<HTMLElement>('[data-collection-trace]')){
+ const steps=[...trace.querySelectorAll<HTMLElement>('[data-trace-step]')];
+ const previous=trace.querySelector<HTMLButtonElement>('[data-trace-previous]')!;
+ const next=trace.querySelector<HTMLButtonElement>('[data-trace-next]')!;
+ const status=trace.querySelector<HTMLElement>('[data-trace-status]')!;let current=0;
+ const show=(index:number)=>{current=index;steps.forEach((step,i)=>step.hidden=i!==current);previous.disabled=current===0;next.disabled=current===steps.length-1;status.textContent=`${current+1} / ${steps.length}: ${steps[current].querySelector('h4')?.textContent}`};
+ previous.addEventListener('click',()=>show(Math.max(0,current-1)));next.addEventListener('click',()=>show(Math.min(steps.length-1,current+1)));
+}
+</script>
+<style>
+.collection-trace ol{list-style:none;margin:20px 0;padding:0}.collection-trace li{padding:18px;border:1px solid var(--line);border-radius:7px;background:var(--bg)}.collection-trace li[hidden]{display:none}.collection-trace h4{margin:10px 0}.collection-trace pre{white-space:pre-wrap;padding:14px;color:var(--green);border-radius:5px}.collection-trace li p{margin-bottom:0}.collection-trace [data-trace-status]{font-size:12px;color:var(--muted)}
+@media(prefers-reduced-motion:no-preference){.collection-trace li{animation:trace-reveal .2s ease-out}@keyframes trace-reveal{from{opacity:.4;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}}
+</style>
