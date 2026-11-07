@@ -35,7 +35,7 @@ const moduleName=lesson?modules.find(m=>m.id===lesson.data.module)?.title:'';
 
 </header>
 <slot/>
-{lesson&&<><LearningControls id={lesson.id} ids={ids} client:idle/><nav class="lesson-pagination" aria-label="Previous and next lessons">{previous?<a href={url('learn/'+previous.id+'/')}><small>Previous lesson</small>{previous.data.title}</a>:<span/>}{next&&<a href={url('learn/'+next.id+'/')}><small>Next lesson</small>{next.data.title}</a>}</nav></>}
+{lesson&&<><LearningControls id={lesson.id} ids={ids} client:idle/><nav class="lesson-pagination" aria-label="Previous and next lessons">{previous?<a href={url('learn/'+previous.id+'/')}><small>Previous lesson</small><span>{previous.data.title}</span></a>:<span/>}{next&&<a href={url('learn/'+next.id+'/')}><small>Next lesson</small><span>{next.data.title}</span></a>}</nav></>}
 <footer class="site-footer">Java Deep Dive · Concepts, implementation, and interview preparation</footer></main></div></div>
 <script>
 import { initializeSite } from '../lib/site';

@@ -15,7 +15,7 @@ export default function Diagram({definition, caption}) {
    const element = viewport.current;
    if (!active || !element || !naturalWidth) return;
    const scrolls = naturalWidth > element.clientWidth + 1;
-   if (scrolls && !wasOverflow) element.scrollLeft = (element.scrollWidth - element.clientWidth) / 2;
+   if (scrolls && !wasOverflow) element.scrollLeft = 0;
    if (!scrolls) element.scrollLeft = 0;
    wasOverflow = scrolls;
    setOverflow(scrolls);

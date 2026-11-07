@@ -46,9 +46,9 @@ export function ImplementationLesson({ CodeBlock, Note }) {
       <tr><td>Inherited Map behavior</td><td>AbstractMap supplies keySet/values/equality; Map defaults supply compute/merge and related methods</td><td>Which methods you wrote versus inherited; why defaults are not atomic</td></tr>
     </tbody></table></div>
     <h3>Read the complete source</h3>
-    <p>Select a file. The implementation opens in a scrollable source viewer; expand it for uninterrupted reading. The walkthrough buttons move to the actual methods below.</p>
+    <p>Select a file. The implementation opens in a scrollable source viewer; expand it for uninterrupted reading. The walkthrough buttons move to the corresponding method or nested class below.</p>
     <div className="implementation-toolbar"><div className="implementation-files" aria-label="Java source files">{sourceFiles.map(([name, label]) => <button key={name} className={file === name ? 'selected' : ''} aria-pressed={file === name} onClick={() => setFile(name)}>{label}</button>)}</div><button className="text-button" onClick={() => setExpanded(value => !value)}>{expanded ? 'Compact source' : 'Expand source'}</button></div>
-    {file === 'LearningHashMap.java' && <div className="method-guide"><div className="method-buttons" aria-label="Implementation walkthrough">{methods.map(item => <button key={item[0]} aria-pressed={method[0] === item[0]} className={method[0] === item[0] ? 'selected' : ''} onClick={() => showMethod(item)}>{item[0]}()</button>)}</div><h4>{method[2]}</h4><p>{method[3]}</p></div>}
+    {file === 'LearningHashMap.java' && <div className="method-guide"><div className="method-buttons" aria-label="Implementation walkthrough">{methods.map(item => <button key={item[0]} aria-pressed={method[0] === item[0]} className={method[0] === item[0] ? 'selected' : ''} onClick={() => showMethod(item)}>{item[0]==='iterator'?'EntryIterator':item[0]==='entry'?'Node (Map.Entry)':item[0]+'()'}</button>)}</div><h4>{method[2]}</h4><p>{method[3]}</p></div>}
     <div ref={viewer} className={`implementation-source ${expanded ? 'expanded' : ''}`} aria-busy={!source && !error}>
       {error ? <p role="alert">{error} <a href={`${base}examples/${file}`}>Open the source file directly.</a></p> : source ? <CodeBlock key={file} file={file} code={source} download/> : <p role="status">Loading Java source…</p>}
     </div>

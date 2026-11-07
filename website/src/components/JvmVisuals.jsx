@@ -1,3 +1,4 @@
+import SelectControl from './SelectControl.jsx';
 import React, {useState} from 'react';
 import ConceptPlayer from './ConceptPlayer.jsx';
 import {jvmTraces} from '../data/jvm-traces';
@@ -49,6 +50,6 @@ export default function JvmVisuals({model='compilation'}) {
  if(!variants)throw new Error('Unknown JVM visual: '+model);
  const selected=variants[variant]?variant:Object.keys(variants)[0];
  const trace=variants[selected];
- const selector=ready=><label className="jvm-scenario">Scenario<select aria-label="Scenario" disabled={!ready} value={selected} onChange={event=>setVariant(event.target.value)}>{options[model].map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>;
+ const selector=ready=><label className="jvm-scenario">Scenario<SelectControl aria-label="Scenario" disabled={!ready} value={selected} onChange={event=>setVariant(event.target.value)}>{options[model].map(([value,label])=><option key={value} value={value}>{label}</option>)}</SelectControl></label>;
  return <div className="jvm-visuals"><ConceptPlayer key={`${model}-${selected}`} trace={trace} Visual={JvmStateVisual} codeLabel={model==='compilation'?'Terminal commands and labelled source excerpt':'Chosen collector pseudocode · application paused'} headerExtra={selector} modelId={`jvm-${trace.kind}`}/></div>;
 }

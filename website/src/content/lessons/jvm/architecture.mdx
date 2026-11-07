@@ -1,0 +1,136 @@
+---
+title: "JVM architecture: connect the runtime parts"
+module: "runtime-foundations"
+group: "JVM architecture"
+summary: "Connect class loading, shared memory, each thread's execution state, execution strategies and native integration through one Box program."
+order: 255
+version: "Java 8+"
+prerequisites: ["execution/compilation-and-jvm", "objects/constructors-and-access", "language/methods-and-references"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import JvmArchitecture from '../../../components/JvmArchitecture.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Connect a program's operations to runtime responsibilities
+
+Compiling source gives the JVM class files to execute. When the program creates an object, calls a method and changes a field, several parts of the runtime cooperate. Class definitions make the operations available; invocation state tracks the calculation; references connect that state to objects; an execution engine performs the required work.
+
+Use the map to answer **which part owns this responsibility?** The boundaries distinguish shared runtime state from state belonging to one execution. They describe an abstract machine, rather than exact physical memory addresses or one mandatory implementation layout.
+
+<Diagram client:visible definition={"flowchart TD\n F[Compiled class files] --> L[Load, link and initialize types]\n L --> M[Shared class structures and runtime constant pools]\n L --> E[Execute program operations]\n E --> T[Each thread: PC and stack of frames]\n T --> V[Frame locals and operand stack]\n V --> H[Shared heap: instances and arrays]\n T --> M\n E --> I[Interpreter can execute bytecode]\n E -. implementation choice .-> J[HotSpot JIT can generate machine code]\n G[GC: automatic storage management] --> H\n T -. optional native invocation .-> N[JNI and native libraries]\n S[Implementation-dependent native stack support] -. supports .-> N"} caption="A responsibility map: shared class/object state, per-thread execution state, and implementation mechanisms. Arrows show relationships, not a required native path or a physical memory layout." />
+
+## Make class definitions ready before using them
+
+**Loading** obtains a type's binary definition and creates its runtime representation. Loading Box defines the type; executing new Box can then create individual instances of it. Those are different operations, so one loaded type can support many Box objects.
+
+**Linking** includes verification of class-file constraints, preparation of static-field storage and default state, and resolution of symbolic references under the JVM rules. A symbolic reference names a required type or member, such as Box or change. Resolution connects that reference with its runtime meaning and can happen lazily. **Initialization** performs the required class initialization, including declared static initialization, before the uses that require it. Instance constructors subsequently establish each new object's state. This example has no custom static initializer. [JVMS loading, linking and initialization](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html)
+
+The map follows a chosen legal sequence. A runtime can load a needed definition earlier than the particular source statement that first uses it.
+
+### Name the built-in loader roles
+
+| Loader role | Usual responsibility |
+| --- | --- |
+| Bootstrap/core loader | Built into the VM; defines critical runtime classes, including core classes such as String |
+| Platform loader, Java 9+ | Loads platform definitions; platform classes are visible through it or its ancestors |
+| Application/system loader | Normally defines application classes from the classpath and application module path |
+
+The default ClassLoader.loadClass implementation first checks already loaded classes, then asks its parent, then searches locally if needed. With a null parent, it uses the VM's built-in loader for that delegation step. This is the default search policy; custom loaders can implement other arrangements. [ClassLoader roles and delegation contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ClassLoader.html)
+
+For a reference type, String.class is the Class object describing String. In implementations such as HotSpot that represent the bootstrap loader by null, `String.class.getClassLoader()` returns null. That result represents the bootstrap loader, not a failure to load String. [Class.getClassLoader contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Class.html#getClassLoader())
+
+**Version note:** Java 8 used an extension loader and extension mechanism. Java 9+ names the corresponding built-in role the platform loader and removes the old extension-directory mechanism. Use the target runtime's loader roles rather than treating an extension-loader tree as universal. The later loading chapter develops loader identity and failures. [JDK migration: loader changes](https://docs.oracle.com/en/java/javase/25/migrate/migrating-jdk-8-later-jdk-releases.html)
+
+## Separate shared data from each thread's work
+
+| Responsibility | Scope | What to put in the picture |
+| --- | --- | --- |
+| Method area | Shared | Class-related structures and method/constructor code |
+| Runtime constant pool | Per class/interface, in the method-area model | Constants and symbolic references used by its code |
+| Heap | Shared | Class instances and arrays, reached through reference values |
+| JVM stack | Per thread | A sequence of active method-invocation frames |
+| Frame locals and operand stack | Per invocation | Parameters/local values and temporary calculation inputs/results |
+| PC, or program counter | Per thread | Current JVM instruction position for a non-native method |
+| Native-method stack support | Implementation dependent | Support for native execution where the implementation supplies it |
+
+A frame is the working state of one method call. Its locals retain values needed by the invocation. Its operand stack temporarily carries values while instructions calculate, call or access fields. The PC identifies the current instruction position; it is not a Java source-line number. For a native method, the JVM specification leaves the PC value undefined. [JVMS runtime areas and frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5)
+
+The method area is a specification-level role. **HotSpot Metaspace** is an implementation facility allocating native memory for much class metadata; it is not a universal physical name for every structure in that role. A java.lang.Class object representing a loaded type is called a class mirror; it and String instances are Java heap objects. Generated machine code has its own HotSpot code-cache storage. The runtime constant pool also serves a broader purpose than String interning. [OpenJDK Metaspace overview](https://wiki.openjdk.org/spaces/flyingpdf/pdfpageexport.action?pageId=56526266), [HotSpot generated-code storage](https://docs.oracle.com/en/java/javase/25/vm/java-hotspot-virtual-machine-performance-enhancements.html)
+
+## Run a small program before tracing it
+
+Box has one mutable int field. Main keeps a primitive value and two references to one Box, calls change, then obtains another Box from createBox. These are ordinary constructors, calls and aliases already introduced in the object lessons.
+
+<JavaExample file="JvmStackHeapLesson.java" output={"7\n8\n4\ntrue"} />
+
+Save as JvmStackHeapLesson.java and run:
+
+```bash
+mkdir -p out
+javac -d out JvmStackHeapLesson.java
+java -cp out JvmStackHeapLesson
+```
+
+The compiler also produces JvmStackHeapLesson$Box.class for the nested class. Keep both generated classes in the output tree. The first two results distinguish an unchanged caller primitive from a changed object field. The third comes from the independently constructed Box. The identity comparison confirms that original and alias still reach the same first object.
+
+## Walk from class readiness to allocation, call and return
+
+<JvmArchitecture client:visible />
+
+In Whole program, start with loading/linking/initialization. When main reaches new Box, the model exposes the required Box definition and then the allocation. The new object's int field initially has its default value; its constructor assigns seven before main stores the completed new expression's reference.
+
+At change(original, number), the callee receives a copied reference and primitive. Its frame records argument → A and copiedNumber = 7. Incrementing that local does not change main's number. Writing through argument changes A, which main can still reach through both original and alias.
+
+Switch to Call and field write to inspect the frame's temporary operands. A field write needs a receiver reference and a value. Those temporary inputs are computation state, while the field belongs to the object. Returning completes the callee invocation and resumes the caller. The later createBox call returns a reference to B, allowing B to remain reachable after that factory invocation ends.
+
+The drawings show selected source-level values and frames. Compiler-generated helpers, platform calls and internal VM threads are collapsed. The execution, JIT, GC and native boxes remain visible so their responsibilities stay connected; the trace does not claim to have measured their internal events.
+
+## Understand execution strategies and the native boundary
+
+An interpreter can perform bytecode operations. HotSpot can also compile selected code to native machine code and execute that generated code; a short program does not establish that all its methods were JIT-compiled. Optimized physical state can differ from the simple frame drawing while preserving observable behavior. [HotSpot interpretation and tiered compilation](https://docs.oracle.com/en/java/javase/25/vm/java-hotspot-virtual-machine-performance-enhancements.html)
+
+GC manages object storage according to reachability and the selected collector's policy. After change returns, A still has paths from main's references. Finishing that one call therefore provides no reason to infer that A was reclaimed; even becoming unreachable does not promise immediate collection. [GC reachability and implementation choices](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-collector-implementation.html)
+
+JNI provides a defined interface between Java and native code, such as platform-specific libraries. Native-method stacks, where provided, are typically associated with threads; support and physical organization depend on the JVM implementation. The program declares no native method, and the walkthrough leaves printing's library/platform internals collapsed. The native branch explains an available integration path without assigning every println a universal native call sequence. [JNI design and native libraries](https://docs.oracle.com/javase/8/docs/technotes/guides/jni/spec/design.html), [JVMS native-stack support](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5.6)
+
+## Interview questions with worked reasoning
+
+<details>
+<summary>Two threads execute the same instance method on one object. Which parts can they share?</summary>
+
+They can reference the same heap object and use the same class definition/code. Each thread has its own JVM stack and PC, and each invocation has its own frame locals and temporary operands. Independent frames do not make the referenced object's mutable fields independent. The concurrency lessons develop the coordination required when both invocations access that shared state.
+
+</details>
+
+<details>
+<summary>Why can an object survive the method that created it?</summary>
+
+The frame belongs to the invocation; the object is reached through reference values. `createBox` returns a reference that `main` stores in `created`, so completing the factory frame does not remove that caller path to B. Decide reachability from the remaining paths, rather than equating method return with object destruction.
+
+</details>
+
+<details>
+<summary>What is the difference between a runtime constant-pool entry and a Box instance?</summary>
+
+The per-class pool supplies constants and symbolic/runtime references used by class code. A Box instance contains that particular object's value field. Loading one Box definition supports many instances; resolving a member reference does not collapse those instances into one shared field value. Original/alias identify A, while created identifies B.
+
+</details>
+
+<details>
+<summary>Does the map prove that the displayed frames, JIT code and native stacks have one exact physical arrangement?</summary>
+
+No. The map assigns responsibilities and shows a selected semantic sequence. JVM implementations can choose layouts, native support, interpretation/compilation and optimization strategies within the specified contract. Source output can establish the program's result; a physical-layout, JIT or GC claim needs appropriate runtime evidence.
+
+</details>
+
+Continue with <a href={lessonUrl('learn/jvm/stack-and-heap/')}>stack frames and heap references</a>, then <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>locals and operand-stack execution</a>. Later, <a href={lessonUrl('learn/jvm/loading-and-bytecode/')}>class loading</a> and <a href={lessonUrl('learn/jvm/garbage-collection/')}>garbage collection</a> develop the internal mechanisms behind this map.
+
+## Additional architecture overviews
+
+- [GeeksforGeeks: JVM architecture](https://www.geeksforgeeks.org/java/how-jvm-works-jvm-architecture/)
+- [DEV Community: JVM architecture and workflow](https://dev.to/bugtobrilliance/jvm-architecture-and-workflow-understanding-the-java-virtual-machine-internals-17pg)
+
+Use the primary specification and HotSpot references beside each section to distinguish required JVM behavior from one implementation or a simplified overview.

@@ -1,8 +1,9 @@
 ---
+import {CaretDownIcon as CaretDown} from '@phosphor-icons/react';
 const {id='increment-interleaving',stage='foundation'} = Astro.props;
 ---
 <section class="interleaving-lab" data-interleaving aria-labelledby={id+'-title'}>
- <div class="interleaving-heading"><div><span class="eyebrow">WORKED INTERLEAVING</span><h3 id={id+'-title'}>Two increments: where can one update disappear?</h3></div><label>Protocol<select data-protocol aria-label="Increment protocol"><option value="plain">Plain count++</option>{stage!=='foundation'&&<option value="volatile">Volatile count++</option>}<option value="synchronized">Synchronized increment</option>{stage==='advanced'&&<option value="cas">CAS retry loop</option>}</select></label></div>
+ <div class="interleaving-heading"><div><span class="eyebrow">WORKED INTERLEAVING</span><h3 id={id+'-title'}>Two increments: where can one update disappear?</h3></div><label>Protocol<span class="select-control"><select data-protocol aria-label="Increment protocol"><option value="plain">Plain count++</option>{stage!=='foundation'&&<option value="volatile">Volatile count++</option>}<option value="synchronized">Synchronized increment</option>{stage==='advanced'&&<option value="cas">CAS retry loop</option>}</select><CaretDown size={14} aria-hidden="true"/></span></label></div>
  <div class="interleaving-state"><div><span>Thread A's state</span><strong data-local-a>—</strong></div><div><span>Shared count</span><output data-shared-count>0</output></div><div><span>Thread B's state</span><strong data-local-b>—</strong></div></div>
  <p class="interleaving-owner" data-monitor hidden>Counter monitor: <strong data-owner>free</strong></p>
  <p class="interleaving-explanation" data-step-explanation role="status" aria-live="polite">Two callers each intend to increment once. Step through one deliberately chosen schedule.</p>

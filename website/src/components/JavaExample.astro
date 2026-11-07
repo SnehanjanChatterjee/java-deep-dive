@@ -1,5 +1,6 @@
 ---
 import { Code } from 'astro:components';
+import { DownloadSimpleIcon as DownloadSimple } from '@phosphor-icons/react';
 import { url } from '../lib/paths';
 const { file, output, label } = Astro.props;
 const displayName=label||file.split('/').at(-1);
@@ -7,4 +8,4 @@ const sources=import.meta.glob(['../../../java-examples/src/{main,test}/java/*.j
 const source=Object.entries(sources).find(([path])=>path.endsWith('/'+file))?.[1] as string | undefined;
 if(!source)throw new Error(`Missing canonical Java source: ${file}`);
 ---
-<div class="code-wrap example-code"><div class="code-head"><span>{displayName}</span><span><a href={url('examples/'+file)} download>Download</a><button data-copy-code aria-label={`Copy ${displayName}`}>Copy</button></span></div><Code code={source} lang="java" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />{output&&<div class="output"><span>OUTPUT</span><code>{output}</code></div>}</div>
+<div class="code-wrap example-code"><div class="code-head"><span>{displayName}</span><span><a href={url('examples/'+file)} download aria-label={`Download ${displayName}`}><DownloadSimple size={14} aria-hidden="true"/>Download</a><button data-copy-code aria-label={`Copy ${displayName}`}>Copy</button></span></div><Code code={source} lang="java" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />{output&&<div class="output"><span>OUTPUT</span><code>{output}</code></div>}</div>

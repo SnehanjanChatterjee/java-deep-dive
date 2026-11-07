@@ -1,3 +1,4 @@
+import SelectControl from './SelectControl.jsx';
 import React, {useState} from 'react';
 import ConceptPlayer from './ConceptPlayer.jsx';
 import {conceptTraces, makeLoopTrace} from '../data/concept-traces';
@@ -23,6 +24,6 @@ export default function ConceptAnimation({model}) {
  const [empty,setEmpty]=useState(false);
  const trace=model==='loop'?makeLoopTrace(empty):conceptTraces[model];
  if(!trace)throw new Error('Unknown educational trace: '+model);
- const selector=ready=>model==='loop'?<label>Limit<select aria-label="Loop upper limit" disabled={!ready} value={empty?'empty':'values'} onChange={event=>setEmpty(event.target.value==='empty')}><option value="values">3</option><option value="empty">0</option></select></label>:null;
+ const selector=ready=>model==='loop'?<label>Limit<SelectControl aria-label="Loop upper limit" disabled={!ready} value={empty?'empty':'values'} onChange={event=>setEmpty(event.target.value==='empty')}><option value="values">3</option><option value="empty">0</option></SelectControl></label>:null;
  return <ConceptPlayer key={model+'-'+empty} trace={trace} Visual={TraceVisual} codeLabel={codeLabels[trace.kind]} headerExtra={selector} modelId={model}/>;
 }

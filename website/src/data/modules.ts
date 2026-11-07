@@ -8,7 +8,7 @@ export const modules:CourseModule[] = [
  {id:'execution',title:'Getting started with Java',description:'Write, run and organize your first programs',groups:['First programs','How Java runs','Tools and project structure']},
  {id:'language',title:'Language fundamentals',description:'Variables, decisions, loops, methods, arrays and text',groups:['Variables and expressions','Decisions and loops','Methods and recursion','Arrays and strings','Conversions and numeric boundaries']},
  {id:'objects',title:'Classes and objects',description:'Build objects, express behavior and manage shared references',groups:['Classes and objects','Construction and encapsulation','Interfaces and inheritance','References and identity','Nested and domain types']},
- {id:'runtime-foundations',title:'JVM foundations',description:'Trace method frames, object references and bytecode',groups:['Stack and heap','Frames and bytecode']},
+ {id:'runtime-foundations',title:'JVM foundations',description:'Explore JVM architecture, method frames, object references and bytecode',groups:['JVM architecture','Stack and heap','Frames and bytecode']},
  {id:'workflow',title:'Projects and tests',description:'Compile, test and package a small Java project',groups:['Build and test a small project']},
  {id:'reliability',title:'Exceptions and resources',description:'Follow failures through calls and close resources correctly',groups:['Exception flow','Failure contracts','Resource ownership']},
  {id:'generics',title:'Generics',description:'Develop reusable types before bounds and runtime details',groups:['Generic types and methods','Bounds and wildcards','Runtime representation']},

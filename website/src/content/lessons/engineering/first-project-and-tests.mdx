@@ -36,7 +36,7 @@ first-tests/
 
 Production code lives under src/main/java. Tests live under src/test/java and can use the production classes. The package declaration `study.math` corresponds to the directory path below the source root. Maven places compiled output below target; source files do not need to share directories with generated class files.
 
-The bundled settings and Maven configuration select public Maven Central and a project-local dependency cache. They make the downloaded exercise self-contained with respect to repository configuration. They are not Java source files and are not separate files for individual methods.
+The bundled settings and Maven configuration select public Maven Central and a project-local dependency cache. They make the downloaded exercise self-contained with respect to repository configuration. These files configure the build and dependency resolution; Java source remains organized by class under the source directories.
 
 ## Implement the behavior before testing it
 
@@ -48,7 +48,7 @@ This method deliberately uses ordinary int addition, including its wrapping boun
 
 ## Describe the project and its test dependency
 
-<Code code={projectPom} lang="xml" />
+<Code code={projectPom} lang="xml" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />
 
 The project coordinates are groupId, artifactId and version. Together they identify an artifact. The compiler properties select Java source/target compatibility for this simple project. The build plugins are pinned so that the example does not silently select different plugin releases on different runs.
 

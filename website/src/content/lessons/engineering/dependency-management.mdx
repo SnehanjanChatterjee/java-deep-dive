@@ -49,11 +49,11 @@ The parent lists modules to build in a reactor. Dependencies determine their req
 
 Adapter's POM explicitly requests shared-api:1.0:
 
-<Code code={adapterPom} lang="xml" />
+<Code code={adapterPom} lang="xml" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />
 
 The normal app POM declares adapter and the shared API that app source uses directly:
 
-<Code code={appPom} lang="xml" />
+<Code code={appPom} lang="xml" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />
 
 The supplied Java source makes the version distinction observable:
 
@@ -110,11 +110,11 @@ This experiment changes dependency declarations while leaving Main's requirement
 
 A BOM is a POM whose dependencyManagement supplies coordinated versions. The supplied course-bom manages shared-api, adapter and optional-support. It is not executable code and its import does not itself add JAR dependencies.
 
-<Code code={bomPom} lang="xml" />
+<Code code={bomPom} lang="xml" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />
 
 The complete BOM-managed app POM imports it with type pom/scope import, then declares actual dependencies without repeating their managed versions:
 
-<Code code={managedAppPom} lang="xml" />
+<Code code={managedAppPom} lang="xml" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />
 
 ```bash
 mvn -f app/pom-bom.xml clean verify

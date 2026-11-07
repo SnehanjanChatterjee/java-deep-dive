@@ -24,6 +24,8 @@ Use explicit imports, clear failure behavior, applicable final declarations and 
 
 Keep one shared module/topic timeline on course and lesson pages. Navigation, headings, search and previous/next links use the same metadata and reading order. The lesson remains visually primary. Sidebar collapse controls belong in its shell.
 
+React dropdowns use SelectControl; static Astro dropdowns use the same select-control wrapper and decorative caret. Verify the actual icon size, centering and text clearance, including disabled and long-value states.
+
 Retain the compact reading layout, white/emerald light theme and charcoal/blue dark theme. Use readable code, outputs and diagrams. Tables and drawings scroll locally rather than widening the page. Instructional animations need clear state labels, keyboard controls, static explanations and reduced-motion behavior.
 
 Preserve URLs and aliases without duplicating document IDs. Generate section links from actual headings. Visiting a lesson must not imply completion.

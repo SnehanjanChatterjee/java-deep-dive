@@ -1,6 +1,6 @@
 ---
 import type { CollectionEntry } from 'astro:content';
-import { CaretDownIcon as CaretDown, BookmarkSimpleIcon as BookmarkSimple } from '@phosphor-icons/react';
+import { CaretDownIcon as CaretDown, CaretRightIcon as CaretRight, BookmarkSimpleIcon as BookmarkSimple } from '@phosphor-icons/react';
 import { modules } from '../data/modules';
 import { url } from '../lib/paths';
 import { getModuleGroups } from '../lib/course';
@@ -23,10 +23,13 @@ const activeModule = lessons.find(lesson => lesson.id === currentId)?.data.modul
         <CaretDown size={14} className="course-module-chevron"/>
       </summary>
       <div class="course-topic-list" id={'topics-' + module.id}>
-        {groups.map(group=><section class="course-topic-group-section" aria-label={group.title==='Topics'?undefined:group.title}>
-          {groups.length>1&&<h3 class="course-topic-group">{group.title}</h3>}
-          {group.lessons.map(lesson=><a href={url('learn/'+lesson.id+'/')} data-course-topic={lesson.id} aria-current={lesson.id===currentId?'page':undefined}>{lesson.data.title}</a>)}
-        </section>)}
+        {groups.map(group=>{
+          const showGroupLabel=groups.length>1&&group.lessons.length>1&&group.title!=='Topics';
+          return <section class="course-topic-group-section" aria-label={showGroupLabel?group.title:undefined}>
+            {showGroupLabel&&<h3 class="course-topic-group">{group.title}</h3>}
+            {group.lessons.map(lesson=><a href={url('learn/'+lesson.id+'/')} data-course-topic={lesson.id} aria-current={lesson.id===currentId?'page':undefined}><span>{lesson.data.title}</span><CaretRight size={13} className="course-topic-link-icon" aria-hidden="true"/></a>)}
+          </section>;
+        })}
       </div>
     </details>
     );

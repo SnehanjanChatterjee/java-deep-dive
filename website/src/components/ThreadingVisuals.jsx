@@ -1,3 +1,4 @@
+import SelectControl from './SelectControl.jsx';
 import React, {useState} from 'react';
 import ConceptPlayer from './ConceptPlayer.jsx';
 import {threadingModels} from '../data/threading-traces.js';
@@ -111,9 +112,9 @@ function ThreadingModel({model, config}) {
  const selected=config.variants.find(option=>option.id===variant);
  const trace=selected.trace;
  const headerExtra=ready=>config.variants.length>1 ? <label className="threading-selector">{config.selectorLabel}
-  <select disabled={!ready} value={variant} onChange={event=>setVariant(event.target.value)} aria-label={config.selectorLabel}>
+  <SelectControl disabled={!ready} value={variant} onChange={event=>setVariant(event.target.value)} aria-label={config.selectorLabel}>
    {config.variants.map(option=><option key={option.id} value={option.id}>{option.label}</option>)}
-  </select>
+  </SelectControl>
  </label> : undefined;
  return <div className="threading-visuals" data-threading-model={model} data-threading-variant={variant}>
   <ConceptPlayer key={model+'-'+variant} trace={trace} Visual={ThreadVisual} codeLabel={trace.codeLabel} headerExtra={headerExtra} modelId={trace.kind}/>

@@ -1,4 +1,5 @@
 import React, {useEffect, useState} from 'react';
+import SelectControl from './SelectControl.jsx';
 import {getState, updateLesson} from '../lib/learning.mjs';
 
 const initialItem = {status:'not-started', bookmarked:false, note:''};
@@ -28,8 +29,8 @@ export default function LearningControls({id, ids}) {
  return <section className="learning-controls lesson-tools" aria-label="Study tools" data-pagefind-ignore>
   <div className="study-toolbar">
    <button className="secondary" aria-label={item.bookmarked?'Remove bookmark':'Bookmark topic'} aria-pressed={item.bookmarked} onClick={()=>update({bookmarked:!item.bookmarked})}>{item.bookmarked?'Bookmarked':'Bookmark'}</button>
-   <label className="study-progress">Progress<select aria-label="Learning status" value={item.status} onChange={event=>update({status:event.target.value})}><option value="not-started">Not started</option><option value="learning">Studying</option><option value="review">Revisit</option><option value="completed">Completed</option></select></label>
-   <button className="secondary" aria-expanded={notesOpen} aria-controls={'notes-editor-'+id} onClick={()=>setNotesOpen(value=>!value)}>Notes{item.note?' · saved':''}</button>
+   <label className="study-progress">Progress<SelectControl aria-label="Learning status" value={item.status} onChange={event=>update({status:event.target.value})}><option value="not-started">Not started</option><option value="learning">Studying</option><option value="review">Revisit</option><option value="completed">Completed</option></SelectControl></label>
+   <button className="secondary" aria-expanded={notesOpen} aria-controls={'notes-editor-'+id} onClick={()=>setNotesOpen(value=>!value)}>{notesOpen?'Close notes':item.note?'Notes · saved':'Notes'}</button>
    <span className="study-storage">Stored on this device</span>
   </div>
   <div className="study-notes" id={'notes-editor-'+id} hidden={!notesOpen}>
