@@ -3,7 +3,7 @@ title: "Atomics, compare-and-set and ABA"
 module: "concurrency"
 group: "Advanced synchronization"
 summary: "Build one conditional state transition, then analyze retries, ABA and progress boundaries."
-order: 980
+order: 1010
 version: "Java 8+; additional access modes vary by release"
 prerequisites: ["concurrency/volatile-publication", "concurrency/cyclic-barrier", "concurrency/semaphore"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import InterleavingLab from '../../../components/InterleavingLab.astro';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -65,6 +66,10 @@ The first half publishes an immutable snapshot through a volatile reference. The
 <JavaExample file="CounterComparisonLab.java" output={"2000\n2000"} />
 
 The locked and AtomicInteger counters each receive two thousand requested increments. Both updates are protected; joins ensure completed observation. Identical totals establish neither equal intermediate snapshots across the two counters nor a performance ranking. An ordinary single-writer field after join is already sufficient for that narrower access pattern; the earlier `MemoryVisibility` example below illustrates that an atomic type and completion still address different responsibilities.
+
+Compare a decomposed increment, a synchronized increment and an explicit CAS loop. In the CAS schedule both callers initially observe zero, but the second stale update fails rather than overwriting the first. Retrying from one permits a distinct successful transition to two. The code in `AtomicCounterLab` applies that same retry principle to the budget's validate-and-decrement invariant.
+
+<InterleavingLab id="atomic-increment-comparison" stage="advanced" />
 
 <JavaExample file="MemoryVisibility.java" output={"1"} />
 

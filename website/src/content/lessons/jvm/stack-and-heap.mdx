@@ -1,0 +1,85 @@
+---
+title: "Stack frames, heap objects and reference values"
+module: "runtime-foundations"
+group: "Stack and heap"
+summary: "Trace method-local values, shared object references and objects that outlive their creating calls."
+order: 260
+version: "Java 8+"
+prerequisites: ["objects/constructors-and-access", "language/methods-and-references"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import '../../../styles/jvm-visuals.css';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## A call and an object need different kinds of state
+
+A method call needs its parameters, local variables and the place to resume its caller. The JVM describes an invocation's execution state as a frame. Frames form a stack: a called method becomes the current invocation, and returning resumes the caller. Each thread, meaning one execution of instructions, has its own JVM stack.
+
+Objects have a different lifetime. A Box created inside a method can remain reachable after that method returns. The JVM's heap is the runtime area for class instances and arrays. A reference value identifies an object; copying that value does not copy the object's fields. These rules connect the earlier aliasing examples to the runtime model.
+
+<JavaExample file="JvmStackHeapLesson.java" output={"7\n8\n4\ntrue"} />
+
+Compile JvmStackHeapLesson.java and launch JvmStackHeapLesson. Each Box holds one int field. Follow main's local values and the values passed into change separately.
+
+## Follow a primitive and two references
+
+Main stores primitive 7 in number. New Box(number) creates object A with its own primitive value field, initially 7. Original receives a reference to A. Assigning alias = original copies that reference, so original and alias identify the same object.
+
+Change receives two **copied values**: a reference to A in argument, and integer 7 in copiedNumber. Incrementing copiedNumber changes that invocation's parameter to 8, without changing main's number. Writing argument.value changes A's field to 8. Main's alias reaches the changed field because it still identifies A.
+
+<figure className="jvm-memory-diagram">
+  <div className="jvm-memory-columns">
+    <div className="jvm-memory-column">
+      <strong>JVM stack · one execution</strong>
+      <div className="jvm-memory-frame jvm-active-frame">
+        <strong>Current frame: change</strong>
+        <dl><dt>argument</dt><dd>reference → A</dd><dt>copiedNumber</dt><dd>8</dd></dl>
+      </div>
+      <div className="jvm-memory-frame">
+        <strong>Caller frame: main</strong>
+        <dl><dt>number</dt><dd>7</dd><dt>original</dt><dd>reference → A</dd><dt>alias</dt><dd>reference → A</dd></dl>
+      </div>
+    </div>
+    <div className="jvm-memory-column">
+      <strong>Heap · objects</strong>
+      <div className="jvm-memory-object">
+        <strong>Object A: one Box</strong>
+        <dl><dt>value field</dt><dd>8</dd></dl>
+      </div>
+    </div>
+  </div>
+  <figcaption>State immediately after change writes the field, before it returns. A is a diagram identity, not a memory address. Three reference values identify one object; main's primitive remains 7.</figcaption>
+</figure>
+
+The first print is therefore 7 and the second is 8. A primitive can also be an object field, as A.value is here. Do not reduce the model to “all numbers are on the stack and all references are elsewhere”: distinguish the variable or field holding a value from the object that a reference identifies.
+
+## Return an object without keeping its creator frame
+
+CreateBox(4) has another invocation with its own parameter value. It creates a different Box, B, and returns its reference. Main stores that reference in created and prints B's value, 4. The createBox frame is no longer active, but B remains reachable through created.
+
+The final identity comparison is true because original and alias still refer to A. Creating B has not redirected either reference. The example never explicitly destroys an object when a method returns. Heap storage becomes eligible for automatic reclamation when the relevant reachability rules no longer require it; there is no promise that collection happens immediately at a closing brace.
+
+## Use the model without inventing a physical layout
+
+Frames, local values and heap objects describe the execution contract. The diagram does not claim particular byte sizes, addresses or one fixed arrangement inside every JVM. It also does not measure garbage collection. The later JVM-internals module examines metadata, optimization and collection mechanisms after the corresponding APIs are familiar.
+
+## Practice: replace the copied reference
+
+Inside change, suppose the parameter were reassigned to a new Box instead of writing argument.value. Would main's original and alias move to that new object? Which state disappears when change returns?
+
+<details>
+<summary>Worked answer</summary>
+
+No. Reassignment would require removing final from the parameter declaration, then would redirect only that invocation's copied reference. Main's variables would still identify A. The change invocation and its parameter variables stop being active when it returns; any object it created could survive if a caller or another reachable object retained a reference. Returning a replacement and assigning it in main would explicitly change a caller variable.
+
+</details>
+
+Continue with <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>local slots and the operand stack</a>, which traces a familiar arithmetic method through a few compiled instructions.
+
+## Runtime-state references
+
+- [JVM specification: stacks, heap and frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5)
+- [JLS: primitive and reference values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html)
+- [Dev.java: argument values passed to methods](https://dev.java/learn/language/oop/classes-objects/calling-methods-constructors/)

@@ -1,0 +1,46 @@
+.threading-visuals{--threading-active:var(--green);--threading-wait-text:#704c08;--threading-wait-bg:#fff6df;--threading-wait-border:#ad822d;--threading-cycle-text:#8c2929;--threading-cycle-bg:#fff1f0;--threading-cycle-border:#be6d69;min-width:0}
+.threading-visual,.threading-visual *{box-sizing:border-box}
+.threading-visual{width:100%;min-width:0;color:var(--text);font-size:14px;line-height:1.6}
+.threading-visual p,.threading-visual li{font-size:14px;line-height:1.6}
+.threading-visual h4{margin:0 0 10px;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+.threading-selector{display:flex;flex-direction:column;gap:5px;max-width:100%;min-width:0;font-size:14px;line-height:1.5;color:var(--text)}
+.threading-selector select{max-width:100%;min-width:0;min-height:40px;padding:7px 9px;border:1px solid var(--control-border,var(--line));border-radius:5px;background:var(--bg);color:var(--text);font:inherit}
+.threading-selector select:focus-visible{outline:2px solid var(--threading-active);outline-offset:3px}
+.threading-lanes,.threading-invocations,.threading-lock-actors{display:flex;flex-wrap:wrap;gap:12px;min-width:0}
+.threading-lane,.threading-invocation,.threading-lock-actor{flex:1 1 170px;max-width:100%;min-width:0;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg)}
+.threading-track{position:relative;height:40px;margin:10px 0 8px;overflow:hidden;border:1px solid var(--line);border-radius:5px;background:var(--surface)}
+.threading-token{position:absolute;top:4px;display:flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:5px;background:var(--threading-active);color:var(--bg);font-size:14px;font-weight:700;transition:left .24s ease,transform .24s ease}
+.threading-no-execution{display:flex;height:100%;align-items:center;justify-content:center;padding:0 4px;color:var(--muted);font-size:12px;line-height:1.35;text-align:center}
+.threading-lane-status{margin:0;overflow-wrap:anywhere}
+.threading-call-frame{margin:12px 0 0;padding-top:10px;border-top:1px solid var(--line)}
+.threading-call-frame span{display:block;margin-bottom:3px;color:var(--muted);font-size:12px}
+.threading-call-frame code,.threading-main-reference code{white-space:normal;overflow-wrap:anywhere;font-size:13px;color:var(--text)}
+.threading-object-state,.threading-lock-resources,.threading-counter-fields{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;min-width:0}
+.threading-value{flex:1 1 130px;min-width:0;padding:10px;border:1px solid var(--line);border-radius:5px;background:var(--surface);overflow-wrap:anywhere}
+.threading-value>span{display:block;color:var(--muted);font-size:12px;line-height:1.5}
+.threading-value>strong{display:block;margin-top:4px;font-size:14px;line-height:1.5;font-weight:600}
+.threading-visual .threading-key{margin:12px 0 0;color:var(--muted)}
+.threading-main-reference{margin:0 0 12px;padding:10px;border-left:3px solid var(--threading-active);background:var(--bg);overflow-wrap:anywhere}
+.threading-invocation .threading-value,.threading-lock-actor .threading-value{margin:8px 0 0}
+.threading-actor-status{margin:10px 0 0;overflow-wrap:anywhere}
+.threading-counter{margin-top:14px;padding:13px;border:2px solid var(--threading-active);border-radius:6px;background:var(--bg)}
+.threading-counter .threading-counter-fields{margin-top:0}
+.threading-counter .threading-value:first-child>strong{font-size:27px;line-height:1.2;font-variant-numeric:tabular-nums}
+.threading-monitor-status{margin:12px 0 0;padding:9px;border:1px solid var(--line);border-radius:5px;overflow-wrap:anywhere}
+.threading-invocation.is-active,.threading-lock-actor.is-active{border-color:var(--threading-active);box-shadow:inset 3px 0 var(--threading-active)}
+.threading-lane.is-waiting,.threading-lock-actor.is-waiting,.threading-monitor-status.is-waiting{border-color:var(--threading-wait-border);background:var(--threading-wait-bg)}
+.threading-lane.is-waiting .threading-lane-status,.threading-lock-actor.is-waiting .threading-actor-status,.threading-monitor-status.is-waiting{color:var(--threading-wait-text)}
+.threading-lock-resources{margin:0 0 12px}
+.threading-direction{margin:0;color:var(--muted);overflow-wrap:anywhere}
+.threading-dependencies{margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);overflow-wrap:anywhere}
+.threading-dependencies p{margin:8px 0 0}
+.threading-dependencies ul{margin:8px 0 0;padding-left:20px}
+.threading-dependencies li+li{margin-top:5px}
+.threading-dependencies.has-wait{border-color:var(--threading-wait-border);background:var(--threading-wait-bg)}
+.threading-dependencies.has-wait h4{color:var(--threading-wait-text)}
+.threading-dependencies.has-cycle{border-color:var(--threading-cycle-border);background:var(--threading-cycle-bg)}
+.threading-dependencies.has-cycle h4,.threading-dependencies.has-cycle .threading-cycle{color:var(--threading-cycle-text)}
+.threading-cycle{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-weight:600}
+[data-color-theme="dark"] .threading-visuals,.dark .threading-visuals{--threading-wait-text:#f2d08e;--threading-wait-bg:#302b20;--threading-wait-border:#ac8b47;--threading-cycle-text:#ffb8b2;--threading-cycle-bg:#352326;--threading-cycle-border:#b97579}
+@media(max-width:390px){.threading-lane,.threading-invocation,.threading-lock-actor{padding:10px}.threading-selector{width:100%}}
+@media(prefers-reduced-motion:reduce){.threading-token{transition:none}}

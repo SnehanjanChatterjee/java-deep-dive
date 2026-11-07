@@ -1,13 +1,14 @@
 ---
-const {id='increment-interleaving'} = Astro.props;
+const {id='increment-interleaving',stage='foundation'} = Astro.props;
 ---
 <section class="interleaving-lab" data-interleaving aria-labelledby={id+'-title'}>
- <div class="interleaving-heading"><div><span class="eyebrow">WORKED INTERLEAVING</span><h3 id={id+'-title'}>Two increments: where can one update disappear?</h3></div><label>Protocol<select data-protocol aria-label="Increment protocol"><option value="plain">Plain count++</option><option value="volatile">Volatile count++</option><option value="cas">CAS retry loop</option></select></label></div>
+ <div class="interleaving-heading"><div><span class="eyebrow">WORKED INTERLEAVING</span><h3 id={id+'-title'}>Two increments: where can one update disappear?</h3></div><label>Protocol<select data-protocol aria-label="Increment protocol"><option value="plain">Plain count++</option>{stage!=='foundation'&&<option value="volatile">Volatile count++</option>}<option value="synchronized">Synchronized increment</option>{stage==='advanced'&&<option value="cas">CAS retry loop</option>}</select></label></div>
  <div class="interleaving-state"><div><span>Thread A's state</span><strong data-local-a>—</strong></div><div><span>Shared count</span><output data-shared-count>0</output></div><div><span>Thread B's state</span><strong data-local-b>—</strong></div></div>
+ <p class="interleaving-owner" data-monitor hidden>Counter monitor: <strong data-owner>free</strong></p>
  <p class="interleaving-explanation" data-step-explanation role="status" aria-live="polite">Two callers each intend to increment once. Step through one deliberately chosen schedule.</p>
  <ol class="interleaving-events" data-events></ol>
  <div class="interleaving-controls"><button class="secondary" data-previous disabled>Previous</button><span data-position>Start</span><button class="secondary" data-reset>Reset</button><button class="primary" data-next>Next step</button></div>
- <p class="interleaving-caption">This is a deterministic teaching model, not a JVM execution or an exhaustive set of memory-model outcomes. The CAS loop illustrates an atomic transition; it does not claim that incrementAndGet uses this exact machine-code sequence.</p>
+ <p class="interleaving-caption">This is one deliberately chosen schedule. Plain increments may lose updates; synchronized increments protect the entire read–modify–write with the same monitor.{stage==='advanced'&&' The CAS loop models atomic transitions, not the exact machine code of incrementAndGet.'}</p>
 </section>
 <script>
 const plain=[
@@ -25,17 +26,27 @@ const atomic=[
  {actor:'B',action:'Reread the current value',a:'0 → 1',b:'1',count:1,explain:'The retry uses a fresh observation and recomputes the candidate two.'},
  {actor:'B',action:'CAS 1 → 2 succeeds',a:'0 → 1',b:'1 → 2',count:2,explain:'Both increments now have distinct successful atomic transitions. The final count is two.'}
 ];
+const synchronized=[
+ {actor:'A',action:'Acquire the Counter monitor',a:'inside increment',b:'not entered',count:0,owner:'A',explain:'A owns the Counter monitor. B must acquire this same monitor before entering increment.'},
+ {actor:'B',action:'Attempt entry; wait for A to release',a:'inside increment',b:'BLOCKED on monitor',count:0,owner:'A',explain:'B cannot enter the synchronized method while A owns its receiver’s monitor. It has not read count yet.'},
+ {actor:'A',action:'Read, add and store while owning the monitor',a:'0 → 1',b:'BLOCKED on monitor',count:1,owner:'A',explain:'A completes its whole increment before any competing increment can read the protected count.'},
+ {actor:'A',action:'Return and release the monitor',a:'finished',b:'waiting to acquire',count:1,owner:'free',explain:'Leaving the synchronized method releases the monitor. A’s completed write precedes B’s access after B acquires that same monitor.'},
+ {actor:'B',action:'Acquire the monitor and read one',a:'finished',b:'read 1',count:1,owner:'B',explain:'B now enters. It reads one, rather than the stale zero from the unprotected schedule.'},
+ {actor:'B',action:'Add, store two and release the monitor',a:'finished',b:'1 → 2; finished',count:2,owner:'free',explain:'Both increments contribute once. The owner must still wait for both workers to finish before expecting this final total.'}
+];
 for(const lab of document.querySelectorAll<HTMLElement>('[data-interleaving]')){
  const select=lab.querySelector<HTMLSelectElement>('[data-protocol]')!;
  const previous=lab.querySelector<HTMLButtonElement>('[data-previous]')!,next=lab.querySelector<HTMLButtonElement>('[data-next]')!;
  const events=lab.querySelector<HTMLOListElement>('[data-events]')!,explanation=lab.querySelector<HTMLElement>('[data-step-explanation]')!;
  let position=-1;
  const render=()=>{
-  const steps=select.value==='cas'?atomic:plain;
+  const steps=select.value==='cas'?atomic:select.value==='synchronized'?synchronized:plain;
   const current=position>=0?steps[position]:undefined;
   lab.querySelector<HTMLElement>('[data-local-a]')!.textContent=current?.a||'—';
   lab.querySelector<HTMLElement>('[data-local-b]')!.textContent=current?.b||'—';
   lab.querySelector<HTMLElement>('[data-shared-count]')!.textContent=String(current?.count||0);
+  lab.querySelector<HTMLElement>('[data-monitor]')!.hidden=select.value!=='synchronized';
+  lab.querySelector<HTMLElement>('[data-owner]')!.textContent=current&&'owner' in current?String(current.owner):'free';
   const qualifier=select.value==='volatile'?' Volatile accesses do not combine this read/modify/write sequence into one atomic increment.':'';
   explanation.textContent=current?current.explain+qualifier:'Two callers each intend to increment once. Step through one deliberately chosen schedule.';
   events.replaceChildren(...steps.map((step,index)=>{
@@ -60,6 +71,7 @@ for(const lab of document.querySelectorAll<HTMLElement>('[data-interleaving]')){
 .interleaving-heading{display:flex;gap:20px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}.interleaving-heading h3{font-size:19px;line-height:1.5;margin:7px 0 0}.interleaving-heading label{font-size:12px;display:grid;gap:5px}
 .interleaving-state{display:grid;grid-template-columns:1fr minmax(110px,.6fr) 1fr;gap:12px;margin:20px 0 16px}.interleaving-state>div{padding:12px;background:var(--bg);border:1px solid var(--line);border-radius:5px;text-align:center}.interleaving-state span{font-size:11px;color:var(--muted);display:block}.interleaving-state strong{font-family:monospace;font-size:17px;display:block;margin-top:9px}.interleaving-state output{font-size:27px;font-weight:700;color:var(--green);display:block;margin-top:2px}
 .interleaving-explanation{font-size:14px;line-height:1.75;min-height:50px;margin:12px 0}
+.interleaving-owner{font-size:12px;margin:0 0 12px;color:var(--muted)}.interleaving-owner strong{color:var(--green)}
 .interleaving-events{list-style:none;padding:0;margin:16px 0}.interleaving-events li{display:grid;grid-template-columns:20px 72px minmax(0,1fr);gap:8px;padding:9px 10px;font-size:13px;line-height:1.5;border-left:2px solid transparent;border-bottom:1px solid var(--line)}.interleaving-events li.current{background:var(--soft);border-left-color:var(--green)}.interleaving-events .event-number{font-size:10px;color:var(--muted);padding-top:2px}
 .interleaving-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.interleaving-controls>[data-position]{font-size:12px;color:var(--muted);margin-right:auto}.interleaving-caption{font-size:11px;line-height:1.65;color:var(--muted);margin:14px 0 0}
 @media(max-width:480px){.interleaving-lab{padding:15px}.interleaving-state{grid-template-columns:1fr 90px 1fr;gap:6px}.interleaving-state>div{padding:9px 5px}.interleaving-state span{font-size:10px}.interleaving-events li{grid-template-columns:16px 64px minmax(0,1fr);padding:8px 4px;gap:5px;font-size:12px}.interleaving-controls button{padding:9px 10px}.interleaving-heading h3{font-size:18px}}

@@ -3,17 +3,18 @@ title: "Packages, classpaths and development tools"
 module: "execution"
 group: "Tools and project structure"
 summary: "Organize a greeting into a package, select a classpath and launch the same code from a terminal or IDE."
-order: 20
+order: 30
 version: "Java 8+"
-prerequisites: ["execution/compile-and-run"]
+prerequisites: ["execution/compilation-and-jvm"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Put a class in a namespace
 
-Two projects can both define a class named Hello. A package gives a type a qualified name such as `study.Hello`. It also participates in Java access control. An import only lets source use a shorter name: it does not download a library, load a class or grant access.
+The <a href={lessonUrl('learn/execution/compilation-and-jvm/')}>compilation and JVM walkthrough</a> followed one unchanged greeting into a running main. Now give that class a package and a deliberate output location. Two projects can both define a class named Hello. A package gives a type a qualified name such as `study.Hello`. It also participates in Java access control. An import only lets source use a shorter name: it does not download a library, load a class or grant access.
 
 Create `src/study/Hello.java`:
 

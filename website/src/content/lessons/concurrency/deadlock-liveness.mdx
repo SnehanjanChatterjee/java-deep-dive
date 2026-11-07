@@ -3,7 +3,7 @@ title: "Deadlock, starvation and liveness"
 module: "concurrency"
 group: "Liveness"
 summary: "Draw the ownership cycle, repair acquisition order, and distinguish other forms of stalled work."
-order: 970
+order: 1000
 version: "Java 8+"
 prerequisites: ["concurrency/thread-pool-internals", "concurrency/semaphore", "concurrency/locks-interruption"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -25,6 +26,14 @@ Safety says a forbidden state does not occur, such as a negative balance. Livene
 ## Draw a wait-for graph before changing locks
 
 <Diagram client:visible definition={"flowchart TD\n T1[Thread 1 owns account A] --> B[Needs account B]\n B --> T2[Thread 2 owns account B]\n T2 --> A[Needs account A]\n A --> T1"} caption="Opposing lock acquisition order creates a dependency cycle. Waiting duration is a symptom; the cycle explains the blocked progress." />
+
+The graph shows the final unsafe state. Build it one acquisition at a time, then choose **Common order** to compare the repaired policy. A worker waiting at its first lock holds no second lock that could prevent the current owner from finishing.
+
+<ThreadingVisuals client:visible model="lock-order" />
+
+Here left and right identify two account objects and their monitors. A and B identify executions. The **held** list records acquired monitors; **requested** identifies an acquisition not yet completed. For the common-order variant, the selected pair has `left.lockOrder < right.lockOrder`, so both transfer directions choose left first. Transfer direction and lock acquisition order are separate decisions.
+
+The unsafe trace stops at the closed dependency cycle. The complete runnable solution below always uses the repaired order, so it can demonstrate opposing transfers without leaving an indefinitely deadlocked worker behind.
 
 The classical deadlock conditions are mutual exclusion, holding resources while waiting for more, no forced resource preemption and circular wait. This framework helps identify a repair without abandoning the protected invariant. A single WAITING thread does not establish these conditions.
 

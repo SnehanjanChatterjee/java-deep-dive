@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts" aria-hidden="true"></span>
 <span id="how-java-source-becomes-a-running-program" aria-hidden="true"></span>
@@ -95,9 +96,11 @@ The statements execute in source order and each println ends its line. The resul
 <span id="classpath-bytecode-and-runtime-compatibility" aria-hidden="true"></span>
 <span id="from-an-entry-point-to-a-reproducible-launch" aria-hidden="true"></span>
 
-## Continue with tools and project structure
+<span id="continue-with-tools-and-project-structure" aria-hidden="true"></span>
 
-The next chapter puts this same greeting in a package and explains the working directory, output directory and classpath. Methods and bytecode receive their own chapters after the required language foundations. Source-file launching is another mode on newer JDKs; these two commands deliberately make the compilation step visible.
+## Follow the greeting through the JVM
+
+Next, follow <a href={lessonUrl('learn/execution/compilation-and-jvm/')}>how the compiler and JVM use this greeting</a>: which file is produced, when main starts and when output appears. Then organize the same program with packages and a classpath. Individual bytecode instructions follow methods and objects in JVM foundations. Source-file launching is another mode on newer JDKs; the two commands here deliberately expose compilation and launch separately.
 
 <span id="references" aria-hidden="true"></span>
 <span id="execution-references" aria-hidden="true"></span>

@@ -1,4 +1,5 @@
-import React, {useEffect, useState} from 'react';
+import React, {useState} from 'react';
+import ConceptPlayer from './ConceptPlayer.jsx';
 import {conceptTraces, makeLoopTrace} from '../data/concept-traces';
 
 const codeLabels={loop:'Statements inside main',references:'Caller and method excerpts',exceptions:'Caller and parsing method',thread:'Caller and worker action',monitor:'Consumer and producer excerpts',stream:'Pipeline expression',buffer:'Frame parser excerpt',memory:'Reference-changing statements',bytecode:'Bytecode for twice','hash-resize':'One collision-chain transfer'};
@@ -19,19 +20,9 @@ function TraceVisual({kind, state}) {
 }
 
 export default function ConceptAnimation({model}) {
- const [step,setStep]=useState(0),[playing,setPlaying]=useState(false),[empty,setEmpty]=useState(false);
+ const [empty,setEmpty]=useState(false);
  const trace=model==='loop'?makeLoopTrace(empty):conceptTraces[model];
  if(!trace)throw new Error('Unknown educational trace: '+model);
- const state=trace.steps[step]||trace.steps[0],last=step===trace.steps.length-1;
- useEffect(()=>{if(!playing)return;const timer=setTimeout(()=>{if(last)setPlaying(false);else setStep(value=>value+1)},1600);return()=>clearTimeout(timer)},[playing,step,last]);
- const move=next=>{setPlaying(false);setStep(next)};
- return <section className="concept-animation" aria-label={trace.title} data-concept-animation={model}>
-  <div className="concept-heading"><div><span className="eyebrow">GUIDED EXECUTION</span><h3>{trace.title}</h3></div>{model==='loop'&&<label>Limit<select aria-label="Loop upper limit" value={empty?'empty':'values'} onChange={event=>{setEmpty(event.target.value==='empty');move(0)}}><option value="values">3</option><option value="empty">0</option></select></label>}</div>
-  <p className="concept-summary">{trace.summary}</p>
-  <div className="concept-stage"><div className="concept-visual"><TraceVisual kind={trace.kind} state={state}/></div><div className="concept-code"><span className="trace-code-label">{codeLabels[trace.kind]}</span><pre><code>{trace.code.map((line,index)=><span key={index} className={state.line===index?'current':''} aria-current={state.line===index?'step':undefined}><small aria-hidden="true">{index+1}</small>{line||' '}</span>)}</code></pre></div></div>
-  <p className="concept-explanation" role="status" aria-live={playing?'off':'polite'}>{state.text}</p>
-  <div className="concept-output"><span>Output so far</span><code>{state.output??'—'}</code></div>
-  <div className="concept-controls"><button className="secondary" disabled={step===0} onClick={()=>move(step-1)}>Previous</button><span>{step+1} / {trace.steps.length}</span><button className="secondary" onClick={()=>move(0)}>Reset</button><button className="secondary" disabled={last&&!playing} onClick={()=>setPlaying(value=>!value)}>{playing?'Pause':'Play'}</button><button className="primary" disabled={last} onClick={()=>move(step+1)}>Next</button></div>
-  <p className="concept-caption">Conceptual execution model. Complete Java examples are included in the lesson.</p>
- </section>;
+ const selector=ready=>model==='loop'?<label>Limit<select aria-label="Loop upper limit" disabled={!ready} value={empty?'empty':'values'} onChange={event=>setEmpty(event.target.value==='empty')}><option value="values">3</option><option value="empty">0</option></select></label>:null;
+ return <ConceptPlayer key={model+'-'+empty} trace={trace} Visual={TraceVisual} codeLabel={codeLabels[trace.kind]} headerExtra={selector} modelId={model}/>;
 }

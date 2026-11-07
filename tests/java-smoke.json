@@ -638,5 +638,21 @@
   {
     "class": "OperationCounts",
     "expected": "1:1:1\n2:2:4\n4:4:16\n8:8:64"
+  },
+  {
+    "class": "RunDoesNotStartLesson",
+    "expected": "main\nafter run\nNEW"
+  },
+  {
+    "class": "StartAndJoinOrderLesson",
+    "expected": "worker\nafter join\nTERMINATED"
+  },
+  {
+    "class": "InvocationLocalCounterLesson",
+    "expected": "shared value=4"
+  },
+  {
+    "class": "JvmStackHeapLesson",
+    "expected": "7\n8\n4\ntrue"
   }
 ]

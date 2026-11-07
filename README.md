@@ -20,6 +20,8 @@ The website builds to static files. Reading, search and instructional visualizat
 
 Use Node.js 22.19 or newer within the 22.x release line. The project pins Node.js 22.22.0.
 
+Building the website requires Node.js and npm. Running the downloadable examples additionally requires a JDK; baseline verification targets Java 8. Newer examples declare their own version requirements, and complete Maven exercises require Maven.
+
 From the project root:
 
 ```bash
@@ -57,7 +59,7 @@ tests/                   Website behavior tests
 
 ## Course content
 
-The course develops first programs, variables, control flow, methods, arrays and objects before exceptions, generics, collections and functional programming. Further modules cover standard libraries, threading, concurrent APIs, JVM execution, diagnostics, platform APIs and engineering practices.
+The course introduces compilation and JVM execution alongside the first programs. Variables, control flow, methods, arrays and objects establish the prerequisites for stack/heap and bytecode foundations. Later modules develop exceptions, generics, collections, functional programming, standard libraries, threading, advanced JVM internals, diagnostics, platform APIs and engineering practices.
 
 Topic navigation and previous/next links follow the same prerequisite sequence. Java version requirements appear beside the relevant material. Instructional models support deliberate stepping and optional playback; complete Java files can be downloaded and run locally.
 

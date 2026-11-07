@@ -1,17 +1,18 @@
 ---
 title: "Method frames, local variables and bytecode"
-module: "jvm"
+module: "runtime-foundations"
 group: "Frames and bytecode"
 summary: "Follow a method call from its arguments through stack operations to a returned value."
-order: 1050
+order: 270
 version: "Java 8+"
-prerequisites: ["language/methods-and-recursion", "objects/classes-and-instances"]
+prerequisites: ["jvm/stack-and-heap", "language/methods-and-recursion"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## A call creates an execution frame
 
@@ -63,25 +64,17 @@ A frame contains a local-variable array and an operand stack. In this static met
 
 <ConceptAnimation client:visible model="bytecode" />
 
-The stack is last-in-first-out. Instructions state which operand types they consume and produce. `imul` expects ints; `lmul` works with longs. Verification and other class-file constraints prevent arbitrary mixtures of incompatible stack states from behaving as a valid typed method.
+The stack is last-in-first-out: the most recently pushed operand is consumed first when an instruction needs it. Here imul consumes both ints and pushes their product. Ireturn transfers the top int to the caller and completes this invocation. It does not write the product back into local slot 0.
 
-Local slots are a bytecode model, not a promise of fixed physical memory addresses. Instance methods additionally receive `this` in slot 0, so their explicit arguments begin later. Long and double locals use two slots. A compiler can reuse a local slot after a previous variable's live range ends.
+## Follow a call and a returned value
 
-## Understand calls, return and exception unwinding
+<span id="understand-calls-return-and-exception-unwinding" aria-hidden="true"></span>
 
-In the caller, a static call uses an instruction such as `invokestatic`. Other invocation families include `invokevirtual`, `invokeinterface` and `invokespecial`. Constructor invocation and ordinary overriding do not use identical rules. `invokedynamic` links a call site through a bootstrap mechanism; it is not a general instruction to choose Java overloads dynamically.
+<Diagram client:visible definition={"flowchart TD\n M[Caller frame] -->|argument 3| T[twice frame: local 0 is 3]\n T --> S[Operand operations produce 6]\n S -->|ireturn| R[Caller receives 6]\n R --> P[Caller invokes println]"} caption="The callee has its own invocation state. The returned value becomes available to the caller." />
 
-<Diagram client:visible definition={"flowchart TD\n M[Caller frame] -->|argument 3| T[twice frame: local 0 is 3]\n T --> S[Operand operations produce 6]\n S -->|ireturn| R[Caller receives 6]\n R --> P[Caller invokes println]"} caption="The callee has its own invocation state. The returned value becomes available to the suspended caller." />
+Main waits for twice's result before it can pass that value to println. Returning from twice completes that invocation, while main remains active. A second call creates another independent invocation with its own argument local. Recursion repeats the same rule: each call has its own frame until the base case stops further calls and the results return outward.
 
-A normal return supplies a result of the declared return kind, or no result for void. If an exception leaves the method, normal return does not occur. The JVM searches for an applicable handler and can unwind frames; a caller's statement after the failed call is skipped unless control later reaches it by a valid path. This is the runtime view of the exception-flow lesson.
-
-Recursion creates another invocation with another frame. A base case stops further calls. Excessively deep invocation can exhaust the thread's stack and produce StackOverflowError. Increasing a heap limit does not directly increase that stack's capacity. Conversely, a small recursive depth does not prevent retaining a large heap graph.
-
-## Connect the abstract machine to optimized execution
-
-A JVM can interpret bytecode and can compile methods to machine code. Inlining may remove the physical call boundary from optimized code. Escape analysis may remove an allocation while preserving observable behavior. These implementation techniques must honor the language and VM contracts, including correct observable results and exception behavior.
-
-The frame picture is therefore an explanation of execution semantics. It is not a promise that every invocation always corresponds to one permanently materialized native stack record. Detailed compilation profiles and deoptimization are developed after memory and class loading.
+Local slots and the operand stack are parts of the JVM model, not measured memory addresses. The earlier stack-and-heap chapter separated these invocation values from object state. More advanced member-invocation instructions, verification and optimized physical frames are studied after class loading.
 
 ## Bytecode exercises and explained answers
 
@@ -99,12 +92,10 @@ Ordinary Java int multiplication uses the specified wrapping integer behavior. F
 
 </details>
 
-<details>
-<summary>Why does a debugger sometimes show fewer locals in optimized execution?</summary>
+<span id="connect-the-abstract-machine-to-optimized-execution" aria-hidden="true"></span>
+<span id="why-does-a-debugger-sometimes-show-fewer-locals-in-optimized-execution" aria-hidden="true"></span>
 
-Source names, bytecode slots and optimized machine state are different representations. Debug information, live ranges and optimizations determine which values can be reconstructed. That observation does not change Java's argument-passing rules.
-
-</details>
+Continue later with <a href={lessonUrl('learn/jvm/bytecode-linkage/')}>bytecode linkage and optimized execution</a> for invocation families, type verification, slot reuse and debugger reconstruction after optimization.
 
 ## References for execution semantics
 

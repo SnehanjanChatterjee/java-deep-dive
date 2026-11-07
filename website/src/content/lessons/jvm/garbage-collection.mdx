@@ -3,7 +3,7 @@ title: "Garbage collection: tracing, moving and generations"
 module: "jvm"
 group: "Garbage collection"
 summary: "Trace live objects, explain movement and remembered references, then read a real G1 event."
-order: 1090
+order: 1120
 version: "Java 8+ examples; selected G1/ZGC details use JDK 25"
 prerequisites: ["jvm/runtime-memory", "jvm/memory-gc-jit"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import JvmVisuals from '../../../components/JvmVisuals.jsx';
 import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="the-collector-reclaims-unreachable-state"></span>
@@ -31,6 +32,14 @@ A nonmoving reclaiming phase can make unreachable storage reusable. A moving col
 For movement, call A’s old location L1 and its destination L2. After copying A, both a root reference to A and B’s field referring to A must continue to identify that same logical object. Repairing only the root would leave B’s path stale. A collector can update references directly or use its documented barrier/indirection protocol; the symbols L1/L2 are a teaching model, not measured addresses. Reuse of the old storage follows only after the required protocol keeps those references valid.
 
 <Diagram client:visible definition={"flowchart TD\n R[Root reference] --> L[List]\n L --> A[Live A]\n L --> B[Live B]\n A --> N[Copy survivor to selected destination]\n N --> F[Repair relevant references]\n U[Unreachable C–D cycle] --> X[Storage can be reclaimed]\n F --> Q[Vacated storage reusable under collector protocol]"} caption="Liveness discovery and moving/reference repair are separate responsibilities. This picture does not expose a real object's address or prescribe every collector's phases." />
+
+## Step through a marking and copying cycle
+
+This visual uses a smaller graph: root reaches A, A.next reaches B, and C is unrelated. Compare that with retaining a second root, keep, that reaches C. The chosen model pauses application changes while it marks, copies representations, repairs references and reclaims the original region. It is not a live JVM measurement, and not every collector moves objects or uses this exact sequence.
+
+<JvmVisuals client:visible model="gc" />
+
+Predict the survivors before advancing. After A is copied, its destination representation still refers to B in the original region. Repair that field as well as root before reclaiming the original region. A and B keep their identities and values; moving their representations is not application-level cloning. With keep present, C also survives and that root needs repair.
 
 The <a href={lessonUrl('learn/jvm/runtime-memory/')}>graph-walk program in runtime memory</a> is the complete cycle-safe tracing exercise. Its host Java nodes remain ordinary JVM objects; it is a model of the algorithm, not a query of the live process heap.
 

@@ -1,0 +1,80 @@
+---
+title: "Bytecode invocation, verification and optimized frames"
+module: "jvm"
+group: "Frames and bytecode"
+summary: "Connect familiar source calls to invocation families and separate verified execution semantics from optimized physical frames."
+order: 1090
+version: "Java 8+"
+prerequisites: ["jvm/loading-and-bytecode", "jvm/frames-and-bytecode", "reliability/exception-flow", "objects/inheritance-and-composition"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## A compiled call preserves a chosen member contract
+
+The early frame lesson followed one int argument through iload, multiplication and return. After learning inheritance and class loading, we can ask a different question: how does a compiled call identify its member, and how does the runtime select the implementation? Class-file references and invocation instructions preserve more information than a method name alone.
+
+<JavaExample file="CoreDispatchLab.java" output={"child-object\nchild-string\nlong\nInteger\nvarargs"} />
+
+The first call selects describe(Object) using the declared Parent receiver and Object argument. Runtime dispatch then reaches Child's override of that signature. The second call exposes Child's String overload at its source site. Bytecode does not restart Java overload resolution using arbitrary runtime argument classes.
+
+## Inspect invocation families after ordinary calls
+
+```bash
+mkdir -p out
+javac -d out CoreDispatchLab.java
+javap -classpath out -c -p CoreDispatchLab
+```
+
+| Instruction family | Representative responsibility |
+| --- | --- |
+| invokestatic | Invoke a static member such as a selected choose overload |
+| invokevirtual | Invoke an instance method under its virtual selection rules |
+| invokeinterface | Invoke through an interface member contract |
+| invokespecial | Invoke an instance initializer or an eligible explicit superclass target |
+| invokedynamic | Link and invoke a call site through its bootstrap contract |
+
+A new instruction allocates an uninitialized instance; the constructor call uses the instance-initialization protocol rather than ordinary overriding. Private calls and compiler-generated access arrangements depend on the applicable class-file rules; do not infer every source construct's instruction from a slogan.
+
+Invokedynamic is not an instruction to choose Java overloads dynamically. A compiler can use a bootstrap-linked call site for language implementation strategies such as lambdas or particular string-concatenation translations. The bootstrap establishes a call-site target compatible with the specified invocation type. That mechanism does not guarantee a new lambda object on every evaluation or one universal translation for every compiler/target release.
+
+## Verification checks valid execution shapes
+
+A frame's local-variable array and operand stack carry typed values. An int multiplication instruction consumes ints, while lmul consumes longs. Verification checks class-file constraints such as compatible stack/local types along control-flow paths; valid source compilation is not the only point where runtime artifacts receive structural checks.
+
+In a static method the first argument starts at local slot 0. An instance method receives this in slot 0, shifting its explicit arguments. Long and double locals occupy two slots. A compiler may reuse a slot after a prior variable's live range ends. Source variable names, local slots and debug tables therefore describe related but different information.
+
+Verification does not prove a business result correct, prevent a data race or establish resource ownership. A well-typed method can still divide by zero or violate a domain precondition. The loading chapter distinguishes verification from preparation, resolution and initialization.
+
+## Return normally or unwind through an exception
+
+A normal return supplies its declared return kind, or no value for void. An exception leaving a method prevents that normal return and can cause frames to unwind while the runtime searches for an applicable handler. A caller does not automatically resume at its statement after a failed call. This is the JVM view of the earlier exception-flow trace.
+
+Deep invocation can exhaust a thread's stack and produce StackOverflowError. Increasing a heap limit does not directly increase that stack's capacity; conversely, shallow calls can still retain a large heap graph. Diagnose the exhausted resource rather than treating every memory failure as one interchangeable limit.
+
+## Explain the abstract frame without freezing an implementation
+
+A JVM can interpret bytecode and compile hot execution to machine code. Inlining may remove a physical call boundary. Escape analysis may remove an allocation while preserving observable behavior. These implementation choices must honor the language and VM contracts, including the required values and exception behavior.
+
+A debugger may need runtime metadata to reconstruct source locals and invocation state after optimization or deoptimization. The frame picture is not a promise that every invocation always has a permanently materialized native stack record. The JIT chapter develops optimization evidence and profiling after these semantics are clear.
+
+## Practice: separate overloads, dispatch and optimization
+
+Does inlining authorize replacing Child.describe(Object) with Child.describe(String) merely because this run's argument is a String? Why might a debugger omit a no-longer-live local?
+
+<details>
+<summary>Worked answer</summary>
+
+No. The source-selected member contract remains describe(Object); optimization must preserve the required behavior of that invocation. A compiler can specialize or inline an implementation only under conditions that keep its observable semantics correct. A local's source name, bytecode slot and optimized value are different representations; live ranges and debug/reconstruction information determine what a debugger can show. Neither effect changes pass-by-value or permits new overload selection.
+
+</details>
+
+The <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>early operand-stack trace</a> remains the small concrete foundation for these mechanisms.
+
+## Bytecode-linkage references
+
+- [JVM specification: invocation instruction definitions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html)
+- [JVM specification: verification and linking](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-5.html)
+- [JVM specification: class-file structures and verification constraints](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-4.html)

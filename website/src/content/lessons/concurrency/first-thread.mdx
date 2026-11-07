@@ -3,7 +3,7 @@ title: "Your first Runnable, Thread and join"
 module: "concurrency"
 group: "Threads and tasks"
 summary: "Create one worker, distinguish start from run, and derive legal execution schedules."
-order: 710
+order: 740
 version: "Java 8+"
 prerequisites: ["concurrency/processes-and-threads", "functional/lambdas-and-optional"]
 advanced: false
@@ -11,7 +11,7 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 
 ## Give an execution some work
 
@@ -34,7 +34,29 @@ Compile with `javac ThreadBasicsDemo.java`, then run `java ThreadBasicsDemo`. Fo
 
 The output is deterministic here because the direct call finishes before start and the last print follows join. A Thread can be started at most once. Calling start again, including after termination, throws `IllegalThreadStateException`. Reuse a task description through a new execution rather than trying to restart a terminated Thread object.
 
-<ConceptAnimation client:visible model="thread" />
+The program above calls `task.run()` directly. Calling `worker.run()` directly is also an ordinary call on the current execution; it does not start that Thread object. Compare the two choices below. The selector changes both the highlighted code and the state being explained.
+
+<ThreadingVisuals client:visible model="execution" />
+
+### Run the two invocation choices as complete programs
+
+<details>
+<summary>Direct call: work runs on main and worker stays NEW</summary>
+
+<JavaExample file="RunDoesNotStartLesson.java" output={"main\nafter run\nNEW"} />
+
+`worker` is a local variable referring to a Thread object. The name "worker" is the name that object's execution would use if started. It does not change which execution invokes an ordinary method call. Here currentThread identifies main, run returns to main, and the unstarted object stays NEW. It does not become TERMINATED merely because this direct method call returned.
+
+</details>
+
+<details>
+<summary>Start and join: a separate execution ends before main continues</summary>
+
+<JavaExample file="StartAndJoinOrderLesson.java" output={"worker\nafter join\nTERMINATED"} />
+
+Start creates the independent execution. Join waits if that execution has not ended yet. The visual deliberately chooses that waiting case; another legal schedule can finish the worker before main reaches join. In both cases the worker's print precedes `after join`, and the state observed after successful join is TERMINATED.
+
+</details>
 
 ## Work out which output orders are legal
 

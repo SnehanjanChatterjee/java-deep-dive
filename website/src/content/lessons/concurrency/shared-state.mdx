@@ -3,7 +3,7 @@ title: "Shared state, lost updates and synchronized repair"
 module: "concurrency"
 group: "Shared state and synchronization"
 summary: "Decompose an increment, follow an overwriting schedule, and protect the whole operation."
-order: 720
+order: 750
 version: "Java 8+"
 prerequisites: ["concurrency/first-thread"]
 advanced: false
@@ -12,6 +12,7 @@ advanced: false
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 import InterleavingLab from '../../../components/InterleavingLab.astro';
+import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 
 ## Two increments can produce one update
 
@@ -28,7 +29,7 @@ For initial count zero, choose this schedule:
 
 B's write overwrites A's update. Neither worker added to the other worker's local value. This is an atomicity problem, even if each individual read and write is visible. The intended result depends on an uncontrolled relative timing: a race condition.
 
-<InterleavingLab />
+<InterleavingLab stage="foundation" />
 
 ## Protect the complete operation with one monitor
 
@@ -41,6 +42,24 @@ A synchronized instance method acquires its receiver object's monitor before ent
 `countSafely` creates one Counter and passes the same task to two real threads. Both calls to `increment` lock that same Counter. While A performs read/add/write, B cannot enter the protected method. After A releases, B can read the updated value. Each successful call contributes exactly one increment.
 
 The getter uses the same monitor protocol. All participating accesses must agree on the lock identity: synchronizing on two unrelated objects would allow simultaneous mutation of the shared counter. A static synchronized method instead uses its declaring Class object's monitor; it does not acquire every instance's monitor.
+
+## Separate each invocation’s locals from the shared object
+
+A method body is shared code, but two calls do not share all their variables. The next program makes this visible by passing the same Counter reference into two invocations of `addTwice`.
+
+<JavaExample file="InvocationLocalCounterLesson.java" output={"shared value=4"} />
+
+- `shared` is a local reference in the owner method. It identifies the one Counter created there.
+- `a` and `b` refer to two Thread objects, named A and B. Their actions both call `addTwice(shared)`.
+- Each call creates its own `counter` parameter variable and copies the reference value into it. Both copies identify that same Counter.
+- Each call creates its own `index`. Advancing A’s index does not advance B’s index.
+- `value` is a field inside the Counter object. Both calls to increment change that one field under that object's monitor.
+
+<ThreadingVisuals client:visible model="sharing" />
+
+The model labels the object C1 so both reference paths can be followed; C1 is not an additional Java variable or a physical address. The chosen schedule lets A's index become one while B's remains zero. It then shows B reading the updated Counter value after A releases the monitor. Another legal schedule can perform the increments in a different order while retaining the final total of four.
+
+On method return, that invocation's parameter and loop variables are gone. The Counter can remain reachable through the owner's `shared` reference and the other invocation. Copying a reference creates another way to reach an object; it does not copy the object's fields into an independent Counter.
 
 ## Completion and exclusion solve separate problems
 

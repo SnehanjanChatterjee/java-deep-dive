@@ -3,7 +3,7 @@ title: "Volatile variables and immutable snapshot publication"
 module: "concurrency"
 group: "Shared state and synchronization"
 summary: "Publish a consistent configuration generation and distinguish publication from a compound update."
-order: 740
+order: 770
 version: "Java 8+"
 prerequisites: ["concurrency/memory-model"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import InterleavingLab from '../../../components/InterleavingLab.astro';
 
 <span id="concepts"></span>
 <span id="worked-example"></span>
@@ -46,6 +47,10 @@ A volatile write happens-before subsequent reads of that variable under the sync
 <Diagram client:visible definition={"flowchart TD\n C[Construct and validate both fields] --> V[Volatile current write]\n V -->|synchronizes with| R[Reader captures current once]\n R --> S[Read fields from captured Snapshot]\n M[Later mutable changes] -. need their own protocol .-> S"} caption="Publishing one reference orders preceding initialization. It neither freezes mutable data nor coordinates unrelated later writes." />
 
 Calling read twice can legitimately select different generations. Writing two volatile fields does not create an atomic record. Making an array reference volatile does not make every array element volatile. A volatile count++ still has a read/compute/write interference interval.
+
+Compare the protocols below. Plain and volatile increments can both follow the same losing schedule: each caller reads zero before either writes. Synchronizing the complete operation changes which steps can overlap. The model isolates this atomicity question; it does not enumerate every observation permitted for a racy plain field.
+
+<InterleavingLab id="volatile-increment-comparison" stage="memory" />
 
 ## Final fields and construction escape
 
