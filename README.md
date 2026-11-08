@@ -1,81 +1,57 @@
-<div align="center">
+# Java Deep Dive
 
-# ☕ Java Deep Dive
+## 🌐 [Open the live website →](https://snehanjanchatterjee.github.io/java-deep-dive/)
 
-### Understand Java, from the first line to the runtime.
+A beginner-to-advanced Java course with runnable examples, diagrams, interactive walkthroughs and interview exercises.
 
-Learn the fundamentals, explore how things work, and build the confidence to explain your code.
+## What’s inside
 
-**Concepts · Runnable examples · Visual walkthroughs · Interview practice**
+- **Language and objects:** fundamentals, classes, interfaces, equality and immutability.
+- **Collections and functional Java:** generics, data structures, lambdas and streams.
+- **Concurrency:** threads, synchronization, executors and modern threading.
+- **JVM and diagnostics:** architecture, memory, garbage collection and JIT compilation.
 
-[Open the course](https://snehanjanchatterjee.github.io/java-deep-dive/) · [Curriculum](docs/curriculum.md) · [Quick start](#quick-start) · [Inside the project](#inside-the-project)
+Learn concepts before internals, trace complete examples, and practise implementation and debugging. Search lessons, switch themes, and keep notes and bookmarks in your browser. Java requirements are labelled per example.
 
-</div>
-
----
+[Full curriculum](docs/curriculum.md)
 
 ## Technology stack
 
-<p align="center">
-  <a href="https://astro.build"><img src="https://img.shields.io/badge/Astro-BC52EE?style=for-the-badge&amp;logo=astro&amp;logoColor=white" alt="Astro" /></a>
-  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&amp;logo=typescript&amp;logoColor=white" alt="TypeScript" /></a>
-  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-20232A?style=for-the-badge&amp;logo=react&amp;logoColor=61DAFB" alt="React" /></a>
-  <a href="https://mdxjs.com"><img src="https://img.shields.io/badge/MDX-F9AC00?style=for-the-badge&amp;logo=mdx&amp;logoColor=black" alt="MDX" /></a>
+<p align="left">
+  <a href="https://astro.build"><img src="https://img.shields.io/badge/Astro-BC52EE?style=flat-square&amp;logo=astro&amp;logoColor=white" alt="Astro" /></a>
+  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript" /></a>
+  <a href="https://react.dev"><img src="https://img.shields.io/badge/React-20232A?style=flat-square&amp;logo=react&amp;logoColor=61DAFB" alt="React" /></a>
+  <a href="https://mdxjs.com"><img src="https://img.shields.io/badge/MDX-F9AC00?style=flat-square&amp;logo=mdx&amp;logoColor=black" alt="MDX" /></a>
 </p>
-<p align="center">
-  <a href="https://mermaid.js.org"><img src="https://img.shields.io/badge/Mermaid-FF3670?style=for-the-badge&amp;logo=mermaid&amp;logoColor=white" alt="Mermaid" /></a>
-  <a href="https://pagefind.app"><img src="https://img.shields.io/badge/Pagefind-334155?style=for-the-badge" alt="Pagefind full-text search" /></a>
-  <a href="https://dev.java"><img src="https://img.shields.io/badge/Java-ED8B00?style=for-the-badge&amp;logo=openjdk&amp;logoColor=white" alt="Java" /></a>
-  <a href="https://junit.org/junit4"><img src="https://img.shields.io/badge/JUnit-25A162?style=for-the-badge" alt="JUnit" /></a>
-  <a href="https://maven.apache.org"><img src="https://img.shields.io/badge/Maven-C71A36?style=for-the-badge&amp;logo=apachemaven&amp;logoColor=white" alt="Apache Maven" /></a>
+<p align="left">
+  <a href="https://mermaid.js.org"><img src="https://img.shields.io/badge/Mermaid-FF3670?style=flat-square&amp;logo=mermaid&amp;logoColor=white" alt="Mermaid" /></a>
+  <a href="https://pagefind.app"><img src="https://img.shields.io/badge/Pagefind-334155?style=flat-square" alt="Pagefind full-text search" /></a>
+  <a href="https://dev.java"><img src="https://img.shields.io/badge/Java-ED8B00?style=flat-square&amp;logo=openjdk&amp;logoColor=white" alt="Java" /></a>
+  <a href="https://junit.org/junit4"><img src="https://img.shields.io/badge/JUnit-25A162?style=flat-square" alt="JUnit" /></a>
+  <a href="https://maven.apache.org"><img src="https://img.shields.io/badge/Maven-C71A36?style=flat-square&amp;logo=apachemaven&amp;logoColor=white" alt="Apache Maven" /></a>
 </p>
 
-**Astro + MDX** power the static lesson pages. **React** supplies focused interactive walkthroughs, **Mermaid** illustrates relationships and algorithms, and **Pagefind** provides full-text search. Downloadable **Java** examples include **JUnit** tests and complete **Maven** projects where appropriate.
+Static pages with **Astro + MDX**, interactive explanations with **React**, diagrams with **Mermaid**, and search with **Pagefind**. Java exercises include JUnit tests and Maven projects. No application backend or database is required.
 
-The website needs no application backend or database. Java examples run locally; personal notes, bookmarks and progress stay in the browser.
+## Run locally
 
-## Learn it. Trace it. Build it.
-
-Java Deep Dive is a beginner-to-advanced course for understanding the language, exploring its runtime and preparing for technical interviews. Lessons introduce the idea, develop an ordinary example, and then explore implementation details, edge cases and tradeoffs.
-
-- **Learn the concept** with clear definitions and worked examples.
-- **See the execution** through diagrams and interactive, step-by-step visualizations.
-- **Build it yourself** with complete downloadable Java programs and implementation exercises.
-- **Explain the reasoning** with prediction questions, debugging scenarios and interview follow-ups.
-
-Follow the course timeline or search for a specific topic. Switch between light and dark themes, bookmark lessons, and keep personal notes in your browser. No account is required.
-
-## Explore Java
-
-**Language & objects → Generics & collections → Functional Java → Concurrency → JVM internals**
-
-Start with first programs and ordinary examples. Build toward collection implementations, concurrent algorithms, runtime diagnostics and advanced platform APIs. Standard libraries, testing and engineering practices connect the concepts to practical development.
-
-JVM foundations appear early; advanced runtime mechanisms build on them later. Examples state their Java requirements, including newer features and preview APIs.
-
-[Browse the complete curriculum →](docs/curriculum.md)
-
-## Quick start
-
-Use **Node.js 22.19+ within the 22.x release line** and npm. The project pins Node.js **22.22.0**.
+Use Node.js **22.19+ within 22.x** and npm; the project pins **22.22.0**.
 
 ```bash
 npm ci
 npm run dev
 ```
 
-Open **[localhost:4321/java-deep-dive/](http://localhost:4321/java-deep-dive/)**.
+Local development: [localhost:4321/java-deep-dive/](http://localhost:4321/java-deep-dive/).
 
-For a production preview with the generated search index:
+A JDK is needed to run Java examples; Maven is needed for Maven exercises. For a production preview with search:
 
 ```bash
 npm run build
 npm run preview --workspace website
 ```
 
-Running the Java programs requires a JDK. Each example lists its version and execution instructions; Maven projects additionally require Maven.
-
-## Inside the project
+## Developer reference
 
 <details>
 <summary><strong>Source layout</strong></summary>
