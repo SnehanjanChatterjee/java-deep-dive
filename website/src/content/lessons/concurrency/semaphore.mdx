@@ -3,7 +3,7 @@ title: "Semaphore: bound the scarce resource"
 module: "concurrency"
 group: "Coordination utilities"
 summary: "Distinguish resource admission from worker count and release permits only after acquiring them."
-order: 850
+order: 825
 version: "Java 8+"
 prerequisites: ["concurrency/countdown-latch", "concurrency/locks-interruption"]
 advanced: false
@@ -40,6 +40,14 @@ try {
 Acquisition is before the try whose finally releases. If acquire throws InterruptedException, no permit was acquired. Entering an unconditional release finally before successful acquisition would increase capacity incorrectly. The full source applies this rule and also cleans up its latch-controlled workers on an exceptional owner path.
 
 A Semaphore does not track permit ownership like a ReentrantLock. A different thread can legitimately release for a handoff protocol, but accidental extra releases are not automatically rejected. A one-permit semaphore is not a reentrant mutex: the same thread acquiring again can wait for its own retained permit.
+
+## A permit can publish data without being an ownership lock
+
+Start a semaphore at zero permits. A producer writes payload 42 and then releases one permit. A consumer successfully acquires that permit and then reads payload. The release/acquire memory effect can publish that preceding write; the producer and consumer need not be the same thread.
+
+That ownerless design also explains a danger: release does not check that this caller previously acquired. With initial capacity two, acquire changes available permits to one and one matching release restores two. A second erroneous release raises availability to three; the semaphore does not preserve the original resource capacity for the application.
+
+For this resource-lending example, only a caller whose acquire succeeded enters the finally responsible for release. An InterruptedException before acquisition grants no permit to return. A multi-permit acquire also needs its full requested count; several small callers and one large caller can interact differently under fairness policy. Untimed tryAcquire has documented barging behavior even for a fair semaphore. These are acquisition rules, not end-to-end task completion guarantees. [Semaphore ownership and memory effects](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Semaphore.html)
 
 ## Capacity, fairness and rate are different
 

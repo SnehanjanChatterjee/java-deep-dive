@@ -1,9 +1,9 @@
 ---
 title: "ForkJoinPool and divide-and-conquer"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Thread pools and scheduling"
 summary: "Partition disjoint ranges, compute independent results and then examine work-stealing."
-order: 900
+order: 860
 version: "Java 8+"
 prerequisites: ["concurrency/thread-pool-internals"]
 advanced: true
@@ -42,6 +42,22 @@ Forking makes work available; it does not guarantee another worker starts it imm
 The input array is shared read-only by contract. A final array reference does not prevent a caller from mutating its elements; keep the input stable until completion or design a snapshotting API. Each task's accumulator is local, avoiding a shared mutable total.
 
 <span id="work-stealing-representation"></span>
+## Follow a compute call through its return value
+
+Changing the threshold changes the decomposition without changing which five input elements contribute. For this particular five-element input, trace the logical task tree:
+
+| Threshold | Sequential leaves | Logical task nodes, including the root |
+| --- | --- | --- |
+| 1 | Five single-element leaves | Nine |
+| 2 | Three leaves: [0,2), [2,3), [3,5) | Five |
+| 5 | One leaf covering [0,5) | One |
+
+Every case still reads the five values once and returns five. Additional task nodes create scheduling/allocation work; they do not guarantee additional useful parallel execution. The table counts this declared algorithm's tree, not observed processors, workers or throughput.
+
+For every internal node, `left.fork()` makes that child available, `right.compute()` computes a result on the current path, and `left.join()` obtains the left child's outcome before adding. Fork does not force left to run before right, and join is not evidence of a fresh dedicated thread per tree node. The dependency is on completed values.
+
+**Boundary checks:** threshold one reaches single-element leaves; a threshold at least array length performs one sequential leaf; an empty range returns zero. A zero threshold would fail the declared progress contract, so validation rejects it instead of hoping recursion terminates. This is an algorithm argument separate from work-stealing performance. [RecursiveTask result and compute contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/RecursiveTask.html)
+
 ## Work-stealing and combination laws
 
 On the selected OpenJDK implementation, workers have associated work queues and can steal available tasks from others. Typical local processing and stealing use different queue ends, supporting local nested work and exposing older tasks. Exact queue mechanics are implementation details. Join can involve pool-specific helping, rather than behaving exactly like an arbitrary blocking Future.get.

@@ -1,0 +1,87 @@
+---
+title: "Shared collection operations and typed arrays"
+module: "collections"
+group: "Collection foundations"
+summary: "Use bulk membership operations, read their boolean results and convert a collection into an array with the intended runtime type."
+order: 385
+version: "Java 8+"
+prerequisites: ["collections/choosing-collections"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Operate through the smallest useful contract
+
+A method that only needs membership, removal and traversal can accept Collection rather than requiring ArrayList. The caller keeps the implementation choice; the method states only the operations it needs. Collection is an interface. Collections, with a final s, is a utility class containing static algorithms and wrappers. An ArrayList is an object that implements List and Collection; it is not an instance of Collections.
+
+<JavaExample file="CollectionBulkMethods.java" output={"true\ntrue\ntrue\n[B, C]\n[B]\ntrue:[B, null, tail]\nreserved size=0\ntrue"} />
+
+The variable names is declared Collection of String. Its implementation permits duplicates and mutation. addAll appends A,B,A,C and reports true because the collection changed. containsAll([A,A,B]) reports true even though the argument repeats A: it asks about membership, not matching multiplicities.
+
+## Distinguish single removal from bulk membership removal
+
+remove("A") removes one matching occurrence when supported. removeAll(collection) removes every element of the receiver that is a member of the argument. In the program, removing the singleton set containing A removes both A occurrences, leaving [B,C]. The argument is a membership criterion, not a request to remove just as many copies as the argument contains.
+
+retainAll keeps only receiver elements present in the argument. Retaining [B,missing] from [B,C] leaves [B]; it does not insert missing. Each operation changes its receiver. Construct a new container first when the input must remain unchanged.
+
+| Operation | Result meaning | Important boundary |
+| --- | --- | --- |
+| add / addAll | Whether the receiver changed | A duplicate Set.add can return false |
+| contains / containsAll | Membership under the receiver's relation | containsAll is not a multiset count comparison |
+| remove(Object) | Whether one matching member was removed | List.remove(int) is a different overload |
+| removeAll | Whether membership-based deletion changed the receiver | All matching receiver occurrences can disappear |
+| retainAll | Whether removal of nonmembers changed the receiver | It never adds missing values |
+| clear | No returned value | Clears membership, not arbitrary referenced object state |
+| size / isEmpty | Logical cardinality / zero cardinality | Capacity is separate storage |
+
+Collections can disagree about membership: a TreeSet comparator and ordinary equality must be coherent if the operations are expected to obey general Set laws. Bulk-operation cost also depends on the other collection's membership algorithm. A loop over n receiver values with an O(m) contains check can cost O(nm); a suitable hash index changes that model at construction and storage cost.
+
+## Convert the logical elements into an array
+
+The no-argument toArray returns Object[]; it does not promise a String[] even when every current element is String. A cast from that Object[] to String[] is not a conversion. Use `names.toArray(new String[0])` for a new array with the intended runtime component class.
+
+If the supplied typed array is large enough, the method can use it. The program passes a three-slot String array for one name. The first slot becomes B and the immediately following slot is null. Only the logical element count belongs to the result data; spare positions are not new collection members. This is why a trailing unused value in a reused array must not be treated as another element.
+
+The array is an independent container snapshot. Its element references are still shared. Runtime array-store checking also remains: asking a collection containing an incompatible value to populate a narrower array can throw ArrayStoreException. Generic type arguments do not disable the array's reified component rule.
+
+Java 11 adds the generator form `names.toArray(String[]::new)`. It expresses the same array-component choice through a constructor reference, taught in Functional Java. Java 8 callers can use the typed-array overload above.
+
+## Optional operations and equality are separate contracts
+
+A Collection reference does not guarantee a mutable implementation. A fixed-size list can support set while rejecting add/remove. An unmodifiable wrapper can reject mutation even if the requested call would make no observable change. Do not use a no-op mutation as a portable mutability test.
+
+Collection itself does not impose one universal value-equality policy. List equality compares corresponding elements in sequence; Set equality compares membership; Map equality compares mappings. A PriorityQueue does not become equal to another queue merely because polling each would yield the same values. Choose a sequence or set comparison explicitly when that is the intended result meaning.
+
+## Worked interview cases
+
+<details>
+<summary>Why does containsAll([A,A]) succeed for a list containing only one A?</summary>
+
+Each requested value is present. containsAll does not consume matched occurrences or compare counts. For bag/multiset containment, maintain frequencies and compare the required count for every value.
+
+</details>
+
+<details>
+<summary>Does new ArrayList&lt;&gt;(100) contain one hundred null elements?</summary>
+
+No. It reserves storage while size remains zero. get(0) and set(0, value) still fail. Add real elements or initialize an appropriate sequence before indexed replacement. The nested-collections chapter applies the same distinction to rows and cells.
+
+</details>
+
+<details>
+<summary>Can a failed bulk mutation be assumed to roll back earlier changes?</summary>
+
+No. Supported mutators and callbacks can fail after earlier work. Check the particular operation/implementation contract. The handwritten dynamic array later chooses a two-phase acceptance plan for a stronger rule-failure boundary; that guarantee must be implemented deliberately.
+
+</details>
+
+Next, <a href={lessonUrl('learn/collections/iteration-and-views/')}>iterators and views</a> explain traversal state and the ownership of containers returned by library APIs.
+
+## References
+
+- [Collection operations, optional mutation and array conversion](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collection.html)
+- [List positional and equality contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html)
+- [Collections static algorithms and wrappers](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html)

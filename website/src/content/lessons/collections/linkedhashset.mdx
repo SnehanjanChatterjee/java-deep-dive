@@ -2,7 +2,7 @@
 title: "LinkedHashSet"
 module: "collections"
 group: "Sets"
-summary: "Remove duplicates while preserving encounter order and maintaining stable membership."
+summary: "Normalize and deduplicate in first-appearance order, then maintain one live indexed node per encounter position."
 order: 490
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/hashset", "collections/linkedhashmap", "collections/linkedlist"]
@@ -79,6 +79,16 @@ SequencedSet adds first/last/reversed concepts on newer Java. Explicit positioni
 ### Coding exercise with a reference solution
 
 Given token input, normalize each token according to the declared domain policy, reject or retain blanks explicitly, add accepted tokens to a LinkedHashSet and return a new list from its traversal. Normalization precedes membership because changing values afterward can break the set's equality/hash assumptions. If the API promises a snapshot, return an appropriate immutable/container copy and state the element ownership policy.
+
+## Complete normalized first-appearance deduplication
+
+<JavaExample file="OrderedDeduplication.java" output={"[java, jvm]\n[java, jvm]"} />
+
+The declared policy rejects null tokens, trims using String.trim's rules, applies locale-neutral lowercase and discards empty results. It normalizes before membership: " Java " and "java" become the same value, while JVM's first normalized appearance fixes its position after java.
+
+The result is a detached unmodifiable List of String. Editing the input list after return does not change it, and the immutable String elements need no further copying. For arbitrary mutable elements, the same structural copy would not be a deep snapshot. String.trim does not mean every Unicode whitespace rule; choose a different stated normalization policy when the domain requires one.
+
+The completed source supplies the ordinary API exercise. The following handwritten implementation explains how order is maintained without delegating it to LinkedHashMap.
 
 <span id="java-implementation"></span>
 ## Implement ordered membership

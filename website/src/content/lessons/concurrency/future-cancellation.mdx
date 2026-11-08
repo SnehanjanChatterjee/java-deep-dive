@@ -1,9 +1,9 @@
 ---
 title: "Future cancellation, deadlines and cleanup"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Executors and futures"
 summary: "Observe a cancelled result separately from the worker that is still releasing its resources."
-order: 880
+order: 850
 version: "Java 8+"
 prerequisites: ["concurrency/task-failures", "concurrency/countdown-latch"]
 advanced: true
@@ -55,6 +55,14 @@ IsDone includes failure and cancellation. Cancel(false) can cancel an already ru
 For a parent operation with 500 milliseconds remaining, assigning a fresh 500 milliseconds to each of three waits permits a longer total operation. Track a monotonic start/deadline and recompute remaining budget before each wait. A timeout is not a statement that remote work stopped. Wall-clock adjustments make currentTimeMillis unsuitable for measuring elapsed budgets.
 
 Shutdown stops new acceptance; shutdownNow additionally requests interruption and returns queued Runnable objects that did not start. Those returned wrappers are not an automatic report that all corresponding Futures were cancelled/completed. Deliberately account for removed work and its result handles.
+
+## Recompute remaining time instead of restarting a timeout
+
+Take a monotonic start measurement and an allowed elapsed budget. Before each acquisition or result wait, calculate `remaining = budget - (System.nanoTime() - start)`. If remaining is nonpositive, apply the parent's expiry policy instead of starting another full-duration wait. Use durations within nanoTime's documented elapsed-comparison range and avoid converting a small remainder down to an accidental zero that another API interprets as unbounded.
+
+For an illustrative 500 ms budget, an admission wait consuming 120 ms leaves about 380 ms for the result wait, rather than a fresh 500 ms. Those numbers demonstrate accounting, not a measured execution. A bounded wait can still return early for failure/interruption, and scheduler delay can make an actual return later than an ideal timer deadline.
+
+**Cancellation cases:** a task cancelled before entry may never run its body/finally. A running task that honors interruption can execute finally after the handle is already cancelled. A running task ignoring interruption can continue. The task body is therefore responsible only for resources it actually acquired; an owner needs a separate policy for queued work that never entered. [Java 8 Future and cancellation contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html)
 
 ## FutureTask completion internals
 

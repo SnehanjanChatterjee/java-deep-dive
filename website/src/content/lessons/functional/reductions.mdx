@@ -1,8 +1,8 @@
 ---
 title: "Reductions, identities and aggregate results"
 module: "functional"
-group: "Stream foundations"
-summary: "Turn several values into one result"
+group: "Reductions"
+summary: "Derive all three reduction shapes from identities, associativity and accumulator/combiner compatibility, with explicit partition counterexamples."
 order: 590
 version: "Java 8+"
 prerequisites: ["functional/streams-and-collectors"]
@@ -27,6 +27,24 @@ An associative operation produces the same meaning under regrouping. Integer add
 Floating-point addition has rounding effects and is not associative in the mathematical sense over all finite values. Regrouping can change low-order bits. Overflow, exceptional arithmetic and numeric domain constraints must be part of the reduction contract.
 
 For the three-argument reduce overload, the combiner must agree with the accumulator as well as having a valid identity. For example, reducing words to total length needs accumulation of one word's length and combination of two length totals. Do not apply an element accumulator to partial results of a different shape.
+
+## Work the three overload shapes separately
+
+| Overload shape | State/result type | Empty policy |
+| --- | --- | --- |
+| reduce(identity,BinaryOperator&lt;T&gt;) | T throughout | Return identity |
+| reduce(BinaryOperator&lt;T&gt;) | T throughout | Empty Optional&lt;T&gt; |
+| reduce(identity,BiFunction&lt;U,T,U&gt;,BinaryOperator&lt;U&gt;) | Input T, result U | Return U identity |
+
+<JavaExample file="ReductionLaws.java" output={"length=8\nempty length=0\ncombined=8\ninvalid identity sequential/partitioned=11/12"} />
+
+For totalLength, the input T is String and result U is Long. Accumulation adds one text's length to a partial long; combination adds two partial longs. Java,JVM,a produce 0→4→7→8. Splitting after Java gives partial results four and four, combined to eight. Empty input contributes zero.
+
+The compatibility law is not just “both methods return U.” For any valid partial u and element t, combining u with accumulation of t into the identity must mean the same thing as accumulating t into u. Here u + (0 + length(t)) equals u + length(t). Substituting an unrelated combiner such as max would break that relationship despite compiling.
+
+The source also manually splits an invalid identity-one sum. Sequential output eleven and partitioned output twelve show the law failure without pretending a framework must use one particular partition count. A different parallel partitioning can produce another wrong answer; none makes one an addition identity.
+
+Math.addExact makes the length aggregation's arithmetic failure explicit. Exact arithmetic is not automatically associative for arbitrary mixtures of signed values and exception paths: an intermediate overflow can depend on grouping. This nonnegative-length model makes its intended mathematical range policy clear.
 
 ## Distinguish reduce from mutable collection
 

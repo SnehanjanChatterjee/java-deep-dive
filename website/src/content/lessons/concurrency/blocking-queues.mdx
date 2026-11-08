@@ -1,9 +1,9 @@
 ---
 title: "BlockingQueue and producer-consumer lifetimes"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Use a real bounded library pipeline, then implement close-and-drain with guarded queue state."
-order: 940
+order: 885
 version: "Java 8+"
 prerequisites: ["concurrency/concurrent-collections", "concurrency/locks-interruption"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -33,6 +34,16 @@ A BlockingQueue combines ordering/storage with those waiting operations. Blockin
 Main produces three values into an ArrayBlockingQueue of capacity two. A separate consumer calls take three times and sums them. Put waits if necessary for capacity; take waits if necessary for an item. FIFO preserves these accepted values' order regardless of their relative execution rates.
 
 The consumer knows this particular batch contains exactly three items. Join establishes completed result observation, and finally accounts for the owned worker if the producer is interrupted. This is a finite batch protocol, not a generic rule that an empty queue means producers finished. Removing an item also does not acknowledge successful business processing or create durable/exactly-once delivery.
+
+## Watch a full queue and both waiting conditions
+
+In this selected schedule the consumer first waits for an item. The producer then fills the two slots and waits when trying to insert 12. Watch which call releases the queue lock, which call becomes eligible after a signal, and when each payload actually enters or leaves storage.
+
+<AdvancedThreadMotion client:visible model="queue" />
+
+A waiting put still owns responsibility for the not-yet-inserted payload. Here ownership means application responsibility: insertion copies an object reference, does not clone the object and does not prevent retained aliases. A successful take transfers processing responsibility to the consumer; processing occurs outside the queue lock.
+
+The moving slots show logical order, oldest to newest. Moving 20 to the first displayed position after removing 10 does not claim the backing array physically shifts it. The guarded lock/condition paths come from CloseableWorkQueue below. The source's closure branches remain important for a general service, while this animation isolates the ordinary open-queue path. The [BlockingQueue contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/BlockingQueue.html) distinguishes waiting for capacity from successful insertion and retrieval.
 
 <span id="choose-the-methods-failure-policy"></span>
 ## Choose the method's ordinary failure policy
@@ -61,6 +72,14 @@ Head, tail, size and closed share one lock. Constructor validation establishes p
 <Diagram client:visible definition={"flowchart TD\n P[Put] --> F{Full and open?}\n F -->|yes| W[Await notFull, then recheck]\n F -->|no| C{Closed?}\n C -->|yes| X[Reject insertion]\n C -->|no| E[Enqueue, update indexes and signal notEmpty]\n T[Take] --> D[Dequeue, clear slot and signal notFull]\n Z[Close] --> A[Wake both waiter populations]"} caption="The closing flag belongs to the same guarded invariant as storage. Notification wakes contenders so they can recheck it." />
 
 <span id="queue-representation-and-predicates"></span>
+## Make termination work for every consumer
+
+The finite three-item example has one consumer and an exact batch size. For two consumers, sending one poison pill is insufficient: one can receive it and exit while the other waits forever. A sentinel protocol needs one terminal receipt per consumer, no late producers after termination signals, and a failure policy if a producer exits before publishing those signals.
+
+Do not place an unconditional blocking put of a terminal signal in an interrupted producer's finally and assume cleanup cannot fail. Interruption, full capacity or a failed consumer can prevent that put. A close-and-drain queue instead changes guarded lifecycle state and wakes both waiter populations; accepted items remain distinguishable from the closed-and-empty condition.
+
+**Failure exercise:** a consumer removes an item and then fails while processing it. The queue has already relinquished that element. Neither take nor producer completion automatically retries the business action. Decide acknowledgement/retry/idempotency separately from FIFO storage and permit/resource accounting. A bounded queue is an in-process coordination mechanism, not durable delivery. [BlockingQueue usage and publication](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/BlockingQueue.html)
+
 ## Queue representation and alternatives
 
 ArrayBlockingQueue uses a fixed array, count, put/take indexes, one ReentrantLock and separate notEmpty/notFull Conditions. The complete state transition occurs under that lock; an awakened thread reacquires and loops. Linearization is the protected insertion/removal transition, not the earlier signal that a thread started.

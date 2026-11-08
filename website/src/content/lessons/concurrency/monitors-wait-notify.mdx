@@ -1,7 +1,7 @@
 ---
 title: "Intrinsic monitors, wait and notification"
 module: "concurrency"
-group: "Guarded waiting"
+group: "Waiting and conditions"
 summary: "Use durable state predicates to coordinate a real consumer and then build a closeable mailbox."
 order: 790
 version: "Java 8+"
@@ -11,7 +11,7 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
+import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -35,7 +35,9 @@ Put changes value before notification. The producer still owns the monitor until
 
 This controlled teaching mailbox handles one handoff. It does not claim fairness, capacity greater than one or general shutdown. The milestone establishes the intended scenario without a guessed sleep. The prints inside the monitor are local teaching trace points; avoid slow output or unknown callbacks while holding application locks in a real workload.
 
-<ConceptAnimation client:visible model="monitor" />
+<BasicThreadMotion client:visible model="handoff" />
+
+Follow C from the mailbox wait set into BLOCKED contention after main notifies, then back to RUNNABLE when it reacquires. The owner label remains main until put exits: notification changes eligibility without releasing ownership. M also waits during the startup handshake, so the wait-set label identifies which predicate a particular waiting execution is awaiting. [Object notification and reacquisition](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#notifyAll()), [JLS wait-set rules](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.2)
 
 ## A condition is state, not an event
 
@@ -51,6 +53,14 @@ synchronized (monitor) {
 ```
 
 The names stand for state operations guarded by monitor. A notification delivered before wait is not remembered as a credit. Checking the durable predicate under the lock handles that case: if a value already exists, there is no reason to wait.
+
+## A notification is not a stored message
+
+If a caller owns an object's monitor and invokes notify when nobody is waiting, the call returns without storing a credit for some future wait. Calling notify or wait without owning **that object's** monitor instead throws IllegalMonitorStateException. Synchronizing a different object does not satisfy this requirement.
+
+This explains a classic missed-signal bug: a producer notifies, then a consumer starts and unconditionally waits. No future notifier need exist. The correct consumer checks a persistent guarded predicate first; if the item is already present, it proceeds without waiting. The producer changes that predicate under the same monitor before notifying.
+
+Notify selects one arbitrary waiter; the contract does not promise a random distribution, oldest waiter or the worker with the right predicate. NotifyAll makes all waiters eligible to compete, but does not itself guarantee fairness or prevent every form of starvation. The odd-even/three-thread lesson applies these rules to a finite sequence, including the final wakeup and cancellation branches. [JLS wait sets and notification](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.2)
 
 ## Why wakeup requires a while loop
 

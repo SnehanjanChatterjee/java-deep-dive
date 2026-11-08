@@ -87,6 +87,20 @@ Declare main's variable without final, keep rename(user), then execute `user = r
 
 </details>
 
+
+## Explain a holder without changing Java's calling convention
+
+Sometimes an API uses a one-element array or a mutable holder so a method can publish several results. Writing `holder[0] = replacement` changes a shared array component. It does not change the caller's variable holding the array reference. Both parties receive copies of a reference that identifies that same mutable container. Calling this “pass-by-reference” would predict the wrong behavior for parameter reassignment.
+
+For example, `replace(Box[] holder)` can assign a new Box to holder[0], but `holder = new Box[1]` redirects only the method's parameter. Returning a replacement and explicitly assigning `box = replace(box)` often makes that update clearer. Passing an Integer or String does not provide a mutable numeric/text cell: their values are immutable and rebinding a parameter does not rebind a caller variable.
+
+<details>
+<summary>A swap(String a, String b) exchanges a and b inside the method. Are the caller's two variables exchanged?</summary>
+
+No. The helper swaps its two local reference copies. To update caller-owned storage, swap two array components or return a result containing both values and let the caller assign them. The latter introduces an explicit data contract; neither approach changes the language's pass-by-value rule. A final parameter can still be used to mutate an object whose API permits mutation, because final protects the local binding rather than the referent.
+
+</details>
+
 <span id="references" aria-hidden="true"></span>
 <span id="method-call-references" aria-hidden="true"></span>
 

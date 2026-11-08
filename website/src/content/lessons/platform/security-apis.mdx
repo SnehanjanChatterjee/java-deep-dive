@@ -2,7 +2,7 @@
 title: "Integrity, signatures and trusted identity"
 module: "platform"
 group: "Security APIs"
-summary: "Integrity, signatures and trusted identity with focused examples, failure traces and solved practice."
+summary: "Compare digests, MACs and signatures, trace verification and separate trusted identity from authorization."
 order: 1260
 version: "Java 8+"
 prerequisites: ["platform/serialization-and-security", "libraries/io-nio-networking"]
@@ -47,6 +47,24 @@ An attacker replaces both a message and the verification key with their own pair
 <summary>Answer</summary>
 
 No. Verification checks against the key supplied to it. The application needs a trusted binding for the expected identity/key and a policy for permitted operations and message context. Similarly, a valid positive identifier is not proof of access to that resource. Preserve cryptographic and authorization failures rather than turning them into a success-like fallback.
+
+</details>
+
+## Follow the bytes through the chosen guarantee
+
+| Mechanism | Input ownership | What the receiver verifies |
+| --- | --- | --- |
+| Digest | Message plus independently trusted expected digest | Whether the bytes match that expected digest |
+| MAC | Message and shared secret | Authentication relative to holders of the secret |
+| Signature | Private signing key; trusted public verification key | Signature validity for the exact supplied message bytes |
+| Authenticated encryption | Encryption key plus construction-specific nonce/context | Confidentiality and authentication under the protocol |
+
+The signature example converts text to UTF-8 once, feeds those bytes to update and signs them. Signing a normalized string and verifying a differently normalized string is a different byte-level operation even if a person thinks the texts look identical. Define encoding and message structure before choosing an algorithm. A Base64 representation is an encoding of bytes, not encryption or a signature.
+
+<details>
+<summary>Why does a signature not automatically prevent replay?</summary>
+
+A previously valid signed message can remain mathematically valid when presented again. A protocol needs a meaningful freshness/context rule, such as an authenticated operation identifier and an enforced acceptance policy. Those values must be included in the agreed signed representation and checked by the operation owner. Generating a new Signature object for verification does not establish freshness.
 
 </details>
 

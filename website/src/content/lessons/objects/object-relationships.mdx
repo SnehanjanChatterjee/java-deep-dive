@@ -1,0 +1,46 @@
+---
+title: "Association, aggregation and composition"
+module: "objects"
+group: "References and identity"
+summary: "Express borrowing, shared parts and owned parts through explicit object reference and lifetime policies."
+order: 195
+version: "Java 8+"
+prerequisites: ["language/methods-and-references", "objects/inheritance-and-composition"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Describe the relationship before choosing fields
+
+An **association** means objects collaborate: a Reviewer uses a Book. **Aggregation** describes a whole retaining independently usable parts: two ReadingGroups can share a Book supplied by their caller. **Composition** describes stronger ownership: a Notebook creates and controls its private Pages. These are design terms expressed by ordinary Java references, not three special allocation instructions.
+
+<JavaExample file="ObjectRelationshipsLesson.java" output={"Shared\ntrue\nowned\n2\nRetained"} />
+
+Reviewer.review accepts a Book only for that invocation. It returns an immutable title and does not store the Book. ReadingGroup instead retains the supplied reference in a field. The identity print confirms that both groups identify the same Book; neither constructor made a copy or acquired exclusive ownership.
+
+## Make ownership visible in construction and access
+
+Notebook creates its own array and each Page. Allocating `new Page[size]` alone would create an array of null references; the loop constructs the individual Page objects. No caller supplies those mutable Page identities, and no accessor returns them. Write changes a selected page; read returns its immutable String value. Separate Notebooks therefore have separate mutable parts.
+
+<Diagram client:visible definition={"flowchart LR\n C[Caller] --> B[Book]\n G1[ReadingGroup one] --> B\n G2[ReadingGroup two] --> B\n R[Reviewer call] -. temporarily borrows .-> B\n N[Notebook] --> A[Private Page array]\n A --> P1[Private Page one]\n A --> P2[Private Page two]"} caption="Aggregation shares a supplied Book. Composition privately creates and retains Pages, with no exposed mutable-part aliases." />
+
+The constructor permits zero pages and rejects negative sizes. Every real page starts with empty text. Valid indexes are zero through size minus one; invalid indexing fails rather than silently changing another page. Null text is rejected. Each operation names a concrete invariant instead of exposing a Page setter to arbitrary callers.
+
+Construction takes O(n) time and O(n) owned storage for n pages. An indexed read/write uses constant indexing work; the String supplied to write is shared safely because Strings are immutable. This does not imply that all arbitrary part objects could be shared safely.
+
+## Separate a design lifetime from garbage collection
+
+Composition says the API controls its parts' useful lifetime. It does not promise a destructor at the closing brace or immediate reclamation when an owner becomes unreachable. If a mutable Page reference escaped, a client could retain it independently and undermine that ownership model. Java reference reachability, rather than an aggregation/composition keyword, determines what storage can still be needed.
+
+`throughRetainedOwner` makes this concrete. Local initially identifies a Book. ReadingGroup stores a copied reference in its book field. Assigning `local = null` removes only the local path. `owner.title()` still reaches the Book through a field and returns Retained. Association direction is another design choice; aggregation is not universally required to be unidirectional. [JLS reference values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.3.1), [JVMS heap](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5.3)
+
+## Practice: review a leaking accessor
+
+<details>
+<summary>Notebook adds Page[] pages() returning its field. Is the strong ownership claim preserved?</summary>
+
+No. A caller could replace array entries or retain individual mutable Pages. Cloning only the outer array prevents entry replacement in Notebook's array, but would still expose the same Page identities. Return immutable page values or deliberate snapshots instead. Composition is a policy to enforce at every boundary, rather than a label earned solely by calling new in a constructor.
+
+</details>

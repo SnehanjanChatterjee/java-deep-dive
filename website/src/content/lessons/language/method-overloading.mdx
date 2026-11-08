@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Choose a signature at compile time
 
@@ -41,6 +42,14 @@ Does `pick(null)` select Integer or int[]? What changes with overloads `show(Obj
 Pick is ambiguous because Integer and int[] are unrelated reference types, both accept null, and neither is more specific. A cast communicates which contract the caller intends, without making dereferencing null safe. For show, String is more specific than Object and wins. Adding an unrelated overload can break recompilation even while existing class files continue to reference their originally chosen signature. Inheritance adds a separate runtime dispatch step; it is taught after classes and interfaces.
 
 </details>
+
+## Reject signatures that only appear different
+
+Changing a parameter's name, a method's return type, its throws list or the presence of static alone does not create another overload with the same parameter types. `int read()` and `String read()` cannot coexist just because their callers want different result types. An array parameter and the corresponding varargs parameter also describe the same parameter type, so int[] and int... cannot distinguish two declarations.
+
+Keep overload sets conceptually consistent. Methods that accept unrelated reference types can make `call(null)` ambiguous even though each declaration works separately. A cast at the call site can select one, but an API with distinct descriptive names may communicate the intent better. Assignment of the call's result happens after overload selection; it is not a license to declare conflicting ordinary signatures.
+
+The focused <a href={lessonUrl('learn/language/varargs/')}>varargs lesson</a> gives complete zero-argument, explicit-array, null-array and snapshot examples. It follows overload selection so callers can distinguish convenience packing from ownership. Generic overloads and target-type inference add rules after generics; the declaration/type reasoning here remains the starting point.
 
 ## Overload references
 

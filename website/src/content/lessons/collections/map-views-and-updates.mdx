@@ -1,0 +1,90 @@
+---
+title: "Map views and conditional updates"
+module: "collections"
+group: "Maps and search trees"
+summary: "Distinguish absent and mapped-null values, conditional replacement, backed key/value/entry views and detached entry snapshots."
+order: 445
+version: "Java 8+"
+prerequisites: ["collections/hashmap", "collections/collection-operations"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Update one association, then inspect its presence
+
+A Map associates one value with each key. Replacing that value does not create a second key, and different keys can share equal values. A null-capable map also distinguishes an absent key from a present key whose value is null. get alone cannot distinguish those cases.
+
+<JavaExample file="MapViewsAndUpdates.java" output={"null\nnull\ntrue\nfalse\n8\none removed=1, still has 8=true\nbacking empty=true\nlive=9, snapshot=1"} />
+
+The program first stores A=null. getOrDefault("A",99) returns null because the mapping exists. putIfAbsent treats mapped-null as needing a supplied value and installs seven. replace("A",7,8) succeeds. remove("A",7) fails because the current value is now eight, leaving it intact. The boolean result records a conditional decision, rather than a possibly ambiguous old value.
+
+## Choose the update primitive with the right condition
+
+| Method | Condition/effect | Result |
+| --- | --- | --- |
+| put(key,value) | Insert or replace | Previous value, or null for no previous value |
+| putAll(source) | Apply source mappings | No result; not a deep copy or rollback protocol |
+| putIfAbsent(key,value) | Install for absent or mapped-null key | Previous value |
+| replace(key,value) | Replace only if the key is present | Previous value; null still needs presence interpretation |
+| replace(key,old,new) | Replace only if current value matches old | Boolean success |
+| remove(key) | Remove the mapping when present | Removed value |
+| remove(key,value) | Remove only the matching association | Boolean success |
+| getOrDefault(key,default) | Read fallback only for no mapping | Stored value, including null, otherwise default |
+
+A present-null mapping can satisfy remove(key,null), while an absent key cannot. These distinctions are deliberate; do not implement every conditional operation as get(key) != null.
+
+The generic declaration checks typed writes through put. Historical query methods such as get/containsKey accept Object, so an incompatible query can compile. Its outcome follows the implementation's eligibility/comparison rules; that is not permission to insert arbitrary keys through an unchecked alias.
+
+## The three views share the map
+
+keySet returns a Set of unique keys. values returns a Collection because different keys may have equal values. entrySet returns a Set of key/value associations. These are backed views: permitted removals through them remove map mappings.
+
+The program adds B=8 beside A=8, then removes one equal value through values. Size becomes one, and another value eight remains. Which key was removed is not asserted because HashMap encounter order is unspecified. Clearing the saved keySet clears the same backing map. A view reference does not become a snapshot merely because it was saved before a later change.
+
+Adding directly through these views is not the way to create mappings. A key alone cannot supply its value, and a value alone cannot supply its key. Use put or a documented map update operation.
+
+## Live entry versus a copied entry
+
+After storing only=1, the entrySet iterator supplies a live entry. setValue(9) updates the existing mapping without adding a new key. A SimpleImmutableEntry constructed from it before the change stores a detached key/value association: its saved Integer remains one.
+
+That snapshot is shallow. Mutable referenced keys/values would still need an ownership policy. SimpleImmutableEntry rejects setValue; SimpleEntry allows replacing its own saved value. Map.entry on Java 9+ is also unmodifiable but has different null restrictions, explained in the composite-pair chapter.
+
+Entry equality compares both key and value. Entry hashCode combines their hashes with XOR, which is not the same quantity as a HashMap node's cached key spread hash. EntrySet uniqueness and bucket indexing serve different contracts.
+
+## Costs depend on the operation, not only the type name
+
+HashMap exact-key lookup is expected constant work under suitable hashing and bounded equality. containsValue usually needs a scan. Traversing entrySet obtains key/value together without a second get per entry. That can avoid redundant work, but does not establish one universal measured speedup.
+
+Holding a live entry while structurally changing its map goes beyond the entry's documented validity. Best-effort fail-fast detection is a debugging mechanism; it does not make the view immutable or safe to share concurrently.
+
+## Worked reasoning questions
+
+<details>
+<summary>Why does Map.values not return Set?</summary>
+
+Two different keys can map to equal values. A map containing A=8 and B=8 has size two and its values view contains two occurrences of eight. Converting that view to HashSet deliberately discards value multiplicity.
+
+</details>
+
+<details>
+<summary>Is new HashMap&lt;&gt;(source) an independent value graph?</summary>
+
+It copies associations into a new map but keeps key/value references. Later membership changes are detached; mutating a shared value can still be visible through both maps. An unmodifiable wrapper is different again: it can preserve the original live membership relationship.
+
+</details>
+
+<details>
+<summary>Are conditional update methods automatically atomic?</summary>
+
+No such concurrent guarantee follows from the ordinary Map interface or HashMap. Implementations document stronger contracts separately. The later <a href={lessonUrl('learn/functional/map-callbacks/')}>Map callback lesson</a> explains compute/merge, and the concurrency module explains atomic per-key operations.
+
+</details>
+
+## References
+
+- [Map views, eligibility, entries and conditional operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html)
+- [Map.Entry equality and validity](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.Entry.html)
+- [SimpleImmutableEntry snapshot behavior](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/AbstractMap.SimpleImmutableEntry.html)

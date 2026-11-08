@@ -1,0 +1,107 @@
+---
+title: "Stream mapping, stateful operations and slicing"
+module: "functional"
+group: "Stream sources and operations"
+summary: "Trace intermediate stream operations by element type, cardinality, order and retained state rather than memorizing a fluent chain."
+order: 582
+version: "Java 8+"
+prerequisites: ["functional/streams-and-collectors"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Describe what each stage receives and emits
+
+An intermediate operation returns a stream stage. That does not mean it stores a complete intermediate collection or executes immediately. Classify its element type, output count, order and state needs before combining it with other stages.
+
+<JavaExample file="StreamOperations.java" output={"[3, 2]\nmap=[1, 4, 2]\nflatMap=[A, B, C]\nmap null=[null]\nnull inner stream count=0\nmapToInt sum=7\nflatMapToInt sum=6\nflatMapToLong sum=30000000000\nflatMapToDouble sum=6.5\nlimit/distinct=[3]/[3, 2]\nstable ties=[c, bb, aa]\nindependent source=[A, B, C]"} />
+
+ranked receives [3,−1,3,1,4,null,2]. It rejects null before dereferencing/unboxing, keeps positive values, removes duplicate membership, sorts descending, skips the largest and takes the next two. The result is [3,2].
+
+| Stage | Logical sequence |
+| --- | --- |
+| Source | 3,−1,3,1,4,null,2 |
+| Non-null / positive filters | 3,3,1,4,2 |
+| distinct | 3,1,4,2 |
+| sorted descending | 4,3,2,1 |
+| skip(1) | 3,2,1 |
+| limit(2) | 3,2 |
+
+This table describes result meaning. The implementation may fuse/evaluate operations without materializing each row.
+
+## Map one value, flatten several, or use primitive results
+
+map applies a Function and produces one result per input. String::length changes Stream&lt;String&gt; into Stream&lt;Integer&gt;. filter keeps or drops inputs without changing their type. A mapper can produce a null element; Stream.map does not turn it into an absent Optional.
+
+flatMap opens zero/many results for each input and concatenates their traversal. The source maps "A,B" to two strings, empty text to an empty stream, and "C" to one string, yielding A,B,C. A mapped null stream is treated as empty by Stream.flatMap. That differs from Optional.flatMap, which requires a non-null Optional result. The mapper object itself must still satisfy its non-null contract.
+
+| Family | Result shape | Use |
+| --- | --- | --- |
+| map | Stream&lt;R&gt; | One transformed reference result |
+| mapToInt / mapToLong / mapToDouble | Primitive stream | One primitive result |
+| flatMap | Stream&lt;R&gt; | Zero/many reference results per input |
+| flatMapToInt / flatMapToLong / flatMapToDouble | Primitive stream | Zero/many primitive results per input |
+
+The complete program parses comma-separated numeric groups into primitive streams and sums them. Parsing failures remain failures; flatMap is not an exception-to-empty filter. Primitive variants avoid a boxed result contract but do not remove overflow or rounding.
+
+Each mapped stream has its operation-defined close behavior. Returning a resource-backed stream needs a deliberate lifetime; retaining unrelated outer resources still needs the caller's close protocol.
+
+## Equality-based distinct is different from sorting ties
+
+distinct uses element equality. On an ordered stream it retains the first equal element's encounter position. Mutable equality-relevant state can invalidate reasoning about which values are duplicates. It does not deduplicate by whichever comparator a later sort happens to use.
+
+sorted() requires natural ordering; sorted(comparator) uses that policy. Ordered-stream sorting is stable for comparator ties. The source orders bb,aa,c by length, producing c,bb,aa: bb and aa tie but remain in encounter order. A comparator-zero tie does not remove either value.
+
+Stateful stages need state or buffering. distinct needs membership information; sorted generally needs all finite input before it can emit globally sorted output. Do not infer constant memory because the source expression is one line.
+
+## limit and skip change the requested slice
+
+limit(n) retains at most n encounter elements, while skip(n) discards the first n. Negative arguments are rejected. limit(0) requests an empty result; skipping beyond a finite source leaves it empty. Ordered parallel slicing can require coordination, explored in the parallel-stream chapter.
+
+Order matters: limit(2).distinct on [3,3,2] yields [3], whereas distinct().limit(2) yields [3,2]. Similarly, sorting before limiting finds the smallest/largest global subset; limiting before sorting orders only the chosen prefix. An infinite source with sorted before limit need not finish.
+
+<Diagram client:visible definition={"flowchart TD\n S[Source: 3 3 2] --> A[limit two: 3 3]\n A --> B[distinct: 3]\n S --> C[distinct: 3 2]\n C --> D[limit two: 3 2]"} caption="Intermediate operations are not freely commutative. The same names in a different order can ask a different question." />
+
+## Observe with peek without making effects mandatory
+
+peek supplies an action when elements pass that stage, primarily for observation/debugging. A short-circuit can stop before later elements, and count may use known size without invoking a callback that cannot affect its answer. Do not place mandatory writes, charging, auditing or correctness counters in peek and assume all inputs will execute them.
+
+forEach/forEachOrdered are terminal actions with their own defined invocation/order contract. A simple loop may be clearer when effects and failure boundaries are the algorithm's main purpose.
+
+## Complete the Java 8 operation map
+
+The operations here cover filter, map and primitive mapping, all four flattening families, distinct, both sorted forms, peek, limit and skip. Source factories, toArray, matching/search terminals and iterator/spliterator are developed in <a href={lessonUrl('learn/functional/stream-terminals/')}>sources and terminals</a>. reduce has three overload shapes in its own chapter; collect has mutable-reduction and Collector forms in the collector chapters.
+
+sequential, parallel, unordered, isParallel, onClose and close belong to the shared BaseStream execution/lifetime contract. Parallel streams explain execution mode; the source/terminal chapter demonstrates closing. Later takeWhile/dropWhile/mapMulti/gather operations have explicit version-labelled chapters.
+
+## Worked questions
+
+<details>
+<summary>Can a comparator that compares only length make distinct drop bb and aa?</summary>
+
+No. Sorting uses that comparator; distinct uses equality. The two strings are unequal and both survive. TreeSet with that comparator would define uniqueness differently, demonstrating why a data-structure replacement can change semantics.
+
+</details>
+
+<details>
+<summary>Does Stream.of(intArray) produce one Integer per primitive component?</summary>
+
+No. A primitive int[] is one reference element for generic Stream.of. Arrays.stream(intArray) creates IntStream over its components. The source chapter's complete example makes the count/sum distinction explicit.
+
+</details>
+
+<details>
+<summary>Why is sorted().limit(k) not always replaceable by a size-k heap?</summary>
+
+A heap can solve a top-k selection task with different storage/work tradeoffs, but ordering, tie stability and result semantics must still match. Use the heap chapter's invariant and final-output cost rather than assuming every sorted pipeline has that exact task.
+
+</details>
+
+## References
+
+- [Java 8 Stream intermediate and terminal operations](https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html)
+- [Current Stream null, order and optimization contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Stream.html)
+- [Stream behavioral-parameter requirements](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/package-summary.html)

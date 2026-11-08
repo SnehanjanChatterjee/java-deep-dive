@@ -3,7 +3,7 @@ title: "Deadlock, starvation and liveness"
 module: "concurrency"
 group: "Liveness"
 summary: "Draw the ownership cycle, repair acquisition order, and distinguish other forms of stalled work."
-order: 1000
+order: 920
 version: "Java 8+"
 prerequisites: ["concurrency/thread-pool-internals", "concurrency/semaphore", "concurrency/locks-interruption"]
 advanced: true
@@ -56,6 +56,14 @@ Every path acquiring these locks must obey the order. A callback that acquires a
 Ordering identifiers must be stable and unambiguous. IdentityHashCode can collide and needs a tie protocol if used for ordering. This teaching example uses generated keys under a practical no-exhaustion assumption; production domains can use established immutable unique identifiers or another explicit total ordering.
 
 <span id="timed-attempts-cancellation-and-livelock"></span>
+## Include implicit locks in the ordering proof
+
+An instance synchronized helper acquires its receiver's monitor even if the caller does not write an explicit synchronized block. A static synchronized helper acquires the Class monitor. If a transfer holding account A invokes a callback that acquires some registry lock, and another path holds that registry while requesting A, the larger program can recreate a cycle despite consistent ordering between account pairs.
+
+List **all** acquisitions in a path, including callbacks, blocking I/O and task-result waits. For example, a worker holds the sole permit, starts a child needing that permit, then waits for the child. The resource cycle is parent → child completion → permit → parent, even without opposing monitor names.
+
+**Repair exercise:** move the callback outside the acquired region when it does not require protected state, passing an immutable captured result. If it must participate atomically, extend the common protocol and reason about the new lock order. A timeout can report a stuck operation but does not create the missing worker/permit or undo external effects. [Official liveness tutorial](https://docs.oracle.com/javase/tutorial/essential/concurrency/liveness.html)
+
 ## Timed attempts, starvation and livelock
 
 Starvation means one operation repeatedly fails to obtain service while others progress. Livelock means participants keep reacting without completing, such as two synchronized retry loops that repeatedly release and try again together.

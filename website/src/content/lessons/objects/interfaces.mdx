@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Depend on an operation rather than one concrete class
 
@@ -43,6 +44,19 @@ static final class RegularPricing implements Pricing {
 ```
 
 Use `new Checkout(new RegularPricing()).total(100)`, which returns 100. Checkout's code is unchanged because it invokes the Pricing contract. The supplied collaborator varies. Constructing DiscountPricing inside total would hard-code that choice and make substitution harder. Lambda notation can express some one-method interfaces later; it is not needed to understand this model.
+
+</details>
+
+## Separate a contract from inherited implementation
+
+Pricing's declaration has no method body, so the implementing class supplies it. An interface can extend other interfaces, and a class can implement several independent capabilities. Implementing a public interface operation with package access is illegal: callers must be able to rely on the promised public operation. A class that leaves an abstract obligation unimplemented must itself be abstract.
+
+Abstraction is deciding the operations a client depends on; encapsulation is controlling how a type's state and implementation are accessed. They cooperate, but neither is a percentage of hidden code. An abstract class can have constructors, per-object state and implemented methods alongside abstract methods; the <a href={lessonUrl('learn/objects/abstract-classes/')}>shared-algorithm lesson</a> develops a complete example. An interface cannot provide per-instance fields or a constructor; its default methods can provide behavior after the contract is understood. The <a href={lessonUrl('learn/objects/interface-contracts/')}>interface categories and default-conflict lesson</a> works through marker types, functional shape and inherited defaults using named classes.
+
+<details>
+<summary>Does Pricing pricing = new DiscountPricing() create both a Pricing and a DiscountPricing object?</summary>
+
+It creates one DiscountPricing object and stores its reference in a variable declared Pricing. Interface typing changes what operations the source may request, not the object's number or concrete identity. Checkout retains another copy of that reference, allowing its total operation to delegate to the same collaborator.
 
 </details>
 

@@ -2,7 +2,7 @@
 title: "Collect lists, maps and grouped results"
 module: "functional"
 group: "Collectors"
-summary: "Build a result container without managing every insertion"
+summary: "Choose built-in collection, map, grouping, joining and numeric collector families by their result type, empty policy and duplicate semantics."
 order: 600
 version: "Java 8+; later factories labelled individually"
 prerequisites: ["functional/reductions"]
@@ -15,6 +15,8 @@ import Diagram from '../../../components/Diagram.jsx';
 ## Build a result container without managing every insertion
 
 A reduction can produce one total. A collector can build a list, join text or group input into maps. collect accepts a description of the accumulation process; ordinary factories cover many tasks without requiring a custom collector.
+
+Stream.collect also has a three-function mutable-reduction form. CollectorCatalog.concatenate supplies StringBuilder::new, an accumulator that appends one validated String, and a combiner that appends another partial builder. It returns AB for [A,B] and an empty String for empty input. Fresh supplier-owned state distinguishes this from mutating one shared reduce identity. StringBuilder's returned append value is discarded when adapting those operations to the required BiConsumer shapes.
 
 <JavaExample file="CollectorRecipes.java" output={"{3=[jvm], 4=[java, java]}\njava, jvm, java\n{java=2, jvm=1}\n{3=1, 4=2}"} />
 
@@ -40,6 +42,47 @@ The source is a list of lines. Lowercasing uses Locale.ROOT because these tokens
 
 This supplied input is already simple space-separated text. Real tokenization requires declared punctuation, whitespace and case rules. The exercise solution counts tokens under this small declared grammar; it does not claim to solve arbitrary natural-language segmentation.
 
+## Cover the built-in collector families with one input model
+
+<JavaExample file="CollectorCatalog.java" output={"list=[Ada, Bob, Ada], distinct count=2\nspecified collection=[Ada, Bob]\njoining=[Ada|Bob|Ada]\ncount=3\nsums=450/450/450.0\naverages=150.0/150.0/150.0\nsummary=3/450/100/250\nlong/double summary sum=450/450.0\nmin/max=Ada/Bob\nreducing=450\ntoMap={Ada=200, Bob=250}\ngroup mapping={blue=[Bob], red=[Ada, Ada]}\npartitioning={false=[Ada, Ada], true=[Bob]}\nfinisher mutation rejected"} />
+
+The immutable Score fixture has participant, team and nonnegative points. Ada/red contributes 100 twice; Bob/blue contributes 250. List output preserves Ada,Bob,Ada; a set has two distinct names; an explicitly requested LinkedHashSet preserves Ada,Bob. Joining with delimiter/prefix/suffix produces [Ada|Bob|Ada] without a special-case separator loop.
+
+| Collector family | Result | Empty-input meaning |
+| --- | --- | --- |
+| toList / toSet / toCollection(factory) | Collection result | Empty collection under that factory's contract |
+| joining | String | Empty joined body, including requested prefix/suffix |
+| counting | Long | 0 |
+| summingInt / summingLong / summingDouble | Integer / Long / Double | Numeric zero |
+| averagingInt / averagingLong / averagingDouble | Double | 0.0; count is needed to distinguish no observations |
+| summarizingInt / summarizingLong / summarizingDouble | Summary statistics | Count zero; extrema fields use documented sentinels |
+| minBy / maxBy | Optional&lt;T&gt; | Empty Optional |
+| reducing | Identity result or Optional, depending on overload | Declared identity/absence |
+| mapping / collectingAndThen | Adapted downstream result | Downstream and finisher policy |
+| groupingBy / partitioningBy | Map of downstream results | Keys follow their grouping/partition contract |
+| toMap | Key/value result | Empty map; duplicates need a merge policy |
+| toConcurrentMap / groupingByConcurrent | ConcurrentMap | Concurrent unordered reduction, studied after partition laws |
+
+All averaging families return Double, even when their mapper is int/long-valued. IntStream.average instead returns OptionalDouble: an empty average zero in an averaging collector is not proof that a real observed average was zero.
+
+The sample sums are 450, and its average is 150. IntSummaryStatistics records count three, sum 450, min 100 and max 250. An empty statistics object has count zero with sentinel extrema, not a real observation of Integer.MAX_VALUE or MIN_VALUE. Check count before interpreting a domain minimum/maximum. joining has no-argument, delimiter-only, and delimiter/prefix/suffix overloads; it has no two-argument overload.
+
+Built-in int/long summation can overflow, and double aggregation can round. The source's participant toMap uses Math.addExact for its particular nonnegative-point merge. That is a deliberate domain policy, not a guarantee inherited from every numeric collector.
+
+## Map a group without retaining all complete objects
+
+namesByTeam groups Score inputs, maps each to its String name and accumulates a list. It produces blue=[Bob] and red=[Ada,Ada], preserving each group's ordered-source sequence. counting or summing downstream would retain only the aggregate needed.
+
+partitioningBy is a boolean split with true/false results; the program copies its result into TreeMap only to show a defined diagnostic key order. Grouping by an arbitrary classifier has different key-existence semantics. A map factory selects key order/type, while a downstream collector selects each group's result shape.
+
+collectingAndThen finishes a private name list into an unmodifiable structural result. Because those String elements are immutable, the result needs no element cloning. The general pattern can also produce a different result class, as the custom Stats collector does.
+
+## Resolve duplicate keys with a merge, not a sorting comparator
+
+A toMap merge receives two candidate values for one logical key. It is a BinaryOperator over values; it is not Comparator's negative/zero/positive ordering result. Ada's contributions merge to 200. Choosing keep-first would discard a score event under this declared counting/summing task.
+
+A specific backing map's null allowance also does not automatically become a collector's null allowance. Standard toMap collectors reject null mapped values, and grouping collectors require valid classifier results under their contract. Represent optional domain data deliberately rather than assuming HashMap can be populated through every collector with nulls.
+
 ## Publish the intended mutability
 
 Collectors.toList promises neither a particular implementation nor general mutability/thread safety. Stream.toList (16+) returns an unmodifiable list and can retain nulls. toUnmodifiableList (10+) rejects null elements. List.copyOf (10+) creates an unmodifiable reference snapshot and also rejects nulls. No one of these makes mutable elements deeply immutable.
@@ -49,6 +92,10 @@ A grouping result can contain mutable nested containers. Making only the outer m
 ## Worked exercise: map each group to lengths
 
 For words ["java","jvm","java"], group by first character, then use mapping(String::length, toList()) downstream. The one group j contains [4,3,4]. Replacing toList with counting changes the result to j=3 without retaining individual lengths. The classifier decides membership; the downstream collector decides what information the group stores.
+
+## Follow nested downstream composition
+
+Java 9 filtering/flatMapping and Java 12 teeing add further result-shape tools; their complete program and empty-group comparison are in the downstream-collector chapter. Unmodifiable collectors begin at Java 10. “Collectors has twenty methods” is not a fixed API limit across releases or overloads: choose the named family and exact overload/version needed by the result contract.
 
 ## References
 

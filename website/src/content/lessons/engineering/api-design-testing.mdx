@@ -90,6 +90,19 @@ For a new discount policy, define its input/output bounds first, supply it throu
 
 For refactoring, retain ContractExampleTest unchanged while extracting the private helper shown above. The supplied source is the completed reference. Test a future currency/rounding requirement separately after defining that new contract; the current example does not claim to cover payments, persistence or arbitrary concurrent policies.
 
+## Evaluate substitutability with one concrete counterexample
+
+Suppose a discount policy advertises the same interface but stores each customer's request in a global mutable collection. Its numeric return might satisfy 0 ≤ discount ≤ subtotal, yet it violates this API's stated side-effect-free requirement and can introduce retention/races. Type compatibility is only part of substitutability; preconditions, postconditions, failures and effects belong to the promise too.
+
+A useful review starts with a table of accepted inputs and outcomes. Then choose an ordinary case, each independent invalid boundary, and a plausible implementation defect for the tests to discriminate. Null container, null element and null policy are different inputs. Likewise, multiplication overflow can occur inside a line while addition overflow occurs only when valid line amounts are combined.
+
+<details>
+<summary>Should a refactor assert that the private validator is called exactly twice?</summary>
+
+Not for this pure public contract. That assertion would couple tests to an implementation detail and reject a valid alternative that validates inline. Assert accepted/rejected inputs and exact results instead. Interaction assertions belong where the interaction is an observable requirement, such as invoking an effectful dispatch once under a defined retry policy.
+
+</details>
+
 ## References
 
 - [JUnit 4 assertions used by these tests](https://junit.org/junit4/javadoc/4.13.2/org/junit/Assert.html)

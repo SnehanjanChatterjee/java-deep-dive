@@ -2,7 +2,7 @@
 title: "Named modules, readability and package boundaries"
 module: "platform"
 group: "Modules and runtime images"
-summary: "Named modules, readability and package boundaries with focused examples, failure traces and solved practice."
+summary: "Compile named modules and reason separately about readability, exports, reflective openness and service declarations."
 order: 1210
 version: "Java 9+"
 prerequisites: ["execution/packages-and-tools", "platform/reflection-basics", "platform/service-discovery", "jvm/loading-and-bytecode"]
@@ -94,11 +94,32 @@ No. Ordinary access and deep reflection have different contracts. Confirm the fr
 
 </details>
 
-<span id="references" aria-hidden="true"></span>
-<span id="module-and-interop-references" aria-hidden="true"></span>
 
 <span id="module-declarations-are-dependency-and-access-contracts" aria-hidden="true"></span>
 <span id="two-module-example" aria-hidden="true"></span>
+
+## Read a descriptor as a dependency and access map
+
+| Directive | Consumer's question | A frequent misconception |
+| --- | --- | --- |
+| requires | Which named module must this module read? | It does not copy a dependency's classes into this JAR |
+| requires transitive | Should consumers also read a dependency exposed by this API? | It does not export every package of either module |
+| requires static | Is a dependency mandatory at compile time but optional at runtime? | Code cannot use an absent class merely because resolution permits its absence |
+| exports | Which package is an ordinary API? | Exported packages still have private/package-private members |
+| opens | Which package permits deep reflection under the declared scope? | It does not make an otherwise inaccessible source import compile |
+| uses / provides | Which service is consumed or implemented? | Discovery still needs valid providers and a selection policy |
+
+Trace a failure from the consumer toward the declaration: find the runtime module containing each type, establish readability, inspect the package permission, then inspect member access. Moving the same JAR between classpath and module path can change that context. An import statement alone cannot repair module resolution.
+
+<details>
+<summary>Should an application expose its internal implementation package to let a provider be discovered?</summary>
+
+Not necessarily. A provider module can declare provides for an implementation without exporting that implementation package as a general API. Consumers compile against the exported service contract. This preserves a narrow ordinary API while exposing the intended service capability through the descriptor.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+<span id="module-and-interop-references" aria-hidden="true"></span>
 
 ## Module references
 

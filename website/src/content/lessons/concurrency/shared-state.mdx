@@ -1,9 +1,9 @@
 ---
 title: "Shared state, lost updates and synchronized repair"
 module: "concurrency"
-group: "Shared state and synchronization"
+group: "Synchronization"
 summary: "Decompose an increment, follow an overwriting schedule, and protect the whole operation."
-order: 750
+order: 770
 version: "Java 8+"
 prerequisites: ["concurrency/first-thread"]
 advanced: false
@@ -11,7 +11,7 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import InterleavingLab from '../../../components/InterleavingLab.astro';
+import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 
 ## Two increments can produce one update
@@ -29,7 +29,9 @@ For initial count zero, choose this schedule:
 
 B's write overwrites A's update. Neither worker added to the other worker's local value. This is an atomicity problem, even if each individual read and write is visible. The intended result depends on an uncontrolled relative timing: a race condition.
 
-<InterleavingLab stage="foundation" />
+<BasicThreadMotion client:visible model="counter" />
+
+Each moving number is a copied read or a computed result; the shared field remains visible while a worker carries its own value. Switch to One shared monitor and watch B stay at the entry gate until A releases. Both gate drawings refer to the **same Counter monitor**. The later invocation-local diagram answers a separate question about where each call's parameter and loop variable belong. [JLS intrinsic-monitor ownership](https://docs.oracle.com/javase/specs/jls/se25/html/jls-17.html#jls-17.1)
 
 ## Protect the complete operation with one monitor
 
@@ -60,6 +62,14 @@ A method body is shared code, but two calls do not share all their variables. Th
 The model labels the object C1 so both reference paths can be followed; C1 is not an additional Java variable or a physical address. The chosen schedule lets A's index become one while B's remains zero. It then shows B reading the updated Counter value after A releases the monitor. Another legal schedule can perform the increments in a different order while retaining the final total of four.
 
 On method return, that invocation's parameter and loop variables are gone. The Counter can remain reachable through the owner's `shared` reference and the other invocation. Copying a reference creates another way to reach an object; it does not copy the object's fields into an independent Counter.
+
+## Check whether a proposed repair protects the whole operation
+
+Suppose increment constructs `new Object()` and synchronizes on it. A acquires fresh monitor LA and reads zero. B acquires fresh monitor LB and also reads zero. Neither monitor excludes the other call, so both can store one. The presence of synchronized in each invocation did not protect the shared Counter through a common guard.
+
+Now use one common monitor but put only the final assignment inside it. A and B can still both read zero **before** acquiring that monitor. Their stores are serialized, but each stores a value computed from its stale read. The second overwrites the first with one. The complete read/compute/write transition must fit inside the protected region.
+
+Joining both workers observes the resulting final value but cannot repair either wrong update protocol. The following monitor-identity lesson makes the same-object requirement explicit for methods, static methods and blocks. [JLS monitor and shared-variable rules](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.1)
 
 ## Completion and exclusion solve separate problems
 

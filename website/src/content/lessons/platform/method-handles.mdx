@@ -2,7 +2,7 @@
 title: "Method handles, exact invocation and adaptation"
 module: "platform"
 group: "Dynamic invocation"
-summary: "Method handles, exact invocation and adaptation with focused examples, failure traces and solved practice."
+summary: "Derive invocation types, compare exact and adaptable calls, and compose handles without confusing lookup with execution."
 order: 1190
 version: "Java 8+"
 prerequisites: ["platform/reflection-basics", "language/types-and-conversions"]
@@ -45,6 +45,25 @@ An exact invocation uses long where the handle expects int. A correctly shaped c
 <summary>Answer</summary>
 
 No. The first fails the invocation type relationship with WrongMethodTypeException. The second reaches Math.multiplyExact and fails with ArithmeticException because the int result would overflow. Changing a cast can fix an invocation descriptor, but cannot make an overflowing mathematical result fit the declared numeric domain.
+
+</details>
+
+## Write the type through each adaptation
+
+| Operation in the example | Incoming type | Resulting handle type |
+| --- | --- | --- |
+| findStatic twice | Lookup requests int result, one int input | `(int)int` |
+| asType | Request short input and long result | `(short)long` |
+| exact adapted call | The call site supplies short and requests long | Executes with those exact declared types |
+
+The shown adaptation performs short-to-int widening before the target and int-to-long widening afterward. Every short value doubled fits int, so this particular `(short)long` adapter cannot overflow twice's multiplication. The original `(int)int` target, or an `(int)long` adapter, can still receive an int whose doubling overflows before any return widening. Adapting a result type cannot recover a mathematical result that the target never represented.
+
+Handles can be composed as well as converted. `filterArguments` places a conversion/filter in an input position; `filterReturnValue` applies a compatible operation to a result; `guardWithTest` selects between compatible targets. Derive the full input/result shapes before composing them. These operations build invocation objects, not a promise that a new thread or dynamic Java overload search will run. [Handle combinators](https://docs.oracle.com/javase/8/docs/api/java/lang/invoke/MethodHandles.html)
+
+<details>
+<summary>What changes when a virtual handle is bound to one receiver?</summary>
+
+The unbound handle needs the receiver in addition to the member's explicit parameters. Binding a compatible receiver supplies that argument in advance, so it disappears from the resulting invocation type. The target still acts on that same receiver and can mutate its state. Handle immutability therefore does not imply target immutability or automatic thread safety.
 
 </details>
 

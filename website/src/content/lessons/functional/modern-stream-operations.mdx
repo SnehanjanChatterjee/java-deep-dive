@@ -1,0 +1,82 @@
+---
+title: "Prefix operations, mapMulti and stream list results"
+module: "functional"
+group: "Stream sources and operations"
+summary: "Distinguish prefix selection from filtering, finite iteration from generators, and controlled multi-emission from unmodifiable list collection."
+order: 586
+version: "Java 9+ operations; complete example requires 16+"
+prerequisites: ["functional/stream-terminals"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Add newer operations to the established pipeline model
+
+Java 9 added prefix operations and convenient source forms. Java 16 added mapMulti families and Stream.toList. They extend the same source/intermediate/terminal model; they do not change ordinary streams into persistent reusable containers.
+
+<JavaExample file="modern/ModernStreamOperations.java" output={"ofNullable=0\nfinite iterate=[1, 2, 3, 4, 5]\ntakeWhile=[1, 2]\nfilter=[1, 2, 3]\ndropWhile=[0, 3]\nmapMulti=[2, -2]\ntoList mutation rejected\ntoList retains null=null"} />
+
+The full program requires Java 16 because it combines these families. Each method's introduction version matters when extracting a smaller fragment for an older target.
+
+## Stop iteration using an explicit predicate
+
+The Java 9 iterate(seed,hasNext,next) checks a predicate for inclusion and can terminate without an external limit. The source uses one through five. The seed is also tested; an initially false condition gives empty output.
+
+ofNullable(value), also Java 9, produces zero or one reference element. Null becomes an empty source, unlike Stream.of with an explicit null element. It is a source construction policy, not a catch-all error-to-empty translation.
+
+## Take or drop a prefix, not every matching value
+
+For ordered [1,2,0,3], takeWhile(value>0) emits [1,2] and stops at zero. filter(value>0) emits [1,2,3], because it examines later values independently. dropWhile(value>0) discards the initial [1,2], then keeps [0,3], including a later value that would individually match the predicate.
+
+<Diagram client:visible definition={"flowchart TD\n S[Ordered input: 1 2 0 3] --> T[takeWhile positive: 1 2]\n S --> F[filter positive: 1 2 3]\n S --> D[dropWhile positive: 0 3]"} caption="Prefix operations interpret a boundary in encounter order; filtering asks a per-element membership question." />
+
+takeWhile is a short-circuiting stateful intermediate operation. dropWhile is stateful and removes only the qualifying prefix. On unordered streams, a unique prefix is not available in the same way; follow the looser documented contract rather than expecting the sequential drawing's result. Ordered parallel prefixes can require coordination.
+
+## Emit zero or several values without constructing inner streams
+
+mapMulti, introduced in Java 16, supplies a downstream Consumer to its mapper. The example keeps only even input values and emits the value plus its negative, producing [2,−2] from [1,2,3]. One input can emit no values or multiple values; map would instead have exactly one logical output per input.
+
+The explicit &lt;Integer&gt; selects the result element type when inference needs help. mapMultiToInt/mapMultiToLong/mapMultiToDouble provide primitive result variants. Use the supplied emitter during its invocation; do not retain it and invoke it later from an unrelated callback/thread.
+
+A Consumer emitter has no boolean demand result. A mapper with a huge unbounded internal emission loop still needs a termination policy. Gatherers later provide a different integration protocol with downstream demand feedback; do not assume all multi-emission APIs have identical cancellation semantics.
+
+flatMap remains useful when the mapper naturally produces a Stream with its own lifetime/shape. mapMulti is not a requirement to rewrite every clear flattening pipeline or proof of a measured speed improvement.
+
+## Decide the list result contract explicitly
+
+Stream.toList, Java 16, is terminal and returns an unmodifiable list in encounter order when one exists. It can contain nulls. The source rejects adding to its result and separately shows a retained null.
+
+Collectors.toList (8+) does not promise a particular implementation or mutability. Collectors.toUnmodifiableList (10+) rejects nulls. List.of (9+) also rejects nulls but is a factory over supplied values rather than a stream terminal. new ArrayList&lt;&gt;(result) explicitly asks for a mutable independent container.
+
+None of those operations deep-copies arbitrary mutable elements. An unmodifiable list of StringBuilder can still observe text edits through an alias. The collection-ownership chapters supply the complete backing/snapshot demonstration.
+
+## Worked questions
+
+<details>
+<summary>Can takeWhile replace filter when input is already sorted?</summary>
+
+Only if the predicate and sorting guarantee the desired matches form the required prefix. Otherwise the operations ask different questions. Sorting itself can add substantial work/storage, so including a sort solely to enable takeWhile may not improve the complete algorithm.
+
+</details>
+
+<details>
+<summary>Does mapMulti's version follow the Java 9 prefix additions?</summary>
+
+No. mapMulti and its primitive variants begin in Java 16. Java 9's additions here are takeWhile/dropWhile, finite iterate and ofNullable. Keep availability attached to each API rather than to a broad “Java 8 streams” article title.
+
+</details>
+
+<details>
+<summary>Does an unmodifiable Stream.toList result reject null automatically?</summary>
+
+No. Null policy and mutability policy are different guarantees. The program's final result contains null; a toUnmodifiableList collector or List.of would reject that supplied null under its contract.
+
+</details>
+
+## References
+
+- [Stream operation contracts and Since labels](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Stream.html)
+- [Collector unmodifiable result factories](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Collectors.html)

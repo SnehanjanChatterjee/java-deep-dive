@@ -1,0 +1,79 @@
+---
+title: "Downstream filtering, flattening and teeing"
+module: "functional"
+group: "Collectors"
+summary: "Preserve grouping keys while adapting each group reduction, and combine two aggregates with teeing and an explicit empty-result policy."
+order: 605
+version: "Java 9/10/12 APIs; complete example12+"
+prerequisites: ["functional/collector-recipes"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Distinguish filtering input from filtering inside a group
+
+A grouping classifier decides which key an input belongs to. A downstream collector decides what information to retain for that group. Moving a filter across the grouping boundary can therefore change which keys exist.
+
+<JavaExample file="modern/DownstreamCollectors.java" output={"downstream filter={a=[ants], b=[]}\nupstream filter={a=[ants]}\ndownstream flatMap={a=[a, e, n, p, s, t], b=[b, e, o]}\ntee average=3.25\nempty average present=false\nunmodifiable collector mutation rejected"} />
+
+The source uses the ASCII fixture ants,ape,bee,bob and groups by its first UTF-16 code unit. A downstream filtering(length>3,toList()) produces a=[ants], b=[]: b was encountered, but none of its values passed the downstream filter. Applying filter before grouping removes those b inputs entirely, leaving only a=[ants].
+
+| Arrangement | Classifier sees bee/bob? | b group in result |
+| --- | --- | --- |
+| Upstream filter then groupingBy | No | Absent |
+| groupingBy with filtering downstream | Yes | Present with an empty downstream list |
+
+Choose based on whether an empty-but-known category is meaningful. Downstream filtering began in Java 9; it is not a Java 8 collector factory.
+
+## Transform each group's contribution
+
+mapping applies a one-result transformation before a downstream collector. In ordinary collector recipes, mapping(Score::name,toList()) stores names rather than complete Score objects.
+
+flatMapping, Java 9, adapts a zero/many stream-producing mapper. The source splits each known ASCII word and accumulates per-prefix unique String elements into TreeSet. It therefore has a sorted set of symbols per group instead of a list of whole words. That tiny fixture does not define arbitrary Unicode grapheme segmentation; the string chapter distinguishes code units, code points and display characters.
+
+A downstream can be counting, summing, mapping, filtering, flatMapping or another grouping operation. Write the type at each boundary before nesting calls: input String, group key Character, mapped output String symbol, downstream Set&lt;String&gt;, outer Map&lt;Character,Set&lt;String&gt;>.
+
+## Combine independent aggregate descriptions with teeing
+
+teeing, introduced in Java 12, sends each accepted input to two downstream collectors and merges their completed results. The source counts four words and sums their thirteen UTF-16 units, then constructs Summary. The average is 13/4=3.25.
+
+For empty input, count is zero. Summary returns OptionalDouble.empty rather than claiming a real average of zero. The finisher/merger owns that result policy. In other domains, aggregate arithmetic can overflow or round; teeing does not make arbitrary downstream arithmetic exact.
+
+A teeing merger combines final results, not mutable partial containers supplied by the caller. Its characteristics follow the composed collectors' defined rules; do not add CONCURRENT or IDENTITY_FINISH as performance decoration.
+
+## Finish an unmodifiable result deliberately
+
+The example ends with toUnmodifiableList, available from Java 10, and demonstrates its mutation rejection. It also rejects null inputs under its element contract. This differs from wrapping a still externally aliased backing list and from Stream.toList's null policy.
+
+collectingAndThen, available in Java 8, provides a general downstream-plus-finisher composition. It can transform a mutable private accumulator into a different published result type. A finisher that merely wraps an object still exposed through another alias does not establish independent ownership.
+
+## Worked questions
+
+<details>
+<summary>Does filtering downstream guarantee a result entry for every possible key?</summary>
+
+No. It retains a group for keys the upstream actually classifies. A category never encountered still needs a separate domain initialization policy. Preserving encountered-but-empty groups is different from enumerating all possible categories.
+
+</details>
+
+<details>
+<summary>Why not average per-group averages with equal weight?</summary>
+
+Groups can have different counts. Retain or combine total and count, then divide under the desired numeric policy. Teeing can express those two aggregate values, but the correct information model is the reason it works.
+
+</details>
+
+<details>
+<summary>Can a Java 8 project use these factories because collectors themselves started in Java 8?</summary>
+
+Not all of them. mapping/collectingAndThen exist in Java 8; filtering/flatMapping require 9; unmodifiable collectors require 10; teeing requires 12. The full downloadable program is correctly labelled Java 12+.
+
+</details>
+
+## References
+
+- [Collectors adapters, teeing and version labels](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Collectors.html)
+- [Collector composition laws and characteristics](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Collector.html)

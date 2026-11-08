@@ -48,6 +48,39 @@ No. Return a parsed value or throw its declared contextual failure, preserving t
 
 </details>
 
+## Trace normal completion, handling and a pending return
+
+<JavaExample file="ExceptionPathsLesson.java" output={"try body-end finally after\ntry catch finally after\n1"} />
+
+On the normal path, body-end is appended, catch is skipped, finally runs and the statement after the construct runs. On the exceptional path, body-end is skipped, catch appends its event, then finally runs before the following statement. If the catch rethrew instead, the following statement would not be reached through that path.
+
+ReturnBeforeFinally evaluates its return expression while value is one. Finally then assigns two to the local, but the pending primitive return value was already selected, so one reaches the caller. Returning a mutable object reference would still select that reference before finally, while finally could mutate the referenced object. Returning or throwing from finally itself replaces the pending completion and is normally a defect. [JLS try/finally completion](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.20.2)
+
+## Apply a checked contract to a real Object API
+
+<JavaExample file="ObjectOperationsLesson.java" output={"true\nfalse\nA[9]\nA[1]\ntrue"} />
+
+Stamp implements the marker Cloneable and invokes protected Object.clone through super.clone. Object declares CloneNotSupportedException as checked; the override-facing helper handles that obligation. This final class really implements Cloneable, so that particular failure would contradict its assumption and is translated into an AssertionError with its cause. This is a narrow invariant check, not a reason to catch all exceptions or hide ordinary failures.
+
+Clone creates a distinct Stamp and copies its fields. Its final int[] field still identifies the same mutable array, so changing shallow's component changes original's representation to A[9]. IndependentCopy calls the ordinary validating constructor, which clones the array and keeps A[1]. Object.clone does not call that constructor to redo the class's chosen defensive-copy policy. A copy constructor/factory is often easier to specify than inherited cloning, especially with final mutable references. [Object.clone contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#clone())
+
+<details>
+<summary>Can a multi-catch list both IOException and its subtype FileNotFoundException?</summary>
+
+No. Its alternatives cannot have that subtype relationship. Use one IOException catch for identical handling, or separate FileNotFoundException first when its handling genuinely differs. A broader catch first would make a later subtype handler unreachable. Throws declarations propagate checked obligations; they do not select a catch at runtime or suppress unchecked failures.
+
+</details>
+
+## Use assert for optional internal checks, not required validation
+
+The assert statement expresses a condition expected to hold inside a program. A false enabled assertion throws AssertionError, optionally carrying the value after a colon. Assertions are normally disabled unless enabled for the relevant code with launcher options. This intentionally invalid internal value exposes that switch:
+
+<JavaExample file="AssertionSwitchLesson.java" output={"continued"} />
+
+After ordinary compilation, `java -cp out AssertionSwitchLesson` prints continued under the default disabled application-assertion configuration. `java -ea -cp out AssertionSwitchLesson` instead throws AssertionError with negative internal count and never reaches the print. The example deliberately violates its internal expectation; it is not a valid inventory implementation.
+
+Use an ordinary if/throw check for public argument validation and required authorization/domain constraints. Putting a required state update inside assert is also wrong because a disabled assertion does not evaluate that expression at all. A test framework's assertions are a separate API with their own execution behavior, rather than a reason to assume language assert is always enabled. [JLS assert statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.10)
+
 ## Failure-contract references
 
 - [Dev.java: throwing and declaring exceptions](https://dev.java/learn/language/annotations-exceptions/exceptions/throwing/)

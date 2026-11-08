@@ -2,7 +2,7 @@
 title: "Implement an unbalanced binary search tree"
 module: "collections"
 group: "Maps and search trees"
-summary: "Locate a key by discarding a subtree"
+summary: "Implement comparison-based insertion, lookup, traversal and every deletion shape, including a successor with a surviving child."
 order: 460
 version: "Java 8+"
 prerequisites: ["collections/ordering", "collections/hashmap"]
@@ -44,6 +44,14 @@ keysInOrder recursively visits left, current key, then right. This produces sort
 To delete 20, find the minimum of its right subtree: 25. Copy 25's key/value into the root node, then remove the original successor-position node beneath 30. The mapping 20 disappears; 25 survives once. If that successor has a right child, the one-child case reconnects it. A minimum node cannot have a left child.
 
 remove saves the original result before rewriting keys. Its call to find establishes that the recursive delete path exists. The helper returns the new subtree root on every branch; callers must assign it back to their left/right field, and the public method assigns it back to root. Size decreases only in the public method, so moving the successor is not a second logical removal.
+
+## Reconnect a successor that has its own right child
+
+Use keys 20,10,30,25,27,40 and delete 20 directly. The successor is 25, but its original node has right child 27. After copying 25's association into the root, deletion of that successor position returns its right child. Assigning that return to 30.left preserves 27.
+
+Before, the right subtree is 30 with left 25 and 25.right=27. After, it is 30 with left 27. Returning null instead would silently lose 27 even though traversal could remain sorted for the values left behind. The extended test checks the exact survivor keys, not only sortedness.
+
+The recursive call stack also explains in-order traversal. A call at 20 suspends its own visit while traversing 10's subtree, records 20 only after that returns, then enters 30's subtree. Every node is visited once, but the maximum active stack follows the tree's height. A chain and a balanced shape can have the same sorted output with different stack/search costs.
 
 ## Height determines the cost
 

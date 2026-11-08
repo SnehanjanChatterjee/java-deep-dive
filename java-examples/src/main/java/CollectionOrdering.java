@@ -15,6 +15,10 @@ public final class CollectionOrdering {
             this.id = Objects.requireNonNull(id, "id");
             this.points = points;
         }
+        /** Exposes the immutable identifier to external ordering policies. */
+        public String id() { return id; }
+        /** Exposes the primitive comparison key without a mutation API. */
+        public int points() { return points; }
         /** Defines the natural order by identifier, then points. */
         @Override public int compareTo(final Score other) {
             final int byId = id.compareTo(other.id);

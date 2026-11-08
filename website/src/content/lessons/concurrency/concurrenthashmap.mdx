@@ -1,9 +1,9 @@
 ---
 title: "ConcurrentHashMap and atomic per-key operations"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Repair a shared frequency update, then trace bins and cooperative resize paths."
-order: 950
+order: 895
 version: "Java 8+"
 prerequisites: ["concurrency/concurrent-collections", "collections/hashmap"]
 advanced: true
@@ -49,6 +49,16 @@ A non-null retrieval reporting an update has the documented happens-before relat
 | Update key A then key B | Readers can see the intermediate state | A larger shared protocol |
 
 Callbacks must be short and follow their documented restrictions. ComputeIfAbsent returning null creates no non-null mapping; throwing preserves failure rather than installing that result. Blocking callbacks can delay competing updates. Avoid unsupported recursive updates to the same map.
+
+## Follow absent, failed and installed callback outcomes
+
+<JavaExample file="ConcurrentMapCallbacksLesson.java" output={"absent after null=true\nfailure=calculation failed\nabsent after failure=true\ninstalled=42\nexisting=42\ncallback calls=3"} />
+
+The first computeIfAbsent returns null, leaving no mapping. The second throws a declared calculation failure, which the caller records; it also leaves the key absent. A later attempt returns 42 and installs it. Another computeIfAbsent on that present mapping returns the existing value without invoking the supplied failing function.
+
+This sequential experiment demonstrates why atomic callback execution does not mean one callback invocation for the lifetime of a key. An absent/null/failed/removed mapping permits another attempt under its contract. Do not place an external once-only action such as payment inside a map callback and infer a business delivery guarantee.
+
+The local calls array is confined to this experiment; it is not an example of an unprotected shared counter. For a concurrently used callback, captured mutable state requires its own protocol. Keep computations short and avoid unsupported recursive updates to the same map. [Java 8 computeIfAbsent outcomes](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html#computeIfAbsent-K-java.util.function.Function-)
 
 ## Bins, publication and resizing
 

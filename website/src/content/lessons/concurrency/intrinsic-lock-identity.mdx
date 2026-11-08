@@ -1,0 +1,69 @@
+---
+title: "Instance methods, static methods and monitor identity"
+module: "concurrency"
+group: "Synchronization"
+summary: "Identify the one object each synchronized form locks, then choose a common guard for one invariant."
+order: 775
+version: "Java 8+"
+prerequisites: ["concurrency/shared-state"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Synchronized selects an object's monitor
+
+Every object has an associated monitor. `synchronized (guard)` first evaluates guard, acquires that particular object's monitor, executes the block, then releases the monitor on normal or exceptional exit. A null guard throws NullPointerException. The reference expression is a way to choose the monitor; it does not mean locking a variable name or recursively locking every field reachable from that object.
+
+Two sections exclude each other only when they acquire the **same monitor**. Giving two different objects a field with the same name does not make those monitors the same.
+
+| Form | Selected monitor |
+| --- | --- |
+| Instance `synchronized void update()` | The receiver, `this` |
+| `synchronized (this)` | This receiver, for this block |
+| Static `synchronized void update()` | The declaring class's Class object |
+| `synchronized (Catalog.class)` | That specific Class object |
+| `synchronized (privateGuard)` | Whatever object privateGuard refers to |
+
+## Inspect actual lock ownership
+
+<JavaExample file="IntrinsicLockLesson.java" output={"instance method=true\nother instance locked=false\nclass locked=false\nprivate guard only=true\nstatic method=true"} />
+
+`holdsReceiver()` is an instance synchronized method, so the current caller owns its receiver's monitor inside the body. Main then explicitly locks first and asks about second and the Class object. Both are false: owning first does not also acquire those other monitors.
+
+`holdsPrivateGuardOnly()` acquires the instance's private final guard and checks that this receiver's monitor was not acquired. `holdsClassOnly()` is static synchronized, so the selected monitor is IntrinsicLockLesson.class. These are direct ownership observations, without sleeps or contention timing.
+
+Thread.holdsLock tests **the caller's** ownership of the supplied object's monitor. It is useful for this explanation or an assertion; it does not acquire the monitor, reserve future access or report which other thread owns it.
+
+<Diagram client:visible definition={"flowchart LR\n A[Instance first] --> MA[Monitor first]\n B[Instance second] --> MB[Monitor second]\n C[Class object] --> MC[Class monitor]\n X[Caller owns first] --> MA\n Y[Other caller may own second] --> MB\n Z[Static synchronized caller] --> MC"} caption="Instance monitors and the class monitor are separate identities. A class-level acquisition does not automatically lock every instance." />
+
+## Protect the same invariant with the same guard
+
+Suppose every account instance owns its own balance. Instance synchronization can protect each balance independently. A static total spanning all accounts needs a separate agreed protocol; locking whichever receiver a caller happened to choose cannot protect one common static total.
+
+Conversely, static synchronization does not prevent another caller entering an instance synchronized method. Their monitors differ. If both methods access the same state, this is a broken protocol even though both declarations contain synchronized. Every conflicting path, including readers, must obey the chosen guard or another correct publication rule.
+
+A private final Object is often a useful guard: callers cannot accidentally acquire it, and the field cannot be reassigned to a different monitor. Public receiver/class monitors can be acquired by outside code. String literals, cached boxed values and other widely shared objects can make unrelated code contend on an unexpectedly shared monitor. Use a deliberately owned guard.
+
+## Reentrancy and automatic release
+
+Intrinsic monitors are reentrant. A caller already owning first can call another instance synchronized method on first; that execution does not wait for itself at the same monitor. Each nested acquisition still has a corresponding release. Another caller cannot enter until the ownership count reaches zero.
+
+Leaving a synchronized region through an exception releases its monitor. It does not roll back mutations already performed. Validate and calculate fallible changes before publishing a partial multi-field update, or design a recovery policy. Sleeping inside the region retains ownership; the later wait lesson introduces the distinct operation that releases one selected monitor while waiting.
+
+## Exercise and interview questions
+
+**Two different instances call the same synchronized method. Must they serialize?** No: their receiver monitors differ. Shared static state would need a common guard.
+
+**Does a static synchronized method block every instance synchronized method?** No. It acquires the Class monitor, not those instances' monitors.
+
+**Can a small synchronized block be correct when the whole method is not synchronized?** Yes, if every access participating in the invariant uses the same protocol. Moving one assignment outside the guarded region requires a new argument, not merely a smaller block.
+
+As an exercise, replace `holdsReceiver`'s modifier with an explicit `synchronized (this)` block around its body. The ownership result remains true. Replacing it with `synchronized (new Object())` selects a fresh monitor for every invocation and cannot exclude competing calls.
+
+## Primary contracts
+
+- [JLS 17.1: monitors and reentrant ownership](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.1)
+- [JLS 8.4.3.6: synchronized method monitor selection](https://docs.oracle.com/javase/specs/jls/se8/html/jls-8.html#jls-8.4.3.6)
+- [JLS 14.19: synchronized statements and release](https://docs.oracle.com/javase/specs/jls/se8/html/jls-14.html#jls-14.19)

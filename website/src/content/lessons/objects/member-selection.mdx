@@ -1,0 +1,58 @@
+---
+title: "Overriding, static hiding and field selection"
+module: "objects"
+group: "Interfaces and inheritance"
+summary: "Predict member access by separating the declared reference type from the object's runtime type."
+order: 186
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition", "language/method-overloading"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Ask two different type questions
+
+A variable's declared type determines which members a source expression may name and which overload is selected. For an overridable instance method, the runtime object then determines the implementation of that selected method. Fields and static methods use different selection rules. Calling all three “polymorphism” hides the distinction that interview output questions depend on.
+
+<JavaExample file="DispatchMembersLesson.java" output={"parent field\nchild field\nparent static\nchild static\nchild method\nparent method\ntrue"} />
+
+`child` and `parent` identify the same Child; the final identity print proves no second object was created by upcasting. That object has the inherited Parent field and the separate Child field. Through `parent.label`, the declared Parent type selects Parent's field. Through `child.label`, Child's field is selected. Field hiding does not replace or dynamically dispatch the inherited field.
+
+## Select static declarations without an object receiver
+
+<Diagram client:visible definition={"flowchart TD\n E[Source member expression] --> D[Declared receiver or qualifier type]\n D --> F[Field or static member: select declaration]\n D --> S[Instance method: select applicable signature]\n S --> R[Runtime receiver: choose override of that signature]"} caption="Source typing selects members and signatures before runtime virtual dispatch chooses an instance implementation." />
+
+`Parent.kind()` and `Child.kind()` name different static declarations. Child's declaration **hides** the inherited static method; it does not override it. Java permits writing a static invocation through a reference expression, but `parent.kind()` would still select Parent's declaration. Prefer the class-qualified spelling used here so the dependency is visible.
+
+A static method may be overloaded with different parameter types. A subclass cannot replace an inherited instance method with a static method, or replace an inherited static method with an instance method of the same signature. `@Override` on the hiding static declaration would be a compile error. [JLS overriding and hiding](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.8)
+
+## Dispatch the selected instance method
+
+`parent.describe()` is legal because Parent declares describe. Its receiver is a Child, so Child's override runs. `parentDescription()` uses `super.describe()` to invoke the superclass implementation deliberately. Ordinary virtual dispatch and an explicit super invocation answer different questions.
+
+| Expression | Selection | Result |
+| --- | --- | --- |
+| `parent.label` | Declared Parent type | parent field |
+| `((Child) parent).label` | Cast expression has Child type | child field |
+| `Parent.kind()` | Named static declaration | parent static |
+| `parent.describe()` | Child's override of selected instance method | child method |
+| `child.parentDescription()` | Child method explicitly calls super | parent method |
+
+The cast changes the expression's type; it does not transform the object. Casting an actual Parent to Child would fail. Upcasting also does not make Child-only methods available through Parent: member lookup must succeed before runtime dispatch is relevant.
+
+## Check an override as a contract
+
+An override keeps the same parameter signature; changing a parameter type usually adds an overload. It can return a narrower compatible reference type, called a covariant return, but cannot arbitrarily change a primitive result type. It cannot reduce accessibility or broaden checked failures. Private methods are not inherited for overriding, final methods cannot be overridden, and constructors are not methods to override.
+
+`@Override` is optional for dispatch to work. It asks the compiler to reject a declaration that fails to override/implement an eligible method, catching a misspelled name or accidental parameter change. It is a compile-time check, not the switch enabling runtime polymorphism. [Override API](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Override.html)
+
+## Practice: add an overload in Child
+
+<details>
+<summary>Child adds describe(int detail). Does parent.describe() change?</summary>
+
+No. The new method has a different parameter list. The existing zero-argument signature still selects Child's zero-argument override. `parent.describe(1)` is not legal unless Parent exposes that signature. Runtime dispatch chooses an implementation of a signature already selected by source typing; it does not redo overload resolution using every runtime argument class.
+
+</details>

@@ -1,0 +1,78 @@
+---
+title: "Odd-even and three-thread turn-taking"
+module: "concurrency"
+group: "Waiting and conditions"
+summary: "Derive an ordered finite sequence from one guarded turn predicate, including final wakeup and cancellation."
+order: 795
+version: "Java 8+"
+prerequisites: ["concurrency/monitors-wait-notify", "concurrency/interrupt-status"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Order comes from a predicate, not a delay
+
+Two workers must produce 1, 2, 3, … in order, with one responsible for odd values and the other for even values. Starting the odd worker first, giving it higher priority or sleeping in the even worker cannot establish the required alternation. The workers need shared state describing whose turn is legal.
+
+Let next be the next number, starting at one. For two participants, role zero owns odd numbers and role one owns even numbers. The expression `(next - 1) % participants` selects the legal role. The same rule gives three roles A/B/C the sequence A=1, B=2, C=3, A=4, … . A role is an immutable integer assigned by the owner; Thread names are merely labels.
+
+## Complete two-worker and three-worker solution
+
+<JavaExample file="TurnTakingSequence.java" output={"odd=1 even=2 odd=3 even=4 odd=5 even=6 odd=7\nA=1 B=2 C=3 A=4 B=5 C=6 A=7 B=8"} />
+
+The controller owns participants, limit, next, cancelled and the output builder. Both workers use the **same controller monitor**. The only operation appending an entry and advancing next is inside that monitor. An output entry is therefore coupled to the number it claims; a worker does not print a stale number after another has advanced it.
+
+The output is collected in memory and printed after all workers join. Printing to a console while holding a coordination lock would also retain that lock during potentially slow I/O. Collecting a trace keeps the example focused on the ordering invariant.
+
+## Walk the first four transitions
+
+| Step | Shared next | Attempt | Decision under the monitor |
+| --- | --- | --- | --- |
+| 1 | 1 | Even role enters first | Its predicate is false; wait releases the controller monitor |
+| 2 | 1 | Odd role enters | Append odd=1, advance to 2, notify all |
+| 3 | 2 | Odd role loops before even reacquires | Predicate is now false; it waits |
+| 4 | 2 | Even role reacquires | Recheck, append even=2, advance to 3, notify all |
+
+The notification does not select a worker and transfer the monitor immediately. Each awakened contender reacquires and rechecks. A spurious wakeup also reaches the same predicate check. The while loop makes those schedules safe.
+
+<Diagram client:visible definition={"flowchart TD\n E[Acquire controller monitor] --> C{Cancelled or exhausted?}\n C -->|yes| R[Return]\n C -->|no| T{My immutable role owns next?}\n T -->|no| W[Wait, release monitor, reacquire and recheck]\n W --> C\n T -->|yes| A[Append role and number]\n A --> N[Increment next and notify all]\n N --> C"} caption="The guarded state determines the next legal transition. Notification only enables another predicate check." />
+
+## Explain every branch and method
+
+`takeTurns(role)` retains the monitor while checking and performing one transition. Its inner while combines three reasons to stop waiting: cancellation, exhaustion, or permission to take this turn. The following if checks cancellation/exhaustion again before mutation. Removing that check can let a worker awakened at the end append an out-of-range value.
+
+`next++` is performed only after a valid append. Next uses long so advancing beyond an int limit does not wrap back into negative int values. The final successful append still calls notifyAll: peers waiting for their now-nonexistent next turn must wake and observe exhaustion. A zero limit produces an empty trace and terminates normally.
+
+`cancel()` changes the same guarded state and notifies every waiter. A worker interrupted during wait records cancellation for its peers, restores its own status and exits. The owner does not return a partial trace as a successful sequence.
+
+`run()` validates its two/three-participant contract and nonnegative limit, constructs all handles before starting them, then joins them. If the owner is interrupted, finally cancels the controller, interrupts the owned workers and joins them for cleanup. `joinForCleanup` finishes that cooperative cleanup even if the owner receives repeated requests, then restores any additional consumed request. This policy is possible because these workers have finite, interruptible guarded behavior; it is not a general promise about arbitrary tasks.
+
+## Why notifyAll is appropriate here
+
+With three roles sharing one wait set, notify could select a worker whose predicate remains false while the eligible worker stays asleep. That can stall progress with no future notifier. NotifyAll wakes contenders so the role whose predicate is true can proceed; the rest wait again. It does not guarantee operating-system fairness, but it avoids depending on a notification selecting the right role.
+
+The protocol still assumes eligible workers eventually receive execution. Safety follows from the monitor and predicate; scheduling progress is a separate assumption. Increasing priorities or adding sleep calls is unnecessary for the ordering proof.
+
+## Exercises and complete answers
+
+**Print 1–5 with two workers.** Use run(2, 5). The expected roles are odd/even/odd/even/odd. The even worker must wake after five and exit without printing six.
+
+**Print only 1–2 with three workers.** Use run(3, 2). C produces nothing, but must still terminate. Exhaustion belongs in its wait predicate, rather than waiting forever for C's first turn.
+
+**Start workers in reverse order.** The same values and roles result. Initial arrival order can change waiting, not the legal next transition. The full canonical implementation and its tests cover finite partial rounds and validation.
+
+## Interview questions
+
+**Why not check parity outside synchronized?** The observation can become stale before the guarded mutation. Permission and update must use the same protected state.
+
+**Why not unconditional wait after every print?** The final printer might wait for a notification that can never come. Wait only while progress is forbidden and work remains.
+
+**Is the StringBuilder thread-safe?** It is protected by the controller monitor while workers mutate it, and main reads after joins. The protocol supplies safety; the builder class itself does not.
+
+## Primary contracts
+
+- [JLS monitor and wait-set rules](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.2)
+- [Object wait, notify and notifyAll](https://docs.oracle.com/javase/8/docs/api/java/lang/Object.html#wait--)
+- [Thread join and interruption](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html)

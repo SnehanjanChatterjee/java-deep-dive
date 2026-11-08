@@ -2,7 +2,7 @@
 title: "Collectors and lawful mutable reduction"
 module: "functional"
 group: "Collectors"
-summary: "Build custom collectors from invariants, partition laws and an explicit result contract."
+summary: "Build a custom count/total/maximum collector, preserve empty-state and merge laws, and finish independent mutable state into immutable Stats."
 order: 610
 version: "Java 8+"
 prerequisites: ["functional/collector-recipes"]
@@ -58,6 +58,29 @@ The finisher creates Stats, so A and R differ. IDENTITY_FINISH would be false: t
 
 Parallel safety instead comes from separate state and lawful combination. A nonconcurrent collector can run correctly in a parallel stream without locks on every field. UNORDERED concerns whether encounter order changes the result meaning; it is not a promise to return random output.
 
+## Complete the maximum extension inside the same collector
+
+Stats now also publishes OptionalLong maximum. Empty state has count zero and no maximum; a real zero-cent purchase has count one and maximum zero. The accumulator keeps a primitive maximum beside count/total, using count to distinguish initialization instead of pretending zero always means absence.
+
+add computes exact next count/total first, then the appropriate maximum, before assigning fields. merge distinguishes empty sides: an empty other contributes no maximum; an empty current takes the other's maximum; two nonempty states take their larger value. finish copies all three completed primitive aggregates into immutable Stats.
+
+For A:100,B:300,A:200, A has maximum 200 and B 300. The diagnostic map's compact count:total rendering remains unchanged; the maximum accessor is asserted directly in tests rather than smuggled into a toString comparison.
+
+| Left partial | Right partial | Combined maximum |
+| --- | --- | --- |
+| Empty | Empty | Absent |
+| Empty | Count 1, maximum 0 | Present zero |
+| Count 1, maximum 100 | Empty | 100 |
+| Count 2, maximum 200 | Count 1, maximum 300 | 300 |
+
+This completes the extension rather than leaving a field-list exercise without code. It also shows why combining averages alone loses information while combining count/total/maximum retains the required aggregate meaning.
+
+## Verify the collector laws through its public functions
+
+A lawful nonconcurrent collector supplies distinct mutable containers. The added tests obtain two states through supplier, accumulate explicit partitions, combine and finish. They compare aggregate fields with unsplit reduction and include an empty state on each side.
+
+The tests also finish a snapshot, add another item to the private accumulation state and verify the old Stats remains unchanged. This exercises the real finisher ownership boundary, not only sequential/parallel printed similarity. Framework scheduling still need not use the illustrative split shown in the diagram.
+
 ## Compose downstream reductions
 
 GroupingBy chooses a key, then applies the downstream collector to that group's elements. Downstream counting, summing, mapping or filtering can avoid storing a full list that is never used. A custom collector is justified when the existing combinators do not clearly express the required result/invariants; do not rebuild toList just to use a pattern name.
@@ -111,7 +134,7 @@ First inspect supplier independence and combiner identity/associativity, then ch
 
 ## Coding extension and solution
 
-Extend Stats with a maximum purchase value. For empty input, represent no maximum explicitly rather than using zero unless the domain intentionally defines zero as its identity. Add initializes/updates the maximum from accepted values; merge compares maxima from nonempty partial states; finish publishes the absence/presence contract. Test empty versus a real zero-valued purchase so the distinction cannot be hidden by the normal total.
+The complete maximum solution above uses OptionalLong at publication and count during accumulation. A further minimum field needs the same empty/nonempty distinction; it cannot use zero as a universal minimum for a domain containing only positive purchases. State that invariant before adding fields or characteristics.
 
 An average should be derived from count and total at the correct finish boundary with the required numeric policy. Averaging partial averages without their counts is generally wrong; combining (count,total) preserves the information needed for the final calculation.
 

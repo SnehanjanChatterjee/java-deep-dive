@@ -44,6 +44,25 @@ No: grapheme clusters may contain several code points, and reversing their order
 
 </details>
 
+## Dry-run supplementary reversal and ordered counting
+
+For A😀B, the reverse loop begins at exclusive offset four. CodePointBefore(4) reads B and moves end to three. The next read obtains the full emoji from the surrogate pair and moves end to one. The final read obtains A and moves end to zero. Appending a point, rather than casting it to char, preserves its two-unit encoding. Empty input enters no iteration; null fails before length is read.
+
+For swiss, the counting states are s→1, then w→1, then i→1, then s→2 and s→3. Replacing an existing s count leaves s first in encounter order. The second traversal skips s because three is not one, then returns w. It returns a **code point**, not the original UTF-16 index; an API requiring a source offset would need to retain or find that offset explicitly.
+
+## Solved exercise: remove trailing whitespace only
+
+The same canonical source contains stripTrailingWhitespace. It starts at the exclusive end, reads the preceding full code point, and moves left only while Character.isWhitespace accepts that point. It returns substring(0, end), preserving all leading text and the first non-whitespace suffix boundary. For `"  Ada \t"` the result is `"  Ada"`; empty and all-whitespace inputs return empty text.
+
+This policy differs from Java 8 trim, which uses its documented small-code-unit boundary. Character.isWhitespace includes an em space but excludes some nonbreaking spaces, so the test intentionally keeps U+00A0. A product requirement to remove those too must change the predicate. Scanning a suffix takes O(k) inspected code points; constructing the returned prefix can require O(n) storage/work, so do not label the whole operation O(k) regardless of output size.
+
+<details>
+<summary>Would recursive reverse(input.substring(0, n-1)) be an equivalent solution?</summary>
+
+Not with a char-at-a-time boundary: it can split surrogate pairs. It also creates nested invocations and, on typical current substring implementations, repeatedly copies prefixes, producing quadratic total copied work. The iterative code-point solution uses one builder and states its grapheme limitation explicitly. Neither method becomes a normalization algorithm merely because it handles supplementary points.
+
+</details>
+
 ## Algorithm references
 
 - [Character code-point traversal](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Character.html)

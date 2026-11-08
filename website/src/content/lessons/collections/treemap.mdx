@@ -2,7 +2,7 @@
 title: "TreeMap and red-black balancing"
 module: "collections"
 group: "Maps and search trees"
-summary: "Maintain sorted keys while supporting range queries"
+summary: "Use ordered neighbors, bounded views and entry snapshots, then work through red-black insertion and deletion repair."
 order: 470
 version: "Java 8+"
 prerequisites: ["collections/binary-search-tree", "collections/ordering"]
@@ -28,6 +28,20 @@ Natural order or a supplied Comparator defines placement and comparison-zero mem
 The keys traverse as [10,20,30]. floorKey(25) returns 20; ceilingKey(25) returns 30. floor/ceiling include equal keys, while lower/higher are strict. None requires the queried key to exist. The range includes 10 and excludes 30; removing 20 through it removes the backing mapping.
 
 A subMap is a backed bounded view, not an independent container. An out-of-range insertion through it fails. Copying into a new TreeMap detaches container mutation while sharing key/value objects. Natural ordering rejects null keys; an explicit comparator can support a consistent null policy.
+
+## Interpret all neighbor and range methods in the current order
+
+<JavaExample file="NavigableViews.java" output={"ascending floor/ceiling=20/30\ndescending floor/ceiling=30/20\n[30, 20]\nnavigation snapshot=twenty\nnavigation entry update rejected\nout-of-range key rejected\nbacking keys=[10, 30]\ndescending lower/higher=30/10\nset after range clear=[30]"} />
+
+For ascending keys 10,20,30, lowerKey(20) is 10, floorKey(20) is 20, ceilingKey(20) is 20 and higherKey(20) is 30. For query 25, floor is 20 and ceiling is 30. In descending order 30,20,10, floor(25) is instead 30 and ceiling(25) is 20: “before/after” follows the view's comparison order.
+
+headMap/tailMap/subMap expose bounded live views. The two-argument sorted-map subMap includes its start and excludes its end; the NavigableMap overload makes each endpoint's inclusion explicit. In a descending view, endpoints must also be supplied in descending order. The source uses subMap(30,true,10,false), containing 30 and 20.
+
+An insertion through a bounded view must satisfy its bounds. Removal through the view affects the backing map; the source removes 20 and the original keys become 10,30. A copied TreeMap has independent membership instead.
+
+Navigational entry methods such as TreeMap.floorEntry return association snapshots that do not support setValue. The example saves twenty, replaces the backing value with updated, and the snapshot still contains twenty. This differs from a live entry obtained from entrySet for supported value updates. The container snapshot is still shallow: mutable referenced values are not cloned.
+
+pollFirstEntry/pollLastEntry both select and remove an endpoint; firstEntry/lastEntry only observe it. Key-only neighbor methods can return null for no result. If a comparator deliberately permits a real null key, an entry result distinguishes “no entry” from “entry whose key is null.”
 
 ## Search a neighbor without scanning every entry
 

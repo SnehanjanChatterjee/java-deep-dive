@@ -473,7 +473,7 @@
   },
   {
     "class": "FunctionalInterfacesLab",
-    "expected": "true\ntrue\ntrue"
+    "expected": "true\ntrue\ntrue\ntrue"
   },
   {
     "class": "MethodReferenceLab",
@@ -513,7 +513,7 @@
   },
   {
     "class": "TextEncodingLab",
-    "expected": "1\n3\n\u20ac\nincomplete UTF-8 rejected"
+    "expected": "1\n3\n€\nincomplete UTF-8 rejected"
   },
   {
     "class": "SimpleTreeSet",
@@ -654,5 +654,325 @@
   {
     "class": "JvmStackHeapLesson",
     "expected": "7\n8\n4\ntrue"
+  },
+  {
+    "class": "InterfaceContractsLesson",
+    "expected": "item:java\noperation\ntrue\none functional operation\nleft+right\nspecific\nbase"
+  },
+  {
+    "class": "InitializerOrderLesson",
+    "expected": "before first new\nstatic field\nstatic block 1\nsecond static block\ninstance field\ninstance block 2\nargument body 7\nno-argument body\nfirst=7\ninstance field\ninstance block 2\nargument body 9\nsecond=9"
+  },
+  {
+    "class": "DispatchMembersLesson",
+    "expected": "parent field\nchild field\nparent static\nchild static\nchild method\nparent method\ntrue"
+  },
+  {
+    "class": "ObjectRelationshipsLesson",
+    "expected": "Shared\ntrue\nowned\n2\nRetained"
+  },
+  {
+    "class": "LocalAnonymousLesson",
+    "expected": "Hello Ada\nHello Ada:inner"
+  },
+  {
+    "class": "StringOperationsLesson",
+    "expected": "b\n1\n3\n3\nana\n[]\n-1\na-b\n2\n-1\nfalse\ntrue\ntrue"
+  },
+  {
+    "class": "WrapperBoundariesLesson",
+    "expected": "42\nfalse\ntrue\n0\n42"
+  },
+  {
+    "class": "VarargsOwnershipLesson",
+    "expected": "0\n9\n11\n5\nfalse"
+  },
+  {
+    "class": "ConsoleInputLesson",
+    "expected": "12\n12:remaining=[]:name=Ada"
+  },
+  {
+    "class": "ExpressionOrderLesson",
+    "expected": "false\n0\nfalse\n1\nsum=12\nsum=3"
+  },
+  {
+    "class": "LoopControlLesson",
+    "expected": "1:1\n1:3\n2:1\nafter loops"
+  },
+  {
+    "class": "SwitchStatementLesson",
+    "expected": "weekend\nafter switch"
+  },
+  {
+    "class": "MethodFlowLesson",
+    "expected": "1\ncaller continues"
+  },
+  {
+    "class": "ArrayCopyLesson",
+    "expected": "[1, 1, 2, 3]\n[1, 1, 2, 3, 0, 0]\nfalse"
+  },
+  {
+    "class": "NumericEdgesLesson",
+    "expected": "66\nB\n16777216\nInfinity\n-Infinity\ntrue\ntrue\nfalse"
+  },
+  {
+    "class": "RegexLiteralLesson",
+    "expected": "a$1b$1a\n2\n3"
+  },
+  {
+    "class": "PrimeTrialDivisionLesson",
+    "expected": "false\ntrue\nfalse\ntrue"
+  },
+  {
+    "class": "ExceptionPathsLesson",
+    "expected": "try body-end finally after\ntry catch finally after\n1"
+  },
+  {
+    "class": "ResourceInitializationLesson",
+    "expected": "open A\nopen B\nclose A\nprimary=open B\nsuppressed=close A"
+  },
+  {
+    "class": "ExceptionTraceLesson",
+    "expected": "NumberFormatException\nparseCount\nloadCount\nmain"
+  },
+  {
+    "class": "ObjectOperationsLesson",
+    "expected": "true\nfalse\nA[9]\nA[1]\ntrue"
+  },
+  {
+    "class": "AssertionSwitchLesson",
+    "expected": "continued"
+  },
+  {
+    "class": "AbstractTemplateLesson",
+    "expected": "note:hello\nitems:3"
+  },
+  {
+    "class": "ThreadConstructionLesson",
+    "expected": "Thread subclass\nnamed Runnable\nanonymous Runnable\nlambda Runnable"
+  },
+  {
+    "class": "ThreadMetadataLesson",
+    "expected": "same name=true\nsame object=false\ncaller is first=false\nworker observed daemon=true\nworker finished=true"
+  },
+  {
+    "class": "JoinSchedulingLesson",
+    "expected": "after early join=NEW, answer=0\nafter started join=TERMINATED, answer=42"
+  },
+  {
+    "class": "IntrinsicLockLesson",
+    "expected": "instance method=true\nother instance locked=false\nclass locked=false\nprivate guard only=true\nstatic method=true"
+  },
+  {
+    "class": "InterruptStatusLesson",
+    "expected": "first inspect=true\nsecond inspect=true\nconsume=true\nafter consume=false\nsleep threw\nafter sleep exception=false"
+  },
+  {
+    "class": "LegacyThreadGroupLesson",
+    "expected": "lesson-group\nlesson-group"
+  },
+  {
+    "class": "TurnTakingSequence",
+    "expected": "odd=1 even=2 odd=3 even=4 odd=5 even=6 odd=7\nA=1 B=2 C=3 A=4 B=5 C=6 A=7 B=8"
+  },
+  {
+    "class": "ExchangeLesson",
+    "expected": "owner received=worker-buffer\nworker received=owner-buffer"
+  },
+  {
+    "class": "ExecutorFactoryLesson",
+    "expected": "42"
+  },
+  {
+    "class": "CompletionOrderLesson",
+    "expected": "first completed=42\nthen completed=1"
+  },
+  {
+    "class": "SynchronousHandoffLesson",
+    "expected": "unpaired accepted=false\nreceived=payload\nstored=0"
+  },
+  {
+    "class": "AtomicStatisticsLesson",
+    "expected": "sum=12\nmaximum=3"
+  },
+  {
+    "class": "MemoryRoundTripLesson",
+    "expected": "42"
+  },
+  {
+    "class": "BarrierFailureLesson",
+    "expected": "interrupted status=false\nbroken=true\npeer saw broken generation"
+  },
+  {
+    "class": "ReentrantLockDepthLesson",
+    "expected": "1\n2\n1\n0"
+  },
+  {
+    "class": "ReadWriteDowngradeLesson",
+    "expected": "value=42\ncaller released=true"
+  },
+  {
+    "class": "StampedValidationLesson",
+    "expected": "tentative=0\nvalid=false\nselected=42"
+  },
+  {
+    "class": "CompletionEdgeLesson",
+    "expected": "empty all done=true\nempty all value=null\nempty any done=false\nnull composition=NullPointerException"
+  },
+  {
+    "class": "ConcurrentMapCallbacksLesson",
+    "expected": "absent after null=true\nfailure=calculation failed\nabsent after failure=true\ninstalled=42\nexisting=42\ncallback calls=3"
+  },
+  {
+    "class": "ThreadLocalIsolationLesson",
+    "expected": "0\n1\n7"
+  },
+  {
+    "class": "ChunkedCancellationLesson",
+    "expected": "completed=3\nchecksum=15150\ncleanup=true"
+  },
+  {
+    "class": "DecimalPolicyLab",
+    "expected": "add=4.60\nsubtract=-2.20\nmultiply=4.080\nexact divide=0.125\nrounded divide=0.3333\nprecision4=12350\nquotient=3.00, remainder=1.25\nUP: -1.3\nDOWN: -1.2\nCEILING: -1.2\nFLOOR: -1.3\nHALF_UP: -1.3\nHALF_DOWN: -1.2\nHALF_EVEN: -1.2\nUNNECESSARY: rounding rejected\nitem tax=4.95, invoice tax=4.94\nnormalized scale=-3"
+  },
+  {
+    "class": "BoundedTextScan",
+    "expected": "nonblank=2\ncharacter limit rejected"
+  },
+  {
+    "class": "EncodingBoundaryLab",
+    "expected": "units=2, points=1, bytes=4\nreconstructed=true\nsurrogate rejected"
+  },
+  {
+    "class": "TemporalOperationsLab",
+    "expected": "year=2024, day=31\nwith day=2024-01-01\nplus month=2024-02-29\ntime plus30=00:15\ndatetime plus30=2024-02-01T00:15\nformatted=20240131\nlater=2024-01-01T13:00:00Z\nbefore=true\nelapsed minutes=60"
+  },
+  {
+    "class": "ZoneConversionLab",
+    "expected": "same instant local=17:30\nsame local instant=2024-01-01T06:30:00Z\nsame instant=true\ninstant difference=330"
+  },
+  {
+    "class": "BufferViewsLab",
+    "expected": "absolute=20, position=0\nrelative=10, position=1\nreset position=1\nview orders=LITTLE_ENDIAN/BIG_ENDIAN\ncursors=1/2\nslice shared=99\nreadonly observes=88\nreadonly write rejected\nbig endian=16909060\nlittle endian=67305985"
+  },
+  {
+    "class": "SerializationProtocols",
+    "expected": "same stream identity=true\ncached value=1\nafter reset=2\ntransient final=0\nexternal=7\nconstructor calls=1\ncustom derived=score:9\ncanonical identity=true"
+  },
+  {
+    "class": "CollectionBulkMethods",
+    "expected": "true\ntrue\ntrue\n[B, C]\n[B]\ntrue:[B, null, tail]\nreserved size=0\ntrue"
+  },
+  {
+    "class": "CollectionAlgorithms",
+    "expected": "[1, 1, 3, 4]\nmissing 2=-3\n[1, 1, 2, 3, 4]\n[1, 1, 4, 3, 2]\n[2, 1, 4, 3, 1]\n[2, 1, 4, 3, 1, 0]\n[2, 7, 4, 3, 9, 9]\nfrequency=1\ndisjoint=false\nmin/max=2/9\nsublist=-1\nshuffle preserves values=true"
+  },
+  {
+    "class": "NestedCollections",
+    "expected": "[[0, 17, 0], [0, 0, 0, 9]]\n[[5, 17, 0], [0, 0, 0, 9]]\n[[0, 17, 0], [0, 0, 0, 9]]\n[[8, 0], [8, 0]]\ndistinct frozen rows=[[A, B]]"
+  },
+  {
+    "class": "PairValues",
+    "expected": "true\nfalse\ntrue\nsize=2\ntext collides=true\npairs equal=false"
+  },
+  {
+    "class": "MapViewsAndUpdates",
+    "expected": "null\nnull\ntrue\nfalse\n8\none removed=1, still has 8=true\nbacking empty=true\nlive=9, snapshot=1"
+  },
+  {
+    "class": "CollectionNullPolicies",
+    "expected": "ArrayList=true\nLinkedList=true\nHashSet=true\nTreeSet natural=false\nTreeSet null-order=true\nArrayDeque=false\nPriorityQueue=false\nHashMap key/value=true/true\nLinkedHashMap key/value=true/true\nTreeMap key/value=false/true\nHashtable key/value=false/false\nConcurrentHashMap key/value=false/false\nConcurrentSkipListMap key/value=false/false\nfloor null key=null, entry exists=true"
+  },
+  {
+    "class": "SetAlgebra",
+    "expected": "union=[A, B, C, D]\nintersection=[B]\nleft-only=[A, C]\nexactly-one=[A, C, D]\ninputs=[A, B, C]/[B, D]"
+  },
+  {
+    "class": "ListMethods",
+    "expected": "initial size=0\n[A, B, B, C, A]\nfirst/last A=0/4\nset old=B\nremove value=true\narray snapshot=[A, D, C, A]\nrange clear=[changed, A]\nlogical size=2"
+  },
+  {
+    "class": "NavigableViews",
+    "expected": "ascending floor/ceiling=20/30\ndescending floor/ceiling=30/20\n[30, 20]\nnavigation snapshot=twenty\nnavigation entry update rejected\nout-of-range key rejected\nbacking keys=[10, 30]\ndescending lower/higher=30/10\nset after range clear=[30]"
+  },
+  {
+    "class": "LinkedListEnds",
+    "expected": "next/previous indexes=2/1\nprevious=B\nnext=X\nafter iterator removal=[A, C]\nremoved A=true\npoll first=start, peek last=end\ndescending=[end, C]"
+  },
+  {
+    "class": "OrderedMapAccess",
+    "expected": "containsKey=[A, B, C]\ngetOrDefault=[A, C, B]\nfailed replace=[A, C, B]\nsuccessful replace=[C, B, A]\nputAll=[B, A, C, D]\nentry setValue=[B, A, C, D]"
+  },
+  {
+    "class": "OrderedDeduplication",
+    "expected": "[java, jvm]\n[java, jvm]"
+  },
+  {
+    "class": "LegacyVectorStack",
+    "expected": "vector size=3, index 1=B\nsetSize grows=[A, B, C, null, null]\nsetSize shrinks=[A, B]\nstack iteration=[A, B, C]\npeek=C, search B=2, indexOf B=1\nmissing search=-1\npop=C\npop=B\npop=A\nempty peek rejected"
+  },
+  {
+    "class": "IntRange",
+    "expected": "2\n3\n4\nindependent=2/3/2"
+  },
+  {
+    "class": "GenericRelationships",
+    "expected": "Ada:7\n4\n7.5"
+  },
+  {
+    "class": "GenericTransform",
+    "expected": "[4, 3]\n[4, 3]\n[Java, JVM]"
+  },
+  {
+    "class": "GenericFailureLab",
+    "expected": "raw write: later read rejected\nvarargs alias: later read rejected\nchecked view: write rejected\nbacking alias: later read rejected"
+  },
+  {
+    "class": "PredicateFunctions",
+    "expected": "true\ntrue\n[a, Java]\nlength calls=2\nor skips unsafe branch=true\nandThen/compose=8/7\nAB\nfresh containers=true\nremoveIf/replaceAll=[JAVA]"
+  },
+  {
+    "class": "CallbackTiming",
+    "expected": "bound reference: creation failed\nlambda created\nlambda: invocation failed\nchild/base\nthis=enclosing/anonymous"
+  },
+  {
+    "class": "MapCallbacks",
+    "expected": "A=4, calls=[absent, present]\ncompute removed=true\nmerged A=7, calls=[absent, present, merge]\nmerge removed=true\nnull mapping retained=true\nreplaceAll total=4"
+  },
+  {
+    "class": "OptionalComposition",
+    "expected": "true/true\nMain Street\nnone\nnone\nmap null becomes empty=true\nflatMap null rejected\nnull function rejected even for empty"
+  },
+  {
+    "class": "StreamOperations",
+    "expected": "[3, 2]\nmap=[1, 4, 2]\nflatMap=[A, B, C]\nmap null=[null]\nnull inner stream count=0\nmapToInt sum=7\nflatMapToInt sum=6\nflatMapToLong sum=30000000000\nflatMapToDouble sum=6.5\nlimit/distinct=[3]/[3, 2]\nstable ties=[c, bb, aa]\nindependent source=[A, B, C]"
+  },
+  {
+    "class": "StreamTerminals",
+    "expected": "count=3\nmin/max=1/3\nfirst=3\nany present=true\nempty any/all/none=false/true/true\ntyped array=[A, B]\nordered actions=[3, 1, 2]\niterator total=3\nspliterator=[4, 5]\nterminal=2, closed=false\nafter close=true\nempty maximum=false"
+  },
+  {
+    "class": "StreamSources",
+    "expected": "array slice=[B, C]\nprimitive sum=6\none array element=1\nrange=[1, 2, 3]\nrangeClosed=[1, 2, 3, 4]\niterate=[1, 2, 4, 8]\ngenerate=[x, x, x]\nbuilder=[left, right]\nconcat=[A, B, C]\nmap values sum=5\nentries=[A2, B3]\nparallel then sequential=true/false\nconfigured count=2"
+  },
+  {
+    "class": "ReductionLaws",
+    "expected": "length=8\nempty length=0\ncombined=8\ninvalid identity sequential/partitioned=11/12"
+  },
+  {
+    "class": "CollectorCatalog",
+    "expected": "list=[Ada, Bob, Ada], distinct count=2\nspecified collection=[Ada, Bob]\njoining=[Ada|Bob|Ada]\ncount=3\nsums=450/450/450.0\naverages=150.0/150.0/150.0\nsummary=3/450/100/250\nlong/double summary sum=450/450.0\nmin/max=Ada/Bob\nreducing=450\ntoMap={Ada=200, Bob=250}\ngroup mapping={blue=[Bob], red=[Ada, Ada]}\npartitioning={false=[Ada, Ada], true=[Bob]}\nfinisher mutation rejected"
+  },
+  {
+    "class": "ConcurrentCollectors",
+    "expected": "concurrent map={java=2, jvm=1}\nconcurrent groups={3=1, 4=2}\ngroup cardinalities=1/2"
+  },
+  {
+    "class": "ComparatorComposition",
+    "expected": "ascending=[B:10, C:10, A:20]\nboth keys reversed=[A:20, C:10, B:10]\npoints only reversed=[A:20, B:10, C:10]"
+  },
+  {
+    "class": "StringConstructionLab",
+    "expected": "from chars=Java\nslice=av\nfrom bytes=text\nlength=0, reserved=true\nbuilt=Lia!\nbuilder=!a\nzero fill=true\nsnapshot=Lia!\ncase ordering=0\ncase equal=true\nbuffer=xy"
   }
 ]

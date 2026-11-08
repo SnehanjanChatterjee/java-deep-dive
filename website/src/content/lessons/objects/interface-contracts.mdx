@@ -1,0 +1,76 @@
+---
+title: "Interface categories and default-method conflicts"
+module: "objects"
+group: "Interfaces and inheritance"
+summary: "Distinguish marker and functional contracts, count abstract operations correctly, and resolve competing defaults."
+order: 185
+version: "Java 8+"
+prerequisites: ["objects/interfaces", "objects/inheritance-and-composition"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Classify an interface by the contract it supplies
+
+An ordinary interface can specify several operations, extend other interfaces and supply default/static methods. **Functional** describes a particular abstract-operation shape that the compiler can use as a target for behavior. **Marker** describes a design purpose: a type tag interpreted by an API. These labels answer different questions; they are not three new declaration keywords.
+
+| Description | What matters | Consequence |
+| --- | --- | --- |
+| Ordinary capability | The required operations and their behavior | A concrete implementation fulfills the complete inherited contract |
+| Functional interface | One abstract operation after the language's inheritance/signature rules | A named class can implement it; lambdas express implementations later |
+| Marker type | Membership in a named type carries a defined meaning | An API can test or require that type even when it declares no operations |
+
+The empty Tagged interface below adds a type relationship. It does not execute a tagging operation automatically. Serializable and Cloneable are standard-library marker examples whose specific APIs are developed later; implementing a marker alone does not run serialization or create a clone.
+
+## Read the complete named-class example
+
+<JavaExample file="InterfaceContractsLesson.java" output={"item:java\noperation\ntrue\none functional operation\nleft+right\nspecific\nbase"} />
+
+TaggedOperation explicitly implements both TextOperation and Tagged. Its apply method rejects null and prefixes valid text, including an empty String. The reference declared TextOperation exposes the operation contract, while instanceof confirms that the actual object also has the Tagged type. Marker membership and the behavior of apply remain separate facts.
+
+TextOperation's default kind method is inherited behavior. Its static description belongs to the interface and is called with TextOperation.description(); it is not an inherited instance operation. An interface field is implicitly public static final, so interfaces do not provide per-instance mutable fields. Default methods can operate through an implementing object's published operations, but do not add instance-field storage to the interface.
+
+## Count abstract operations after applying the rules
+
+TextOperation declares apply and redeclares equals(Object), yet @FunctionalInterface is valid. A public Object-method signature such as equals(Object) does not add another functional-operation requirement. Default and static methods also do not add abstract operations. Inherited override-equivalent declarations can describe one operation rather than several unrelated ones.
+
+The annotation asks the compiler to check the functional-interface rule; it is optional when the interface already satisfies that rule. Add an unrelated abstract method such as `int length();` and this declaration no longer qualifies. A class can still implement a nonfunctional interface normally; it simply lacks that single-operation target shape. Java 9+ also permits private interface helpers, which are implementation details rather than inherited abstract operations. [JLS interface methods and functional interfaces](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.8)
+
+## Resolve unrelated defaults at the implementing class
+
+Left and Right both provide label(). Combined cannot silently inherit both unrelated bodies. Its explicit override makes the policy visible and uses Left.super.label() and Right.super.label() to invoke the eligible direct-interface defaults. Those qualified calls do not mean “search any ancestor for a convenient implementation.”
+
+<Diagram client:visible definition={"flowchart TD\n L[Left default label] --> C[Combined supplies explicit override]\n R[Right default label] --> C\n C --> O[Result: left plus right]\n S[Specific overrides Left default] --> D[SpecificChoice inherits specific]\n B[NamedBase concrete method] --> W[ClassChoice inherits base]"} caption="Unrelated defaults need a policy; a more-specific interface and an inherited concrete class method follow different selection rules." />
+
+Specific extends Left and overrides the same default, so SpecificChoice inherits the more-specific implementation. ClassChoice instead inherits the public concrete method from NamedBase; that class implementation fulfills the signature and takes precedence over the competing interface defaults. An abstract superclass declaration is a different case: do not assume an interface default automatically satisfies every abstract class requirement. [JLS inherited override-equivalent methods](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.4.1.3)
+
+## Practice: add a method without confusing the contracts
+
+<details>
+<summary>Would adding a second default method destroy TextOperation's functional shape?</summary>
+
+No. The functional shape concerns abstract operation requirements, not the total number of members. A second unrelated abstract operation would change that shape. Static and private helper methods do not become abstract instance operations. A public Object-method redeclaration receives its specified special treatment.
+
+</details>
+
+<details>
+<summary>Can a concrete class omit one inherited abstract method because another interface supplied it?</summary>
+
+A compatible inherited public implementation can fulfill a required signature. Otherwise the concrete class must supply a body, or the class itself must remain abstract. Merely declaring implements does not manufacture behavior. Check the full inherited contract, including access, compatible return types and checked-exception restrictions.
+
+</details>
+
+<details>
+<summary>What should an interview answer say about a diamond of defaults?</summary>
+
+List the eligible inherited methods first. A more-specific interface override can resolve an ancestor relationship; unrelated defaults require a class override. An inherited concrete class method has precedence. Then show the actual chosen body, rather than claiming that whichever interface appears first in implements wins. Reordering Left and Right does not choose a winner.
+
+</details>
+
+## Interface references
+
+- [JLS interface fields and methods](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html)
+- [FunctionalInterface compiler contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/FunctionalInterface.html)
+- [Object.clone and Cloneable's specific contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html#clone())

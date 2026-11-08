@@ -15,6 +15,7 @@ public final class CollectionOrderingTest {
         assertTrue(order.compare(new CollectionOrdering.Score("A", 10), b) < 0);
         assertEquals(0, order.compare(b, b));
         assertEquals("A:20", a.toString());
+        assertEquals("A", a.id()); assertEquals(20, a.points());
         assertEquals(a, new CollectionOrdering.Score("A", 20));
         assertEquals(a.hashCode(), new CollectionOrdering.Score("A", 20).hashCode());
         assertEquals(0, a.compareTo(new CollectionOrdering.Score("A", 20)));

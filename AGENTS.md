@@ -13,6 +13,7 @@ Java Deep Dive is a static Astro site using TypeScript, MDX, React islands, Merm
 - Write lessons and project documentation for readers without access to development discussions.
 - Label minimum Java requirements and preview APIs. Distinguish teaching implementations from production JDK implementations.
 - Keep source references beside the claims they support. Avoid unsupported performance, coverage or completeness claims.
+- Use concrete learning summaries and topic-specific headings. Introduce complete ordinary examples before specialized failure/implementation details; explain outputs, ownership, invariants and meaningful alternatives. Avoid repeating a generic paragraph across topics.
 
 ## Canonical source and examples
 

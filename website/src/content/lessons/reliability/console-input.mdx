@@ -1,0 +1,52 @@
+---
+title: "Console input, parsing and borrowed streams"
+module: "reliability"
+group: "Resource ownership"
+summary: "Read lines or tokens, distinguish EOF from invalid data and close only input the operation owns."
+order: 315
+version: "Java 8+"
+prerequisites: ["reliability/exceptions-and-resources", "language/string-operations", "language/arrays"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Separate obtaining text from interpreting it
+
+Command-line arguments are Strings supplied when a program starts. Console input arrives later from a stream and may block waiting for a person or another process. Reading a line obtains a representation; parsing decides whether that representation is a valid value. Treat end-of-input, malformed text and an I/O failure as separate outcomes.
+
+<JavaExample file="ConsoleInputLesson.java" output={"12\n12:remaining=[]:name=Ada"} />
+
+The default demonstration uses StringReader, a Reader over known text, so it is reproducible without keyboard input. BufferedReader.readLine returns a line without its line terminator, or null if EOF occurs before any characters. Empty text is a real line and differs from EOF. ReadCount rejects EOF, trims surrounding simple whitespace, parses an int and rejects negative counts. Zero is valid. Too-large numbers and malformed text fail during parsing, before the domain check.
+
+## Read complete lines with BufferedReader
+
+The caller supplies a BufferedReader and owns its lifetime. ReadCount borrows it, reads once and leaves it usable; its throws IOException clause lets an I/O failure remain distinct from invalid data. The fixed-input caller opens and closes its own Reader in try-with-resources.
+
+To read standard input, compile the downloaded source and select its stdin mode:
+
+```bash
+mkdir -p out
+javac -d out ConsoleInputLesson.java
+printf ' 12 \n' | java -cp out ConsoleInputLesson --stdin
+printf 'bad\n' | java -cp out ConsoleInputLesson --stdin
+```
+
+These print 12 and invalid count respectively. The demonstration explicitly interprets incoming bytes as UTF-8; a real interactive terminal may use a different configured encoding. The name --stdin is the program's argument, checked through args[0], after testing that exactly one argument exists.
+
+The stdin wrapper is deliberately not closed here: it borrows process-wide System.in. Closing a Scanner or reader wrapper normally closes its underlying closeable source, potentially breaking later console reads in a larger application. A top-level program can choose to own the entire standard-input lifetime, but a reusable helper should not silently acquire that authority.
+
+## Understand Scanner's token boundary
+
+Scanner.nextInt reads a number token, not necessarily the whole line. In `12\nAda\n`, the immediately following nextLine returns the empty remainder of the first line. The next nextLine obtains Ada. If the first line is `12 extra`, its remainder is ` extra`; blindly discarding a line can discard meaningful input.
+
+Scanner is convenient for tokenized input and configurable delimiters/locales. BufferedReader exposes whole lines and leaves interpretation to the program. Neither API automatically defines the application's validation policy. Scanner.hasNextInt can check a token, but an invalid token must be consumed or rejected deliberately; retrying without advancing can keep encountering it. Scanner may treat underlying I/O failure as end-of-input, with ioException available for inspection. BufferedReader directly reports IOException. [Scanner contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Scanner.html), [BufferedReader.readLine](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/BufferedReader.html#readLine())
+
+## Practice: read two counts without leaking input
+
+<details>
+<summary>Should readCount create and close a new Scanner(System.in) on each call?</summary>
+
+No. Multiple buffered wrappers can read ahead independently, and closing the first can close the shared input. Create one input abstraction at the application boundary, pass it to operations, and close it only under the chosen ownership policy. Our helper reads one line from the supplied reader and never closes it, so a second call can read the next line from the same wrapper. Recovery from malformed input is a caller decision; the invalid line has already been consumed by this line-based contract.
+
+</details>

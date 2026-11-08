@@ -1,0 +1,64 @@
+---
+title: "String search, slicing and comparison"
+module: "language"
+group: "Arrays and strings"
+summary: "Find text, extract half-open ranges, replace literal text and explain lexical comparison results."
+order: 95
+version: "Java 8+"
+prerequisites: ["language/strings"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Choose an operation from the question
+
+To find where text occurs, use indexOf or lastIndexOf. To ask whether it occurs, use contains. To extract a range, use substring. To compare complete contents, use equals. To establish lexical order, use compareTo. These return different kinds of answers; a search index is neither a boolean nor an ordering result.
+
+<JavaExample file="StringOperationsLesson.java" output={"b\n1\n3\n3\nana\n[]\n-1\na-b\n2\n-1\nfalse\ntrue\ntrue"} />
+
+## Trace indexes with a half-open range
+
+| UTF-16 index | 0 | 1 | 2 | 3 | 4 | 5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| banana component | b | a | n | a | n | a |
+
+`charAt(0)` returns b. `indexOf("ana")` returns one, the first match's starting index. Passing a from-index of two skips the earlier start and returns three. `lastIndexOf("ana")` searches backward for the last matching start, also three. Searches return -1 when absent; index zero is a valid match and must not be mistaken for false.
+
+`substring(1, 4)` includes indexes one, two and three: ana. Its end is exclusive, so the extracted length is end minus begin. `substring(3, 3)` is valid empty text, shown between brackets. End equal to length is allowed; begin below zero, end above length or begin greater than end is invalid. `charAt(length)` is invalid because it needs an actual component, whereas an empty slice can lie at the end boundary.
+
+All these positions count UTF-16 code units. They can split a surrogate pair if arbitrary offsets are chosen. The next Unicode lesson teaches boundaries for whole code points and distinguishes them from user-perceived characters.
+
+## Keep literal replacement separate from regular expressions
+
+`"a.b".replace(".", "-")` produces a-b: replace treats the target as literal text. `replaceAll` interprets a regular-expression pattern and a replacement language; a dot then has another meaning. Reach for the simplest contract matching the requirement. Calling replace does not mutate the receiver; keep the returned String if it is needed.
+
+An immutable operation does not promise to allocate a new object every time. Some APIs may return an existing String when no content change is needed. Decide by content, rather than turning allocation guesses into equality logic. Literal interning, `new String` and intern in the final three prints distinguish identity from content; no claim about a particular pool's physical address is required.
+
+## Interpret compareTo by sign
+
+CompareTo is lexical and case-sensitive. It compares UTF-16 units until the first difference; if one string is a prefix, length decides. In cat versus car, t minus r is two. In car versus cart, the shorter prefix sorts first and the result is minus one. In general, test negative, zero or positive rather than expecting exactly -1 or 1.
+
+This is not numeric parsing: `"10".compareTo("2")` is negative because '1' precedes '2'. It is not a locale-sensitive dictionary order either. `equalsIgnoreCase` and compareToIgnoreCase also do not replace a language-specific Collator policy. Empty text is a legitimate value; null is absence and calling compareTo on null, or passing null to it, fails.
+
+## Practice: extract the name before a separator
+
+<details>
+<summary>For name=value, return name; preserve the whole input if '=' is absent. What about '=value'?</summary>
+
+```java
+static String namePart(final String input) {
+    Objects.requireNonNull(input, "input");
+    final int separator = input.indexOf('=');
+    return separator < 0 ? input : input.substring(0, separator);
+}
+```
+
+Import java.util.Objects in a complete class. For '=value', the separator is zero and substring(0, 0) returns empty text. Testing `separator > 0` would mishandle that boundary. For `a=b=c`, this contract chooses the first separator and returns a; a different parsing requirement needs a different stated rule.
+
+</details>
+
+## String operation references
+
+- [String search, substring, replace and comparison contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html)
+- [Collator for locale-sensitive comparison](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/text/Collator.html)

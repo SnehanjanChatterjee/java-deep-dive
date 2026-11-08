@@ -54,6 +54,19 @@ Only the outer array is protected. The caller can still change shared rows. Copy
 
 </details>
 
+## Separate runtime type, content equality and copying
+
+Every array is an Object, including int[]. But int[] is not Object[]: its components are primitive ints, not object references. An int[][] is an Object[] because its components are int[] references. Covariance changes which array references can be assigned; it does not box individual primitive components or change the actual component type of an existing array.
+
+`Arrays.deepEquals` can compare nested array contents. It does not copy those arrays or prevent later mutation. Conversely, cloning an outer array changes its identity without changing the row identities. State the operation's purpose before choosing a method with deep in its name. For this matrix, copyRows deliberately rejects null rows and copies every primitive row; a different domain might preserve null rows to represent missing data.
+
+<details>
+<summary>Two source entries identify the same row. Does copying each row independently preserve that alias relationship?</summary>
+
+No. It produces two independent row copies with equal contents. That is appropriate when each result row must be independently owned, but differs from a graph-preserving copy. Arbitrary reference graphs can contain shared nodes and cycles; copying such a graph requires an identity-tracking policy. A specialized primitive-matrix copy should not be advertised as a universal object-graph cloner.
+
+</details>
+
 ## Array-type references
 
 - [JLS: array types and runtime component checks](https://docs.oracle.com/javase/specs/jls/se25/html/jls-10.html)

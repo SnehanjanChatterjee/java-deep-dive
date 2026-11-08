@@ -2,7 +2,7 @@
 title: "Implement a dynamic array"
 module: "collections"
 group: "Lists and arrays"
-summary: "Represent a growing list with a fixed array"
+summary: "Implement bounds, indexed shifts, geometric growth and two-phase bulk compaction while preserving logical-size and reference invariants."
 order: 430
 version: "Java 8+"
 prerequisites: ["collections/arraylist", "language/arrays-strings-unicode"]
@@ -55,6 +55,21 @@ A repeated remove(0) can shift O(n) references O(n) times. Bulk compaction inste
 MatchRule is a small interface with one boolean matches(value) method. A named implementation can supply the decision without lambda syntax. The caller must not mutate this container or its membership through the rule; arbitrary reentrant/concurrent changes are outside the contract. The guarantee does not undo mutations a rule performs on element objects elsewhere.
 
 During compaction, read scans every old position and write identifies the next accepted slot. Each survivor is copied at most once. After the scan, clear [write,oldSize), set size=write and return oldSize−write. A no-match case preserves the sequence; all matches leave an empty reusable container.
+
+## Dry-run two-phase compaction
+
+For [1,2,3,4], remove even values. The decision pass records keep flags [true,false,true,false] without altering membership. Only after all rule evaluations succeed does compaction begin:
+
+| Read index/value | Keep? | Write index before | Action |
+| --- | --- | --- | --- |
+| 0 / 1 | yes | 0 | Store 1 at 0; write becomes 1 |
+| 1 / 2 | no | 1 | No survivor copied |
+| 2 / 3 | yes | 1 | Store 3 at 1; write becomes 2 |
+| 3 / 4 | no | 2 | No survivor copied |
+
+Clear old positions two and three, then set size to two. Because write never exceeds read, copying a survivor left cannot overwrite a value not yet read. The boolean plan makes a later throwing decision occur before that mutation pass. This protects container membership; it cannot undo arbitrary side effects the rule performed elsewhere.
+
+For growth from capacity two, the third append copies two references, the fifth copies four and the ninth copies eight. Those fourteen copies are separate from the nine element writes. Indexed insertion can add another suffix shift even when the same call already grew storage.
 
 ## Compare the primitive representation
 

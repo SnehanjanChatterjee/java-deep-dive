@@ -3,7 +3,7 @@ title: "CountDownLatch: one-time completion and startup signals"
 module: "concurrency"
 group: "Coordination utilities"
 summary: "Count durable signals, publish independent results, and add an explicit startup milestone to cancellation."
-order: 820
+order: 810
 version: "Java 8+"
 prerequisites: ["concurrency/synchronizers"]
 advanced: false
@@ -32,6 +32,14 @@ The first worker writes slot zero, the second writes slot one. These are distinc
 | A later await | 0 | Yes; the latch stays open |
 
 Main joins both thread lifetimes in finally. Countdown can occur just before a worker's run method returns; a completion signal describing one milestone is not automatically a universal thread-termination observation.
+
+## Account for every decrement
+
+For count two, a first countdown changes two to one and cannot release awaiters. The second changes one to zero; successful awaiters can continue. Further countdown calls leave zero unchanged, and later await calls can pass immediately. The latch is one-shot: there is no reset back to two.
+
+The count is a number of required signals, not a count of Thread objects registered with the latch. One thread could incorrectly call countDown twice while another never signals. A latch would open according to those calls, so the application must ensure each required operation owns exactly one signal.
+
+Put that operation's completion decrement in finally when both success and failure should release the owner's completion wait. Store its result or failure **before** decrementing. A successful await then publishes pre-countdown writes; it does not assign a meaning of success to them. An interrupted or timed-out await has not established that all required countdowns occurred. [CountDownLatch state and memory effects](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CountDownLatch.html)
 
 ## Completion does not carry a failure value
 

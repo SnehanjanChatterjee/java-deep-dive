@@ -1,0 +1,66 @@
+---
+title: "Thread subclasses, Runnable classes and lambdas"
+module: "concurrency"
+group: "Threads and tasks"
+summary: "Separate the work description from the Thread that executes it, then compare four complete construction forms."
+order: 740
+version: "Java 8+"
+prerequisites: ["concurrency/first-thread"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Describe work before choosing an execution
+
+`Runnable` describes one operation through `void run()`. It has no result return type and cannot declare an additional checked exception on that method. A `Thread` represents one thread lifetime and implements Runnable itself. These related types answer different questions: **what should run**, and **which execution will run it**.
+
+There are two traditional construction approaches. Override `run()` in a Thread subclass, or pass a Runnable to a Thread constructor. A named Runnable, an anonymous Runnable and a lambda are three ways to supply behavior through the second approach. None of these forms starts work merely by constructing an object. Calling `start()` requests the new execution; calling `run()` directly remains an ordinary call on the caller's stack.
+
+## Run four complete forms
+
+<JavaExample file="ThreadConstructionLesson.java" output={"Thread subclass\nnamed Runnable\nanonymous Runnable\nlambda Runnable"} />
+
+The example creates four threads and one four-element answer array. Each worker writes a different element. Main starts every worker, joins every worker, then prints array order. The displayed order comes from the printing loop, not a scheduler promise that the subclass ran first.
+
+| Form | Behavior lives in | Thread construction |
+| --- | --- | --- |
+| Named Thread subclass | Overridden `NamedWorker.run()` | `new NamedWorker(answers)` |
+| Named Runnable class | `NamedTask.run()` | `new Thread(new NamedTask(answers), name)` |
+| Anonymous Runnable | The inline object's overridden `run()` | Pass `anonymous` to a Thread |
+| Lambda Runnable | Lambda body implementing `run()` | Pass the lambda to a Thread |
+
+`NamedWorker` invokes `super(name)` to name its Thread object. `NamedTask` holds the answer-array reference and writes index one when invoked. The anonymous class supplies a small unnamed implementation. The lambda supplies the same functional-interface behavior without the class declaration syntax. Its captured array reference is effectively final; the referenced array remains mutable.
+
+The four joins establish that every corresponding write happened before main inspects the answers. Four different array elements are different variables. If two workers instead updated the same ordinary element with read/modify/write, their construction style would provide no protection against a lost update.
+
+<Diagram client:visible definition={"flowchart LR\n R[Runnable object: behavior] --> T[Thread object: one lifetime]\n T --> S[start requests new execution]\n S --> I[invoke behavior run on that execution]\n J[Caller joins Thread] --> O[Observe its completed work]"} caption="A behavior can be supplied separately from its executing Thread. The start and join operations belong to the Thread lifetime." />
+
+## Prefer composition when the behavior is the reusable part
+
+A Runnable class can already extend another class; Java permits only one class superclass. It can also be submitted to an executor later without treating a Thread object as a reusable task container. A Thread subclass can be useful when the Thread itself needs specialized behavior, but subclassing does not confer extra concurrency or make its fields automatically safe.
+
+One Runnable instance can be passed to two distinct Threads. Both invocations then refer to the same Runnable object and its instance fields, while each invocation has its own parameters and local variables. Two separate Runnable instances can still share the same referenced counter. Inspect object relationships rather than counting class declarations.
+
+Avoid constructing `new Thread(aThreadSubclass)` as a routine way to start the subclass. Thread implements Runnable, so the expression is legal, but it creates a second Thread object. Starting the outer object invokes the inner object's `run()` on the **outer execution**; it does not start the inner Thread's own lifetime. A later `inner.join()` is therefore the wrong completion handle for that outer execution.
+
+## Exercise: change the spelling without changing the ownership
+
+Replace the anonymous Runnable with a lambda. The complete reference solution is the lambda form already shown at index three: keep the same target element, construct one Thread, start it, and join that same Thread before inspection. Removing an anonymous-class declaration does not justify removing the join.
+
+For a second exercise, pass one stateless Runnable to two Threads. Give each a distinct name and have the Runnable print `Thread.currentThread().getName()`. Both names can appear in either order. Calling the Runnable twice from main instead gives two calls on main. Explain the execution difference before predicting output.
+
+## Interview questions
+
+**Does implementing Runnable create a thread?** No. It supplies a method implementation. A caller can invoke it directly, or an execution facility can invoke it.
+
+**Does a lambda make the code parallel or faster?** Its syntax establishes neither property. Execution is chosen by the caller/facility; performance requires a workload and measurement.
+
+**Can one Thread be started for each invocation of a reusable Runnable?** Create a fresh Thread for each required lifetime. A terminated Thread cannot be restarted, even when its Runnable would be reusable.
+
+## Primary contracts
+
+- [Java 8 Thread construction and Runnable delegation](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html)
+- [Runnable's single operation](https://docs.oracle.com/javase/8/docs/api/java/lang/Runnable.html)
+- [JLS lambda target typing](https://docs.oracle.com/javase/specs/jls/se8/html/jls-15.html#jls-15.27)

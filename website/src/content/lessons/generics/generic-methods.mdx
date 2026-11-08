@@ -2,7 +2,7 @@
 title: "Generic methods and type inference"
 module: "generics"
 group: "Generic types and methods"
-summary: "Declare method type parameters and follow how arguments constrain the compiler’s inferred types."
+summary: "Infer or state method type arguments, relate distinct input/output types and separate generic method scope from class parameter scope."
 order: 330
 version: "Java 8+"
 prerequisites: ["generics/generic-types", "language/arrays"]
@@ -24,6 +24,34 @@ Identity returns the exact reference supplied, including null. Assigning identit
 First receives T[] and returns its first T component. A String[] therefore produces a String result. It rejects a null array and an empty array because neither supplies a first component. A present first component can itself be null, following the stated policy. The operation takes O(1) work and storage once the array exists.
 
 Compare returning Object instead: callers would need casts even when the array's element type is already known. A named type parameter is useful when multiple positions must share a relationship. An unbounded wildcard instead represents an unknown type; later API-boundary chapters explain when that is appropriate.
+
+## Transform an input type into a different output type
+
+<JavaExample file="GenericTransform.java" output={"[4, 3]\n[4, 3]\n[Java, JVM]"} />
+
+The method declares &lt;F,T&gt; before List&lt;T&gt;. Its F[] parameter supplies source elements; Transformation&lt;F,T&gt; turns one F into one T; the result keeps T. StringLength implements the String-to-Integer relationship, so both the inferred call and explicit &lt;String,Integer&gt; call return List&lt;Integer&gt; containing four and three. The source String[] remains unchanged.
+
+Read the loop as a type trace:
+
+| Position | Type in this invocation | Role |
+| --- | --- | --- |
+| values | String[] | Source array |
+| value in the loop | String | One input passed to apply |
+| operation | Transformation&lt;String,Integer&gt; | Input/output contract |
+| operation.apply(value) | Integer | One result |
+| result | List&lt;Integer&gt; | New encounter-ordered container |
+
+The method allocates O(n) result positions and invokes the operation once per input. Its total cost includes the supplied operation. Empty input produces an empty result. A null array or operation is rejected; this StringLength implementation also rejects a null string. If a callback fails, the private partially built result is not returned, but the method cannot undo side effects the callback performed elsewhere.
+
+Unlike identity, this transformation needs two letters because input and output can differ. Writing &lt;T&gt; for both would wrongly require the String input and Integer output to share one type parameter. The wildcard chapter later makes signatures more flexible when a callback consumes a supertype or produces a subtype.
+
+## Keep a method parameter independent from its class parameter
+
+A generic class can contain a non-generic method using its class T, and it can contain a generic method declaring a different U. A method is generic because it declares type parameters, not merely because List appears in its return type. For example, List&lt;String&gt; names() is not itself a generic method.
+
+Explicit arguments constrain the invocation rather than converting arbitrary values. GenericMethods.&lt;String&gt;identity(7) is rejected; it cannot turn Integer into String. Ordinary casts and type inference are also different mechanisms. Inference finds a type satisfying all available constraints; it does not insert a domain conversion like Integer.toString.
+
+Target context matters. String value = identity(null) can infer String. With var on Java 10+, identity(null) without that target has a broader inferred result; the runtime value being null does not later change the static type. A direct var value = null has no inferable initializer type.
 
 ## Inference combines constraints
 

@@ -46,6 +46,16 @@ The outer action sees outer. A nested where binds the same key to inner and then
 
 This resembles an implicit method parameter: access follows execution within the dynamic call scope. It is not automatic capture of every ambient value into a lambda object. Ordinary lexical variable capture and a dynamic context binding are different mechanisms.
 
+## Distinguish unbound from a bound null value
+
+<JavaExample file="modern/ScopedAccessLesson.java" output={"unbound fallback=guest\nunbound get=NoSuchElementException\ninside bound=true\ninside fallback=null\nafter bound=false"} />
+
+An unbound get throws NoSuchElementException. OrElse supplies guest only when this key is unbound. The API also permits a key deliberately bound to null; inside that action isBound is true and orElse returns the bound null rather than the fallback. If an application forbids null context, enforce that policy when entering its boundary instead of treating null as the API's unbound state.
+
+Creating a Carrier through where does not by itself enter a binding. Run/call executes the action inside the accumulated mappings; after the action, the caller's previous associations are restored. This is an ordinary dynamic call boundary, not thread creation or automatic asynchronous submission.
+
+**Interview question:** does final REQUEST mean its request value is permanently assigned? Final fixes the key reference. Different nested actions can bind that key to different values under their own lifetimes. Access is resolved for the current dynamic scope, as the nesting example above demonstrates. [ScopedValue access and null-binding contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ScopedValue.html)
+
 ## Immutable binding and data ownership
 
 The association cannot be assigned a different value while inside that binding. A referenced object can still be mutable. Share immutable context where practical, or synchronize access to a deliberately mutable value. An immutable association is not deep immutability.

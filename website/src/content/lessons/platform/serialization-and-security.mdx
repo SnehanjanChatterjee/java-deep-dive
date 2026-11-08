@@ -2,7 +2,7 @@
 title: "Serialization graphs, identity and reconstruction"
 module: "platform"
 group: "Serialization"
-summary: "Serialization graphs, identity and reconstruction with focused examples, failure traces and solved practice."
+summary: "Encode and restore object graphs, follow stream handles and compare default, custom and external reconstruction."
 order: 1240
 version: "Java 8+"
 prerequisites: ["objects/immutable-design", "libraries/io-nio-networking", "reliability/exceptions-and-resources"]
@@ -82,11 +82,51 @@ No. Equal field text is different from shared identity; changing a mutable share
 
 </details>
 
-<span id="references" aria-hidden="true"></span>
-<span id="serialization-and-security-references" aria-hidden="true"></span>
 
 <span id="what-native-serialization-actually-records" aria-hidden="true"></span>
 <span id="filtered-serialization-with-invariant-validation" aria-hidden="true"></span>
+
+## A stream remembers objects it has already written
+
+One ObjectOutputStream has a handle table. If the same ordinary object is written again, the stream can write a back-reference to its earlier representation instead of serializing its newly mutated fields. This preserves identity within a graph, but surprises code that treats repeated writeObject calls as independent snapshots.
+
+<JavaExample file="SerializationProtocols.java" output={"same stream identity=true\ncached value=1\nafter reset=2\ntransient final=0\nexternal=7\nconstructor calls=1\ncustom derived=score:9\ncanonical identity=true"} />
+
+### Trace the repeated roots
+
+| Step | Original value | Stream action | Restored result |
+| --- | --- | --- | --- |
+| First write | 1 | Write a new object and assign its handle | First root contains 1 |
+| Mutate, then write again | 2 | Reuse the existing handle | Second root is the same restored object, still containing 1 |
+| reset, then write | 2 | Forget old stream handles and write a fresh representation | Third root is distinct and contains 2 |
+
+`reset()` resets stream bookkeeping; it does not clone or reset the original Java object. The matching input stream observes the reset marker. Repeatedly creating output-stream headers in the middle of one logical stream is a different operation and can corrupt the reader's expected protocol. Long-lived streams also retain handle bookkeeping, so choose a deliberate message/snapshot boundary. [Output-stream handles and reset](https://docs.oracle.com/javase/8/docs/platform/serialization/spec/output.html)
+
+### Compare three reconstruction mechanisms
+
+Final does not override transient. `TransientFinalValue` assigns its final transient field from a constructor argument, so it is not a constant variable. Its ordinary value is 12, but the reconstructed field is zero because default serialization omits it and normal construction does not reassign it. A literal-initialized constant field can be inlined into a reading expression, disguising the omitted underlying field. Do not generalize that constant-folding observation into a rule that every final field is serialized despite transient.
+
+`ExternalScore` implements Externalizable. Its public no-argument constructor runs during reconstruction; `readExternal` then reads the explicit format version and score, rejects an unknown version or an out-of-range score, and only then assigns the field. `writeExternal` writes those two ints in the corresponding order. Externalizable gives control over the representation, so omitting a field or writing data in another order changes the protocol. It does not automatically apply the default field-selection rules.
+
+`CustomScore` uses ordinary Serializable fields. Its constructor establishes the initial score and transient label during normal construction. During reconstruction, private `readObject` first calls `defaultReadObject`, validates the restored value and rebuilds `label`. Constructor validation alone would miss this path. The read hook must have the required signature; an unrelated public method with a similar name is not an automatic callback.
+
+`CanonicalToken.readResolve` substitutes its canonical instance as the reconstruction result. This explains why its copied result has canonical identity; ordinary Serializable reconstruction did not acquire a universal singleton guarantee. For appropriate singleton domains, enum serialization already preserves the named enum constant's identity. [Input hooks and substitution](https://docs.oracle.com/javase/8/docs/platform/serialization/spec/input.html)
+
+### Choose a representation, rather than serializing memory addresses
+
+Serialization is a general encoding idea; native Java object serialization is one specific binary protocol. JSON needs an agreed schema and does not automatically preserve arbitrary Java aliasing, constructors, field types or cycles. A serializer can represent a graph using explicit IDs when identity matters. Deep copying can also use explicit constructors/mapping; it does not inherently require serialization.
+
+Casting the result of readObject checks its runtime type. The cast does not create a new Student or convert an unrelated object into one. Likewise, serialVersionUID is a compatibility identifier, not a key or proof that restored state is valid. These distinctions matter when explaining a file-based serialization example in an interview.
+
+<details>
+<summary>Why is a new field zero after reading an older serialized representation?</summary>
+
+With a compatible class evolution, a newly added field can receive its default value when no corresponding value exists in the old stream. A field initializer in the ordinary constructor path is not a reliable migration mechanism for conventional Serializable reconstruction. Validate the resulting state and use an intentional compatible read/migration policy, or reject representations that cannot satisfy the new invariant. Matching UIDs alone does not fill in a meaningful business value.
+
+</details>
+
+<span id="references" aria-hidden="true"></span>
+<span id="serialization-and-security-references" aria-hidden="true"></span>
 
 ## Serialization references
 

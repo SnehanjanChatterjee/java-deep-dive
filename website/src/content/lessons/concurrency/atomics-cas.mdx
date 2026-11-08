@@ -1,9 +1,9 @@
 ---
 title: "Atomics, compare-and-set and ABA"
 module: "concurrency"
-group: "Advanced synchronization"
+group: "Atomics and advanced locks"
 summary: "Build one conditional state transition, then analyze retries, ABA and progress boundaries."
-order: 1010
+order: 925
 version: "Java 8+; additional access modes vary by release"
 prerequisites: ["concurrency/volatile-publication", "concurrency/cyclic-barrier", "concurrency/semaphore"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 import InterleavingLab from '../../../components/InterleavingLab.astro';
 
 <span id="concepts"></span>
@@ -43,6 +44,30 @@ compareAndSet checks an expected value and installs a replacement as one atomic 
 Budget validates nonnegative capacity and positive requests. tryReserve reads current remaining, rejects a request that does not fit, then attempts a nonnegative candidate. Since units do not exceed the observed nonnegative amount, subtraction cannot underflow. A successful CAS is the reservation's linearization point: its single taking-effect position relative to other reservations.
 
 <Diagram client:visible definition={"flowchart TD\n R[Read remaining] --> F{Request fits?}\n F -->|no| N[Return false]\n F -->|yes| C[Calculate remaining minus units]\n C --> S{CAS succeeds?}\n S -->|yes| Y[Return true]\n S -->|no| R"} caption="Every retry uses a fresh observation and revalidates the request. An unsuccessful CAS does not reserve anything." />
+
+## Carry a stale expected value into the comparison
+
+The expected value is a local observation, not a reservation of shared state. In the first case below the budget starts at two and both callers request one unit. A succeeds, B's stale comparison fails, then B rereads and can succeed with a new candidate. The second case uses the earlier three-unit budget and two-unit requests: rereading discovers that B's request no longer fits, so it returns false without another update.
+
+<AdvancedThreadMotion client:visible model="cas" />
+
+Each moving bundle contains E, the previous local used as the expected value, and U, the replacement expression previous minus units. The shared remaining field changes only at a successful CAS. A failed comparison leaves it unchanged. The bundle returning to a caller is argument/outcome flow, not a hardware-memory diagram. Candidate computation is shown only after the budget check allows the request.
+
+These are two chosen contention schedules for AtomicCounterLab.Budget.tryReserve, rather than claims about the exact interleaving of its sequential main method. [AtomicInteger.compareAndSet](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/atomic/AtomicInteger.html#compareAndSet(int,int)) performs the expected-value test and replacement atomically; the surrounding loop owns rereading, revalidation and the operation's final result.
+
+## Match atomicity to the whole invariant
+
+| Required operation | Suitable starting protocol | Why |
+| --- | --- | --- |
+| Publish one completed immutable snapshot | Volatile reference | Ordered publication; no competing conditional update required |
+| Increment one exact counter | Atomic increment or common lock | One indivisible read/modify/write |
+| Reserve only when remaining capacity is sufficient | CAS loop or common lock | Validation and mutation share one taking-effect point |
+| Transfer between several mutable fields | Common lock or CAS of one immutable combined state | Individual atomic fields do not combine themselves |
+| Aggregate contended statistics | LongAdder/LongAccumulator when their observation contract fits | A live sum need not be a linearizable admission decision |
+
+AtomicReference.compareAndSet compares the expected reference by identity, not equals. A logically equal newly allocated object is still a different expected reference. Conversely, observing the identical old reference again can hide an A→B→A history; value/reference equality alone does not encode a version. This motivates the stamp example below.
+
+No row supplies a universal speed ranking. Locking algorithms can deadlock under a bad acquisition policy, and CAS retry algorithms can livelock or starve an individual contender under an unsuitable surrounding protocol. Prove the invariant and progress assumptions before measuring an alternative. [Atomic package memory and operation contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/atomic/package-summary.html)
 
 ## Keep retries free of external side effects
 

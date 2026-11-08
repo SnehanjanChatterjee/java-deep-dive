@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Construct a valid object rather than repairing it later
 
@@ -48,6 +49,14 @@ Why does `new ConstructorLesson()` fail? Why not make points public so callers c
 Neither declared constructor accepts zero arguments, and declaring constructors prevents an implicit default from being generated. A public mutable points field would allow invalid negative values and bypass overflow policy. Provide a meaningful constructor or operation, not an interval during which every caller must remember to repair invalid state. A final field is useful only when its meaning is fixed for the object's lifetime; points intentionally changes through award.
 
 </details>
+
+## Distinguish a no-argument constructor from the default constructor
+
+Default constructor names a constructor supplied by the compiler when the class declares none. A programmer-written zero-parameter constructor is a no-argument constructor, but is not that implicitly declared default. Writing `void ConstructorLesson()` would declare an ordinary method with an unfortunate name; it would not initialize new objects as a constructor. A constructor is selected by its parameter list, not by a desired return value.
+
+Private fields plus unrestricted setters are not automatically good encapsulation. A setter that accepts negative points would still violate this class's invariant. Award publishes a domain operation, validates before assignment and preserves the old stored points when rejected. A failed constructor also does not roll back unrelated external effects already performed, so keep validation ahead of publication and avoid exposing this while construction is incomplete.
+
+Static fields and methods do not have an implicit this. Instance methods can access static members, but class-qualified access makes their shared nature clearer. A static counter is separate from each card's point total; creating another card neither copies nor resets that counter. Continue with <a href={lessonUrl('learn/objects/initialization-order/')}>static and instance initialization order</a> for the exact relation between fields, blocks and delegating constructors.
 
 ## Construction references
 

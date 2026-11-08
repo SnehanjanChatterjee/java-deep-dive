@@ -2,7 +2,7 @@
 title: "Create, parse and calculate dates and times"
 module: "libraries"
 group: "Date and time fundamentals"
-summary: "Choose a calendar value or a timeline value"
+summary: "Create and transform calendar values, parse strict input and compare local fields with elapsed timeline amounts."
 order: 660
 version: "Java 8+"
 prerequisites: ["objects/equality-and-immutability", "reliability/exceptions-and-resources"]
@@ -60,6 +60,32 @@ Do not sleep until a calendar boundary to test it. The zone-boundary chapter com
 <JavaExample file="DateTimeBasicsTest.java" />
 
 The parser accepts a valid leap date, rejects impossible dates/months and rejects a null input. To format a different display style, supply a separate display formatter rather than loosening the machine-input contract. For a user-facing month name, choose the user's intended locale.
+
+## Use the ordinary date and time operations
+
+<JavaExample file="TemporalOperationsLab.java" output={"year=2024, day=31\nwith day=2024-01-01\nplus month=2024-02-29\ntime plus30=00:15\ndatetime plus30=2024-02-01T00:15\nformatted=20240131\nlater=2024-01-01T13:00:00Z\nbefore=true\nelapsed minutes=60"} />
+
+| API family | Example | Meaning |
+| --- | --- | --- |
+| Create | LocalDate.of / parse | Construct valid calendar fields |
+| Inspect | getYear / getDayOfMonth | Read a component without changing the value |
+| Replace | withDayOfMonth(1) | Return a value with a chosen field |
+| Add/subtract | plusMonths / minusDays | Apply the type's calendar rules |
+| Combine | LocalDateTime.of(date, time) | Create date and time fields together |
+| Compare | isBefore / isAfter | Compare compatible temporal meanings |
+| Format | format(formatter) | Produce text under the chosen grammar |
+| Measure | Duration.between(instants) | Obtain a timeline amount |
+
+The program's January 31 date becomes January 1 through withDayOfMonth, while plusMonths(1) resolves to February 29. Changing the date does not mutate the original. LocalTime 23:45 plus 30 minutes wraps to 00:15 and has no date to advance. Performing that addition on the combined LocalDateTime advances to February 1. Choosing the correct type determines which information arithmetic can preserve.
+
+The final two instants are one hour apart. Duration reports 60 minutes; it does not supply a calendar date or regional offset. The earlier strict parser rejects impossible dates. SMART resolution can adjust some parsed dates while LENIENT resolution can carry overflowing fields, so changing the resolver style changes accepted input and results. Keep a machine-input grammar separate from a friendly display formatter.
+
+<details>
+<summary>Is yyyy-MM-dd always the same strict input grammar as uuuu-MM-dd?</summary>
+
+No. y is year-of-era and u is proleptic year. A strict resolver may need era information for a year-of-era pattern; week-based Y is different again. Use the pattern appropriate to the declared format and test leap dates, year boundaries and invalid fields. A successful format demonstration alone does not prove that parsing the same-looking text has the intended strictness.
+
+</details>
 
 ## References
 

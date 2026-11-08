@@ -1,0 +1,77 @@
+---
+title: "Executor factories, worker reuse and service shutdown"
+module: "concurrency"
+group: "Executors and futures"
+summary: "Compare factory policies and give a reused service one explicit owner rather than closing it after every request."
+order: 840
+version: "Java 8+; virtual-thread executor Java 21+"
+prerequisites: ["concurrency/executors-futures"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A task lifetime is shorter than its worker's lifetime
+
+A freshly constructed Thread can run one task and terminate. An executor can reuse a worker for task A and then task B. That avoids requiring the application to start a new platform Thread for every small task, while also creating a service lifetime the application must own.
+
+The executor is not automatically faster for every workload. Queueing, synchronization, allocation and context handling have costs. More importantly, factory policies differ in which resource can grow when demand exceeds processing capacity.
+
+## Compare the factory policies
+
+| Factory | Ordinary policy | Resource question |
+| --- | --- | --- |
+| newFixedThreadPool(n) | Up to n active workers; shared unbounded work queue | How much waiting work/state may accumulate? |
+| newSingleThreadExecutor() | At most one task active; unbounded queue; worker replacement if needed | Can one slow task delay every later task? |
+| newCachedThreadPool() | Reuse idle workers or create as needed; idle workers expire | What limits simultaneous platform-thread growth? |
+| newScheduledThreadPool(n) | Delayed/periodic eligibility on scheduled workers | How many delayed jobs and their captured objects may remain queued? |
+| newWorkStealingPool() | Work-stealing pool with target parallelism | Is the workload suitable for decomposition and this ordering policy? |
+| newVirtualThreadPerTaskExecutor(), Java 21+ | New virtual Thread per task | What limits requests, memory and the actual scarce downstream resource? |
+
+Fixed describes the worker limit, not a finite accepted-task limit. Cached describes reuse, not a bound on thread creation. Scheduled delay does not bound delayed storage. Work-stealing does not promise FIFO execution. A virtual-thread executor is not a conventional pool of reused virtual workers.
+
+Most factory-created platform workers are created when needed rather than all being eagerly started at construction. A single-worker service also does not promise one immortal Thread object: a failed worker can be replaced while the service continues. Code needing worker identity or task context must account for this distinction.
+
+The later pool-admission lesson traces an explicitly bounded ThreadPoolExecutor. Choose that when the application needs a defined worker/queue/rejection policy instead of assuming a factory name supplies it.
+
+## Use one owner for a complete batch
+
+<JavaExample file="ExecutorFactoryLesson.java" output={"42"} />
+
+Main calls runBatch, which owns one single-worker service. The first task returns 21. The **owner** retrieves that value, then submits the multiplication task. The worker never waits for a child queued behind itself; it returns from each task so the next can run.
+
+The ThreadFactory names each newly created worker batch-worker. It creates a Thread from the Runnable supplied by the executor; it must not start that Thread itself. The factory's name is diagnostic metadata, not the identity of the request being processed.
+
+After the final result, finally initiates shutdown and awaits termination. If the finite grace allowance expires, it requests interruption through shutdownNow and waits again. If the owner is interrupted during termination waiting, it requests shutdownNow and propagates the interruption. The example does not pretend that an interruption request can force arbitrary work to stop.
+
+<Diagram client:visible definition={"stateDiagram-v2\n [*] --> Accepting\n Accepting --> Draining: shutdown\n Accepting --> Stopping: shutdownNow\n Draining --> Stopping: shutdownNow if needed\n Draining --> Terminated: accepted work and workers finish\n Stopping --> Terminated: workers actually finish"} caption="A shutdown request and completed termination are separate events. Awaiting termination observes the latter." />
+
+## Match shutdown to the real owner
+
+A request handler using an application-owned shared executor must not call shutdown after its one request. That would reject the next request's submission. The application/component owning the executor instead closes it when that component ends. A short command-line batch can legitimately own a shorter service lifetime, as this program does.
+
+Do not close an executor owned by a framework or the common ForkJoinPool just because your task finished. Conversely, creating an owned executor and forgetting shutdown can keep non-daemon workers alive and retain application state. Ownership must be part of the design, not guessed from whether a program appears to exit during one run.
+
+| Operation | Establishes | Does not establish |
+| --- | --- | --- |
+| shutdown | Stop accepting new work; process accepted work under policy | All work is already finished |
+| shutdownNow | Attempt to interrupt active work; return not-started queued tasks | All tasks honored interruption or their Futures were completed |
+| awaitTermination | Wait for termination or return on timeout/interruption | Initiate shutdown by itself |
+| Future.get | Observe one task outcome | The shared service has ended |
+
+## Exercises and interview questions
+
+**A web request shuts down its injected executor. Why does the next request fail?** The service lifetime was incorrectly tied to one task. Retain the shared service under its component owner and close it at component termination.
+
+**Is newSingleThreadExecutor equivalent to starting one plain Thread once?** It accepts multiple submissions, queues them, supplies task-result handles and can replace a failed worker. One plain Thread's run method has only its own single lifetime.
+
+**Does a fixed pool prevent overload?** Its workers are bounded, but its unbounded queue can retain arbitrarily many accepted tasks. The application needs a queue/admission policy as well.
+
+For the complete exercise, inspect runBatch and locate the executor owner, both result observations, the rejection boundary after shutdown, and the termination wait. Then explain why moving second.get into a task running on the same sole worker could create a capacity dependency if that child is queued behind it.
+
+## Primary contracts
+
+- [Java 8 Executors factory contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Executors.html)
+- [ExecutorService lifetime and shutdown pattern](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html)
+- [Java 21 virtual-thread-per-task executor](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/concurrent/Executors.html#newVirtualThreadPerTaskExecutor())

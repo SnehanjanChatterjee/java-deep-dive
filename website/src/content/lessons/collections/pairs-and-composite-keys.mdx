@@ -1,0 +1,84 @@
+---
+title: "Pairs, composite keys and value equality"
+module: "collections"
+group: "Sets"
+summary: "Build a two-component value that deduplicates correctly, and separate component equality, diagnostic text and deep immutability."
+order: 485
+version: "Java 8+; record alternative 16+"
+prerequisites: ["collections/hashset", "generics/generic-types", "objects/equality-and-immutability"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Two values can form one logical key
+
+A coordinate (3,5) or an association of two identifiers can be a single set member. Two separately allocated pair objects should count as one only if their declared equality says so. HashSet can store arbitrary pair types; the problem is not that it cannot “understand pairs.”
+
+<JavaExample file="PairValues.java" output={"true\nfalse\ntrue\nsize=2\ntext collides=true\npairs equal=false"} />
+
+The first (3,5) insertion succeeds. Another equal (3,5) returns false. (5,3) is different under this ordered-pair contract, giving size two. No output depends on the set's encounter order.
+
+## Connect both type parameters to the representation
+
+Pair&lt;A,B&gt; keeps the first and second component types independently. Pair&lt;String,Integer&gt; can return String from first() and Integer from second() without caller casts. The constructor permits null components by this example's contract. A pair still has two positions when one of its values is null.
+
+The class is final, preventing subclasses from introducing a different equality policy. equals first accepts identity as a fast path, rejects unrelated/null objects, then compares corresponding components with Objects.equals. hashCode uses exactly those same two components. Equal pairs therefore have equal hashes; unequal pairs may collide and must remain distinguishable by equality.
+
+<Diagram client:visible definition={"flowchart TD\n P[Pair key] --> A[First component]\n P --> B[Second component]\n A --> E[Corresponding component equality]\n B --> E\n E --> H[Consistent pair hash]\n H --> S[HashSet membership candidate lookup]"} caption="The container uses the value type's equality/hash contract; diagnostics do not define membership." />
+
+## A printable tuple is not necessarily an encoding
+
+The program compares ("a,b","c") with ("a","b,c"). Joining components with a comma gives the same text a,b,c, but the pairs are unequal. String concatenation without a declared escaping/length/type protocol is not a universal composite-key representation.
+
+Even when a particular numeric delimiter scheme is unambiguous, it hides the component types and creates parsing/formatting obligations. A typed value makes those relationships explicit. toString in this class is for readable diagnostics, not a collision-free persistent format.
+
+For an unordered pair, define a different contract deliberately. One option is to canonicalize two ordered immutable identifiers at construction; another is a symmetric equality/hash policy. Simply changing equals while retaining an order-sensitive hash would break the contract.
+
+## Choose a suitable pair representation
+
+Java SE's core collections do not require JavaFX's javafx.util.Pair. That type belongs to JavaFX and has its own module/dependency availability. Do not make a small collections exercise depend on it accidentally.
+
+A domain name such as Coordinate or Range often communicates more than Pair. A Java 16+ record can concisely define two immutable-reference components and generated value methods, but component equality still follows those component types. Arrays use their own reference equality unless a value model explicitly chooses content equality.
+
+Map.Entry can represent a key/value association. SimpleEntry is value-replaceable, while SimpleImmutableEntry rejects setValue and can hold null components. Map.entry (9+) rejects nulls. A mutable entry used as a HashSet member can invalidate membership after setValue changes its hash.
+
+## Final fields do not recursively freeze components
+
+Pair's references cannot be reassigned, but a referenced List can still change. That can change the pair's component equality/hash while the pair is a set member or map key. Choose stable immutable components, or make a domain-appropriate snapshot before membership.
+
+The supplied String/Integer pairs have immutable components. A generic Pair&lt;A,B&gt; cannot promise that every possible A and B is deeply immutable. The nested-container and typed-ownership chapters make that limit visible at several levels.
+
+## Solved interview cases
+
+<details>
+<summary>Why do two pair instances remain duplicates if both fields match?</summary>
+
+Because equals compares the same corresponding values and hashCode uses the same state. Allocation identity does not define this pair contract. Without an equals override, Object's identity equality would deliberately keep the two objects distinct.
+
+</details>
+
+<details>
+<summary>Can a Set of pairs remove duplicates by comparing only their hash?</summary>
+
+No. Different pairs can have the same integer hash. Hashing narrows candidates; equality confirms the member. Treating matching hashes as equality loses legitimate values.
+
+</details>
+
+<details>
+<summary>When should a component be copied?</summary>
+
+When the value contract needs a stable snapshot and the component is mutable/externally aliased. Copying a List detaches its structure, but mutable elements may still need copying. There is no universal shallow-copy operation that turns arbitrary generic components into immutable values.
+
+</details>
+
+<JavaExample file="PairValuesTest.java" />
+
+## References
+
+- [Object equality and hash implications](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html)
+- [Set membership and mutable-element restrictions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Set.html)
+- [Map.Entry associations and mutability](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.Entry.html)
+- [JavaFX Pair is a javafx.base API](https://openjfx.io/javadoc/25/javafx.base/javafx/util/Pair.html)

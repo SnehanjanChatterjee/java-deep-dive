@@ -5,7 +5,7 @@ group: "Arrays and strings"
 summary: "Build a pattern, find matches and separate Java string escapes from regular-expression syntax."
 order: 110
 version: "Java 8+"
-prerequisites: ["language/strings"]
+prerequisites: ["language/strings", "language/string-operations"]
 advanced: false
 ---
 
@@ -35,6 +35,16 @@ You must validate an entire three-digit code, and separately extract all numbers
 Use matches for the whole-code rule and find repeatedly for extraction. A three-ASCII-digit format can use `[0-9]{3}`. A range requirement still needs parsing and a numeric check. Some backtracking patterns with nested repetition have pathological behavior on near-matching input; bound input and avoid ambiguous nested repetitions. Do not treat compiling a pattern as proof of safe cost for every input.
 
 </details>
+
+## Quote the pattern and replacement separately
+
+<JavaExample file="RegexLiteralLesson.java" output={"a$1b$1a\n2\n3"} />
+
+ReplaceLiteral deliberately uses the regex API to expose two separate input languages. Pattern.quote makes the needle literal; Matcher.quoteReplacement makes dollars and backslashes literal in replacement text. Quoting only the needle would leave `$1` interpreted as a group reference rather than the requested literal characters. The simpler String.replace is preferable when the whole task is literal replacement; this implementation teaches the distinction needed when building a larger regex operation.
+
+The helper rejects nulls. A missing needle leaves content unchanged; an empty needle follows the regex zero-width matching contract and inserts at boundaries. Tests include dots, brackets, dollars and backslashes because plain alphabetic input would not distinguish a correctly quoted implementation from an unsafe one.
+
+String.split takes a regex too. Its default zero limit drops trailing empty fields: `a,b,` has two returned fields. A negative limit retains the final empty field and gives three. This is useful for a deliberately simple delimiter format, but it is not a CSV parser: quoted delimiters and escaped quotes require that format's grammar. Pattern compilation can fail with PatternSyntaxException; a Matcher also needs a successful match operation before requesting its captured groups.
 
 ## Pattern references
 

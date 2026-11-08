@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts" aria-hidden="true"></span>
 <span id="primitive-values-reference-types-and-conversions" aria-hidden="true"></span>
@@ -89,6 +90,17 @@ Repair `long answer = 50_000 * 50_000` and explain why casting its result afterw
 Use `long answer = 50_000L * 50_000;` or cast an operand before multiplication. `(long) (50_000 * 50_000)` widens the overflowed int, so the lost high bits cannot be recovered. For a required int result, use Math.multiplyExact and handle a value outside that domain. Apply this reasoning order: operand types → promotion → operation → assignment conversion.
 
 </details>
+
+
+## Explain precision and special values with actual results
+
+<JavaExample file="NumericEdgesLesson.java" output={"66\nB\n16777216\nInfinity\n-Infinity\ntrue\ntrue\nfalse"} />
+
+Char 'A' promotes to int 65 before addition, so the first result is 66. The explicit cast of that result to char gives B. The float literal 16777217F rounds to a representable float value before the int cast, so the later cast cannot recover the lost unit. Widening a type's range is different from preserving every significant bit.
+
+Floating division by positive and negative zero yields infinities with different signs; zero divided by zero yields NaN, tested with isNaN. Primitive equality considers signed zeros equal, while Double.equals distinguishes them. For an interview prediction, name the operand types and the exact comparison operation before choosing an answer. Do not generalize integer divide-by-zero behavior to floating-point arithmetic.
+
+Parsing text, boxing an existing number and casting an object reference are three different operations. Continue with <a href={lessonUrl('learn/language/wrappers-and-boxing/')}>wrapper values and null boundaries</a> for parseInt/valueOf, cross-wrapper equals and explicit null policies. None of those operations makes ordinary floating point suitable for every decimal monetary requirement; the decimal-arithmetic lesson later defines that separate domain.
 
 <span id="references" aria-hidden="true"></span>
 <span id="type-system-references" aria-hidden="true"></span>

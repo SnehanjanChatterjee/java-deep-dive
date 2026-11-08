@@ -1,9 +1,9 @@
 ---
 title: "AQS, LockSupport and synchronizer internals"
 module: "concurrency"
-group: "Advanced synchronization"
+group: "Atomics and advanced locks"
 summary: "Implement one open-once signal after separating its state policy from waiting machinery."
-order: 1040
+order: 945
 version: "Java 8+; implementation study OpenJDK 25"
 prerequisites: ["concurrency/atomics-cas", "concurrency/semaphore", "concurrency/locks-interruption"]
 advanced: true
@@ -48,6 +48,21 @@ Park releases neither intrinsic monitors nor explicit locks already held. Retain
 
 <span id="await-timeout-and-interruption"></span>
 <span id="ownership-fairness-and-conditions"></span>
+## Dry-run a park permit and the persistent predicate
+
+For an already-started target, two unparks before its next park leave **at most one** permit. One park can consume it and return. A later park has no second stored credit from those two calls; it may wait, return for interruption or return spuriously. Never turn this illustration into a test asserting that a particular park must block.
+
+The persistent application predicate is therefore essential. For OneShotSignal, state one remains open even after a waiter returns. A second waiter can pass because it rereads open state, not because the first unpark created an unlimited number of wakeup credits. AQS's acquire/release machinery connects that policy with eligible waiters.
+
+| Mechanism | What remains after an early signal? |
+| --- | --- |
+| Object.notify with no waiters | No notification credit |
+| LockSupport.unpark on a started thread | At most one thread-associated park permit |
+| Semaphore.release | An additional permit under its counting protocol |
+| OneShotSignal.open | Persistent open state for current and future awaiters |
+
+Park also retains locks the caller already owns. If the producer needs such a retained lock to make the predicate true, parking can preserve a closed dependency cycle. Higher-level condition waits have a different release/reacquire protocol. Do not substitute park mechanically for Object.wait or Condition.await. [Java 8 LockSupport permits and return paths](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/LockSupport.html)
+
 ## Await, timeout, publication and conditions
 
 The source writes a plain array element before opening. A successful shared acquire after release publishes the preceding write, so the waiter reads 42. Join still owns worker cleanup, but the payload proof follows the synchronizer protocol. The closed event's zero-time wait returns false; open can succeed without waiting. Timeout does not open the event or cancel its producer.

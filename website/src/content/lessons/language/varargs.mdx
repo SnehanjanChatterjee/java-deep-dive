@@ -1,0 +1,45 @@
+---
+title: "Varargs calls and array ownership"
+module: "language"
+group: "Conversions and numeric boundaries"
+summary: "Explain zero-or-more argument calls as array parameters and handle null, aliases and overload phases."
+order: 145
+version: "Java 8+"
+prerequisites: ["language/method-overloading", "language/arrays"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Offer a convenient call without inventing a new container
+
+`sum(int... values)` lets callers pass zero, one or several int arguments. Inside the method, values has type int[]: use length, indexing or an enhanced for loop as for any array. There can be only one variable-arity parameter and it must be last, after any required parameters.
+
+<JavaExample file="VarargsOwnershipLesson.java" output={"0\n9\n11\n5\nfalse"} />
+
+For `sum(2, 3, 4)`, the variable-arity invocation supplies an array containing those values. An empty call supplies an empty array, so the loop runs zero times and returns zero. `sum(source)` can pass an existing int[] directly; varargs does not automatically clone an explicit array. The reference is still passed by value.
+
+## State a null and mutation policy
+
+Sum rejects a null array, visits each value once and uses exact addition. Its invariant is that total represents the exact sum of already visited components; an overflow throws rather than silently wrapping. Work is O(n) with constant auxiliary calculation state, in addition to any argument array created for the call.
+
+Snapshot clones the received primitive array before returning. The caller's explicit source and the result are independent arrays; changing copy[0] to 99 leaves source[0] equal to five. Snapshot costs O(n) time and storage. Declaring the parameter final only prevents rebinding the local parameter; it would not protect caller components from writes.
+
+`sum((int[]) null)` passes a null array and is rejected. For reference varargs, `names((String) null)` supplies a one-element array containing null, whereas `names((String[]) null)` passes no array object. An API must decide both array-null and element-null behavior independently.
+
+## Read signatures and overload phases accurately
+
+You cannot declare both `sum(int[])` and `sum(int...)` in the same class: variable arity is not a different parameter type for that signature. A method can mix required and repeated parameters, such as `print(String heading, int... values)`.
+
+Overload resolution considers fixed-arity applicability before variable arity. A varargs declaration can itself be used as a fixed-arity array method. With `pick(long)`, `pick(Integer)` and `pick(int...)`, `pick(1)` selects the widening long overload before boxing or variable-arity packing. Ambiguous unrelated varargs element types can make a zero-argument call illegal. Avoid designing APIs whose only purpose is surprising this selection algorithm. [JLS formal parameters](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.4.1), [JLS invocation phases](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.12.2)
+
+Generic varargs introduce another issue because generic element types are not fully represented at runtime. That belongs after generics and erasure; ordinary int varargs here has no generic heap-pollution problem.
+
+## Practice: retain the supplied array
+
+<details>
+<summary>A constructor stores its int... parameter directly. Can a caller later change its contents?</summary>
+
+Yes: the caller can pass an existing array and keep an alias. A convenience call with separate int arguments does not establish a universal exclusive-ownership contract for all callers. Clone at the storage boundary when the receiving object promises an independent snapshot. An empty call remains valid, but null must still follow the constructor's stated policy.
+
+</details>

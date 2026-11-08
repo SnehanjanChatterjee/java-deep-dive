@@ -10,6 +10,8 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## A String operation returns text
 
@@ -43,6 +45,55 @@ Use `name = name.trim();`. The original call's returned value was discarded. Str
 </details>
 
 String indexes count UTF-16 code units. For simple ASCII text these align with familiar characters; arbitrary international text requires the Unicode chapter's more careful model.
+
+## Separate mutable construction from the final value
+
+StringBuilder keeps a mutable sequence while an algorithm assembles output; toString provides the immutable text value. A StringBuffer also provides mutable text with synchronized operations. Neither builder type uses String's content-equality contract for ordinary equals comparisons: compare their String results when content equality is intended. Synchronizing a single method does not define a transaction across several calls.
+
+String's immutability is an API promise about observable text, not a promise that its representation is always a char array. Modern HotSpot can use compact internal storage while preserving UTF-16 indexing. Do not teach pool versus heap as two different kinds of Java String object: both literal and explicitly constructed Strings are objects, and interning concerns canonical references. [String API and implementation freedom](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html)
+
+Before Unicode traversal, work through <a href={lessonUrl('learn/language/string-operations/')}>search, slicing and comparison</a>. It gives complete indexOf/substring/compareTo traces, empty-range boundaries and literal replacement rules. Strings with equal visible text may still differ in normalization or code-point sequence; choosing application equality is separate from guessing where a String is stored.
+
+## Construct text from characters or encoded bytes
+
+<JavaExample file="StringConstructionLab.java" output={"from chars=Java\nslice=av\nfrom bytes=text\nlength=0, reserved=true\nbuilt=Lia!\nbuilder=!a\nzero fill=true\nsnapshot=Lia!\ncase ordering=0\ncase equal=true\nbuffer=xy"} />
+
+The char-array constructor copies the supplied contents. Changing input[0] afterward does not change the constructed `"Java"` text. The offset/count constructor selects the two units beginning at index 1, producing av; its third argument is a **count**, unlike substring's exclusive end index. A byte-array constructor additionally needs an encoding: the program uses UTF-8 explicitly at both conversion boundaries. Charset and strict-decoding details are developed in Standard libraries.
+
+| Construction | Input meaning | Important boundary |
+| --- | --- | --- |
+| A string literal | Source text with canonical literal identity | Still compare application values by contents |
+| new String(existingString) | A new String object with the same text | It is unnecessary for ordinary immutable-value sharing |
+| new String(characters) | Copy character-array contents | Later source-array edits do not mutate the String |
+| new String(characters, offset, count) | Copy a selected character range | Validate offset and count, not an exclusive end |
+| new String(bytes, charset) | Decode bytes using the named charset | A byte array does not carry its own encoding |
+| builder.toString() | Capture current mutable text as a String | Later builder edits do not change the snapshot |
+
+An editable char array can be cleared by its owner, but previously made Strings and other copies remain separate objects. Choosing a char array for temporary sensitive input does not guarantee every copy has been erased. String's final class declaration prevents subclass changes to its contract; final alone is not a general recipe for making an arbitrary class immutable.
+
+<Diagram client:visible definition={"flowchart TD\n C[Caller character array] -. constructor copies contents .-> S[Immutable String]\n C --> M[Later array edit changes array storage]\n B[Mutable StringBuilder] -. toString captures current text .-> T[Immutable snapshot]\n B --> E[Later builder edits change builder state]"} caption="The character-array constructor and builder snapshot establish separate text values. Later edits to their mutable inputs do not alter those String values." />
+
+## Use mutable text methods against a visible trace
+
+The replace and delete methods use an inclusive beginning and exclusive end index. Follow the same builder through these mutations:
+
+| Operation | Text afterward | What changed |
+| --- | --- | --- |
+| `append("ava").insert(0, 'J')` | Java | Add text at the end and at an index |
+| `replace(0, 1, "L")` | Lava | Replace the selected range |
+| `delete(1, 2)` | Lva | Remove a selected range |
+| `setCharAt(1, 'i'); append('!')` | Lia! | Replace one existing unit and append |
+| Capture snapshot, then reverse | !aiL | Reverse the builder's current sequence |
+| `setLength(2)` | !a | Truncate logical contents |
+| `setLength(4)` | !a followed by two zero units | Grow logical length with NUL characters |
+
+Capacity reserves storage; it does not create logical positions. A freshly allocated builder with capacity 32 still has length zero, so setCharAt(0, value) is not an append. setLength differs: increasing it creates actual zero-valued positions. Deleting or replacing a range also changes subsequent indexes. These operations take work related to the amount shifted/copied; a mutable builder is not a promise that every indexed edit is constant-time.
+
+Most corresponding methods exist on StringBuffer with its synchronized-operation contract. It can still participate in an unsafe multi-call protocol when different calls depend on one shared condition. Use a locally owned StringBuilder for ordinary sequential construction, then expose a String result when callers need an immutable value.
+
+## Case-insensitive comparison has a defined scope
+
+The complete program prints zero for compareToIgnoreCase and true for equalsIgnoreCase on JAVA versus java. These methods ignore case under their specified character comparison rules; they are not locale-sensitive dictionary collation or complete Unicode normalization. A nonzero compare result supplies an ordering sign, not a universal exact value of 1 or −1. Choose domain-specific normalization or a Collator when that is the actual requirement.
 
 ## String references
 

@@ -1,9 +1,9 @@
 ---
 title: "ThreadPoolExecutor admission and overload"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Thread pools and scheduling"
 summary: "Trace one accepted task at a time through workers, queue capacity and explicit refusal."
-order: 890
+order: 855
 version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -37,6 +38,14 @@ Use core one, maximum two, and queue capacity one. Hold accepted workers at a la
 | C | Queue full: grow toward maximum | Two active, one queued |
 | D | Queue full and maximum reached | AbortPolicy rejects D |
 
+### Follow the submitted tasks through the pool
+
+The letters A–D identify four calls to execute in the program below. They are submission identities: the program reuses one Runnable description. Follow B into the queue before C is allowed to create the second worker. C can therefore start while the earlier submission B is still queued.
+
+<AdvancedThreadMotion client:visible model="executor" />
+
+D's rejection is a separate outcome from waiting in the queue. The completion part shows one legal order after the release gate opens; it does not add a global FIFO execution guarantee to ThreadPoolExecutor. The queue and worker counts in the model follow the [documented admission rules](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html).
+
 <JavaExample file="ExecutorSaturationLab.java" output={"rejected\ncompleted=3"} />
 
 FirstStarted and bothStarted establish the intended occupancy milestones. Release holds tasks without guessed sleeps. After release, A/C finish and a worker drains B. Main shuts down and awaits termination before observing completed-task statistics. Finally opens release and requests cleanup on an exceptional path. The guard durations expose a broken demonstration; they are not workload recommendations.
@@ -47,6 +56,14 @@ FirstStarted and bothStarted establish the intended occupancy milestones. Releas
 <Diagram client:visible definition={"flowchart TD\n S[Execute request] --> C{Below core workers?}\n C -->|yes| W[Attempt worker creation]\n C -->|no| Q{Queue offer succeeds?}\n Q -->|yes| R[Recheck lifecycle and worker availability]\n Q -->|no| M{Can grow toward maximum?}\n M -->|yes| W\n M -->|no| X[Invoke rejection policy]\n W --> E[Execute, then retrieve queued work]"} caption="Queuing normally precedes growth beyond the core size. Lifecycle races require a recheck after successful queue insertion." />
 
 An unbounded accepting queue usually keeps queuing beyond core size, so increasing maximumPoolSize alone may not add active workers. A SynchronousQueue stores no buffered tasks, making handoff/growth decisions different. Successful offer is followed by lifecycle rechecks because shutdown can race with admission; queued work also needs an available worker.
+
+## Change one capacity choice and predict admission again
+
+Keep core one and maximum two, but make the queue capacity two. With workers held at release, A creates the core worker, B and C enqueue, D creates the second worker only after the queue is full, and E would be rejected. Increasing maximum alone does not make B skip an available queue slot.
+
+Now use an accepting unbounded queue: after A, later tasks normally keep queueing, so the maximum of two does not make a second worker appear solely because backlog exists. With a direct-handoff SynchronousQueue, there is no stored slot for B; when handoff cannot match an idle worker, admission considers growth or rejection instead.
+
+These dry runs assume a running pool, successful thread creation and the stated held-worker milestones. Shutdown races and ThreadFactory failures are additional branches in the real algorithm. Core workers need not all exist at constructor return; prestart APIs deliberately change that behavior. Core is also not an absolute floor when core timeout is enabled. [Java 8 ThreadPoolExecutor queueing and worker rules](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)
 
 ## Rejection is externally visible behavior
 

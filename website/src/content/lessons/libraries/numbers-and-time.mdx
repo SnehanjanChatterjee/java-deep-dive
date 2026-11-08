@@ -2,7 +2,7 @@
 title: "Decimal arithmetic in everyday calculations"
 module: "libraries"
 group: "Decimal arithmetic"
-summary: "Calculate an invoice from decimal inputs"
+summary: "Trace exact decimal products, validate minor units and compare per-item with per-invoice rounding."
 order: 640
 version: "Java 8+"
 prerequisites: ["objects/equality-and-immutability"]
@@ -61,6 +61,21 @@ Formatting a value with two printed places does not establish the intermediate c
 Call total(new BigDecimal("19.95"), 3, BigDecimal.ZERO): the subtotal is 59.85 and tax is 0.00, so the result is 59.85. Call it with "1.001": UNNECESSARY rejects the unit price rather than quietly rounding it. A different application can choose to round input prices, but that would be a different public promise.
 
 <Diagram client:visible definition={"flowchart LR\n I[Validated decimal price and quantity] --> S[Exact subtotal]\n S --> T[Exact tax product]\n T --> R[Round tax at invoice boundary]\n S --> F[Add final total]\n R --> F"} caption="The rounding boundary is explicit; display formatting is a later concern." />
+
+## Work out two different rounding boundaries
+
+For three items priced 19.95 at the example rate, the boundary changes the result even with the same RoundingMode:
+
+| Calculation | Per item, then sum | Sum first, then invoice tax |
+| --- | --- | --- |
+| Exact price × rate | 1.645875 each | 4.937625 on subtotal 59.85 |
+| Rounded tax | 1.65 each | 4.94 once |
+| Combined tax | 4.95 | 4.94 |
+| Total including subtotal | 64.80 | 64.79 |
+
+Both are internally consistent policies. The supplied total method implements the second one; moving setScale inside a per-item loop changes that promise. In the complete arithmetic program in the next lesson, item tax and invoice tax are printed separately so the difference can be reproduced.
+
+For discounts or allocations, ask whether every component must be rounded independently and how any remainder is assigned. Formatting two decimal places afterward cannot repair a total computed under another rounding rule. Keep intermediate arithmetic, domain rounding and display formatting as explicit separate stages.
 
 ## References
 

@@ -70,6 +70,19 @@ Continue with <a href={lessonUrl('learn/execution/packages-and-tools/')}>package
 
 The <a href={lessonUrl('learn/jvm/architecture/')}>JVM architecture walkthrough</a> connects loading, shared memory, each thread's execution state and runtime services in one map. It introduces the JVM foundations module before the detailed stack and bytecode lessons.
 
+## Explain portability at the correct boundary
+
+The class file is a binary format for a compatible JVM, rather than a machine-code executable for one processor. An appropriate JVM implementation supplies the operating-system/processor-specific execution machinery. Source syntax, required class-file version and available libraries still have to match the selected runtime. A portable format does not make a missing dependency, newer API or platform-specific native library appear automatically.
+
+Compilation checks the program against what the compiler can see. Launch starts a separate execution using its own classpath and runtime. This is why javac and java versions both matter, and why moving only a class file without the definitions it needs can fail later. For this greeting, no third-party dependency or native library is needed; keep that ordinary path clear before investigating loading and linking failures.
+
+<details>
+<summary>Must javac print Hello, Java! to prove the compilation succeeded?</summary>
+
+No. Successful javac normally produces the class file without running main or producing that application output. The launcher subsequently invokes main, and that invocation prints the greeting. A tool's own diagnostic output is different from the application's output. The stepwise model records those two responsibilities separately.
+
+</details>
+
 ## Compilation and execution references
 
 - [Dev.java: compile and run a first program](https://dev.java/learn/getting-started/)

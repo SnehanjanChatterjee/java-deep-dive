@@ -50,6 +50,19 @@ Permit Pending at the sealed root, validate its delay in its constructor and add
 
 </details>
 
+## Learn flow scoping before deconstruction
+
+`if (value instanceof String text && !text.isEmpty())` makes text available on the right of && because that operand runs only after the match succeeds. Replacing && with || does not provide that guarantee: the right operand can run when the match failed. A pattern variable's scope follows proven matching paths, not just the nearest pair of braces.
+
+After `if (!(value instanceof String text)) { return; }`, following statements can use text because every path reaching them matched. Null never matches that instanceof pattern. This guard style gives a safe typed local without an unchecked cast; it does not accept null as empty text or make arbitrary OR branches safe. [JLS pattern-variable scope](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3.2)
+
+<details>
+<summary>Does a sealed root mean every descendant is final?</summary>
+
+No. A permitted direct subtype may be non-sealed, intentionally opening that branch to further descendants. A root's closed list concerns its direct permitted types; inspect each branch's declaration before asserting a finite set of concrete leaf classes. Exhaustive handling can cover an open branch with a type pattern for that branch, rather than enumerating every possible future descendant.
+
+</details>
+
 ## Pattern references
 
 - [JEP 409: sealed classes](https://openjdk.org/jeps/409)

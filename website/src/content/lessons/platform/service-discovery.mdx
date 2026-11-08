@@ -2,7 +2,7 @@
 title: "Service discovery, packaging and provider selection"
 module: "platform"
 group: "Service discovery"
-summary: "Service discovery, packaging and provider selection with focused examples, failure traces and solved practice."
+summary: "Package service providers, inspect discovery and select implementations with explicit ambiguity and lifetime rules."
 order: 1200
 version: "Java 8+"
 prerequisites: ["platform/annotations", "platform/reflection-and-services", "platform/method-handles"]
@@ -10,6 +10,7 @@ advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
 import { url as lessonUrl } from '../../../lib/paths';
 
 ## Discover providers without importing their classes
@@ -71,6 +72,21 @@ Without metadata and with no other configured providers, iteration is empty and 
 <JavaExample file="MetadataLab.java" output={"true\nHello Mira\nHello Mira\nHello Mira\nHello Mira"} />
 
 This final example reads a runtime method annotation, invokes reflectively, wraps a proxy, invokes a handle and discovers a provider. Its temporary descriptor points to a nested provider class already visible to the parent loader; the resource loader is closed and temporary files are removed. The mechanisms reach the same greeting for different reasons. It is a comparison exercise after learning them individually, rather than a substitute for real provider packaging.
+
+## Discovery, selection and lifetime form three decisions
+
+<Diagram client:visible definition={"flowchart LR\n M[Packaged service metadata] --> D[Discover visible providers]\n D --> C[Inspect capabilities]\n C --> S[Apply explicit selection rule]\n S --> L[Own chosen provider lifetime]\n D --> E[Report invalid configuration]"} caption="Finding a provider is not the same operation as choosing or closing it." />
+
+On Java 9+, the provider stream exposes Provider metadata such as `type()` and a `get()` instantiation operation. This can separate inspection from construction, but does not make every provider side-effect-free or eliminate discovery errors. The Java 8 iteration example constructs providers as it traverses them. Keep the version distinction when explaining which code actually runs.
+
+ServiceLoader caches discovered/instantiated providers. `reload()` clears its provider cache for later discovery; it is not a general live-plugin replacement mechanism and does not close previously returned provider objects. It is also not safe to treat one ServiceLoader as an unrestricted concurrently mutable registry. Define who discovers, who selects, and who owns any provider resources. [ServiceLoader lifecycle](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ServiceLoader.html)
+
+<details>
+<summary>Why can the first provider succeed but selecting a provider still fail?</summary>
+
+This consumer intentionally traverses all candidates to detect ambiguity. A later malformed provider can therefore fail discovery even if an earlier candidate looked suitable. Silently returning the first match would change that uniqueness contract. Diagnose the reported provider/resource and repair packaging rather than treating a configuration failure as an empty capability list.
+
+</details>
 
 ## Service references
 

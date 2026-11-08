@@ -1,0 +1,50 @@
+---
+title: "Wrapper values, boxing and null boundaries"
+module: "language"
+group: "Conversions and numeric boundaries"
+summary: "Distinguish primitive parsing, wrapper construction, typed equality, identity caches and explicit null policies."
+order: 135
+version: "Java 8+"
+prerequisites: ["language/types-and-conversions", "language/strings"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Use an object when the API requires an object
+
+A primitive holds a value such as int 42. A wrapper object represents a corresponding value through an object API. Integer is not a mutable int cell: its numeric value cannot be changed. Assigning a different Integer reference changes a variable's binding, and incrementing a boxed number unboxes, calculates and boxes a result.
+
+| Primitive | Wrapper | Primitive | Wrapper |
+| --- | --- | --- | --- |
+| boolean | Boolean | byte | Byte |
+| short | Short | char | Character |
+| int | Integer | long | Long |
+| float | Float | double | Double |
+
+`Void` represents the void type in some APIs; there is no ordinary void value to box. Generic collections later need reference types, so an integer element uses Integer rather than int. That API need does not turn every local arithmetic variable into an object.
+
+## Trace conversion and choose an absence policy
+
+<JavaExample file="WrapperBoundariesLesson.java" output={"42\nfalse\ntrue\n0\n42"} />
+
+ParseInt reads text and returns a primitive int. ValueOf(String) reads text and returns Integer. ValueOf(int) boxes an already available value. Bad syntax and an out-of-range decimal string fail with NumberFormatException; whitespace is not silently trimmed by parseInt. Normalize text deliberately at an input boundary if the contract allows it.
+
+`boxed.equals(Long.valueOf(42))` is false: Integer equality requires another Integer with that int value. `boxed == 42` unboxes the left value and compares primitive ints, so it is true. Comparing two Integer references with `==` instead asks identity; both operands' types matter.
+
+OrZero checks null before unboxing and defines null as zero. RequireInt explicitly rejects null. Both policies take O(1) work, but have different meanings: one merges absence with a valid zero, the other preserves a required-value boundary by failing. Do not choose a fallback merely to silence NullPointerException.
+
+## Avoid identity-cache puzzles in application logic
+
+Boxing some small constant values has specified identity-sharing guarantees, and Integer.valueOf caches at least -128 through 127. Implementations may cache more. Two observed large boxes being different today is not a universal promise that they must be different; two cached boxes being identical is not a content-comparison strategy. Use equals for same-wrapper values or deliberate primitive conversion for numeric comparison. [JLS boxing and unboxing](https://docs.oracle.com/javase/specs/jls/se25/html/jls-5.html#jls-5.1.7), [Integer.valueOf](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Integer.html#valueOf(int))
+
+Null unboxing can hide inside arithmetic, relational comparison, assignment or a conditional expression. `Integer count = null; int n = count;` fails before n receives a number. `Objects.equals(a, b)` gives null-safe object equality, but does not make Integer and Long equal numerically. Float/Double equality also has special NaN and signed-zero rules; choose the numerical contract before converting between types.
+
+## Practice: repair a boxed comparison
+
+<details>
+<summary>A method accepts Integer a and b. Is a == b a null-safe numeric comparison?</summary>
+
+It is null-safe identity comparison: two null references compare equal, while separately boxed equal numbers may compare unequal. If equal values and two absent values should count as equal, use Objects.equals(a, b). If absence is invalid, reject both then compare their intValue values. If one absent value should compare false, test both for null before unboxing. These are three explicit contracts, not interchangeable syntax fixes.
+
+</details>

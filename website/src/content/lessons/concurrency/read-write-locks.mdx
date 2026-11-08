@@ -1,9 +1,9 @@
 ---
 title: "Read/write locking and snapshot ownership"
 module: "concurrency"
-group: "Advanced synchronization"
+group: "Atomics and advanced locks"
 summary: "Allow multiple genuine readers while excluding writers, and retain ownership after unlocking through a copy."
-order: 1020
+order: 935
 version: "Java 8+"
 prerequisites: ["concurrency/locks-interruption", "concurrency/deadlock-liveness"]
 advanced: true
@@ -27,6 +27,16 @@ Put validates key/value, acquires the write lock, mutates the TreeMap and unlock
 The earlier snapshot contains only java even after the catalog gains jvm. That is because it owns a separate map, not because a read lock remains attached to the returned value. Returning the mutable internal map would let callers bypass the whole protocol after unlock. UnmodifiableMap alone would also be insufficient if it wrapped the same mutable backing map; copying is essential here.
 
 <Diagram client:visible definition={"flowchart TD\n R1[Reader one] --> R[Shared read ownership]\n R2[Reader two] --> R\n R --> C[Copy stable map while writer excluded]\n W[Writer] --> E[Exclusive write ownership]\n C --> S[Return independently owned snapshot]"} caption="Read locks coordinate the copy interval. The returned snapshot remains stable because it has separate storage." />
+
+## Retain observation while downgrading
+
+<JavaExample file="ReadWriteDowngradeLesson.java" output={"value=42\ncaller released=true"} />
+
+UpdateAndRead first owns write mode, changes the value, and acquires read mode **before** releasing write mode. After the write unlock, the caller retains read ownership, so another writer cannot insert a change before the returned observation is copied. The second finally releases the read hold. The diagnostic method then confirms that this caller retains neither mode.
+
+Releasing write first and acquiring read afterward would leave an interval in which another writer can change the value. That alternate program may still be correct under a contract permitting a refreshed value, but it does not preserve the just-written observation. Downgrading closes that specific gap.
+
+The example is a complete small ownership trace rather than a performance test or an invitation to keep read locks around slow callbacks. Its returned primitive remains independently usable after unlock. For mutable returned objects, the original snapshot/ownership questions still apply. [ReentrantReadWriteLock downgrading pattern](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantReadWriteLock.html)
 
 ## Reentrancy, downgrading and upgrade hazards
 

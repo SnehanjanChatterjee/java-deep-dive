@@ -1,8 +1,8 @@
 ---
 title: "Stream sources, pipelines and lazy traversal"
 module: "functional"
-group: "Stream foundations"
-summary: "Describe a data transformation"
+group: "Stream sources and operations"
+summary: "Translate an ordinary loop into a typed lazy pipeline and trace short-circuit demand before exploring complete operation families."
 order: 580
 version: "Java 8+; later operations labelled individually"
 prerequisites: ["functional/optional", "collections/iteration-and-views"]
@@ -26,6 +26,21 @@ A loop can select long words and normalize them. A stream pipeline expresses the
 The loop visits java, a, jvm; rejects a because its length is below three; transforms the survivors; and appends JAVA/JVM to a result. The pipeline uses the same steps: words.stream supplies String elements, filter keeps matching Strings, map transforms each String, and collect materializes a List. The intermediate element type remains String here; mapping String::length instead would produce Stream&lt;Integer&gt;.
 
 Intermediate operations return another stream and are generally lazy. The terminal operation requests a result and triggers evaluation. Creating the pipeline alone does not promise its callbacks have run. A stream instance is used once; obtain a new stream from the source for another result rather than reusing a consumed stage.
+
+## Trace types as well as the displayed words
+
+The initial pipeline has these relationships:
+
+| Stage | Element type | Input/output meaning |
+| --- | --- | --- |
+| words.stream() | String | Traverse the source's reference values |
+| filter(length >= 3) | String | Keep java and jvm, preserving their sequence |
+| map(uppercase) | String | Produce JAVA and JVM |
+| collect(toList()) | List&lt;String&gt; result | Materialize the ordered outputs |
+
+Replacing map with String::length would change the intermediate type to Integer. A predicate after that map receives a number, not the original text. A method reference must fit the type at its actual stage, which is why writing the stages' types helps diagnose a fluent chain.
+
+Streams do not automatically copy or sandbox mutable elements. A callback changing an object's fields can change what an input alias observes. Non-interference/statelessness rules and the application's ownership model still apply; “does not mutate source membership by itself” is not a guarantee that arbitrary callback code has no effects.
 
 ## Obtain a source deliberately
 
@@ -76,6 +91,12 @@ Do not mutate the source while traversing it or reuse a consumed stream. Encount
 **Why might count skip peek?** If exact size is known and the skipped stage cannot change the answer, the implementation can omit traversal. A source's Spliterator exposes properties such as ORDERED, SIZED, SUBSIZED, DISTINCT, SORTED, NONNULL, IMMUTABLE and CONCURRENT. Mapping can invalidate sorted/distinct knowledge; filtering generally loses exact size. These are actual properties, not decorations to invent.
 
 **What changes with a primitive stream?** mapToInt produces IntStream with primitive arithmetic/terminal methods. It avoids a boxed result contract, but int sum can still overflow. The reduction chapter separates arithmetic policy from pipeline spelling.
+
+## Follow the focused operation chapters
+
+The complete operation sequence now continues through intermediate mapping/state/slicing, source and terminal result contracts, version-labelled prefix/multi-emission APIs, reductions, ordinary collector recipes, downstream adapters, custom collectors and parallel/gatherer reasoning.
+
+These are separate questions. filter does not choose a result container; collect does. sorted is not equality-based deduplication; distinct is. limit does not close a resource; its owner still must. Source encounter order is not the timing of every parallel callback. The following chapters supply the full method families and runnable counterexamples instead of hiding them inside one advanced custom-collector program.
 
 ## References
 

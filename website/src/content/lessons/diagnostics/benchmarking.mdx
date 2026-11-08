@@ -125,9 +125,25 @@ Explain exactly what setup excludes, why the returned boolean matters, and what 
 
 To study a one-off collection conversion, create a separately named construction-plus-lookup benchmark rather than relabeling the lookup-only score. To study shared contention, change state ownership deliberately and preserve a valid synchronization contract. A useful report states the actual question and its practical limits rather than claiming the harness validated the application design.
 
-<span id="references"></span>
 <span id="benchmark-source"></span>
 <span id="why-can-a-benchmark-of-a-pure-method-appear-implausibly-fast"></span>
+## A benchmark review checklist applied to the lookup experiment
+
+Before running, predict what would change the answer: hit position, miss rate, container size, key hashing/equality cost, whether construction is included, and shared versus independent ownership. These are workload choices. Keep them explicit rather than adding a vague realistic label to synthetic inputs.
+
+After running, verify each row's parameters and units before comparing scores. AverageTime in ns/op and throughput in ops/s are different measurement modes. An uncertainty interval is not the minimum-to-maximum of every request, and averaging operation scores does not produce a tail-latency percentile. Repeated independent forks help expose variability; they do not validate a mistaken workload.
+
+<details>
+<summary>Will returning a constant result prevent every form of constant folding?</summary>
+
+No. Result consumption prevents elimination of an entirely unused result, but a compile-time-known computation can still be replaced by its known value. Make the varying input part of benchmark state when that matches the application question, and inspect the JMH constant-folding sample. Do not make fields volatile merely to stop optimization unless volatile access is itself part of the intended operation; it changes the measured work.
+
+</details>
+
+[JMH's constant-folding example](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_10_ConstantFold.java) complements the result-consumption and fork examples below.
+
+<span id="references"></span>
+
 ## Benchmark references
 
 - [JMH project and build guidance](https://github.com/openjdk/jmh)

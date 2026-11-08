@@ -1,0 +1,65 @@
+---
+title: "Static and instance initialization order"
+module: "objects"
+group: "Construction and encapsulation"
+summary: "Separate once-per-class initialization from once-per-object field, block and constructor work."
+order: 165
+version: "Java 8+"
+prerequisites: ["objects/constructors-and-access"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Distinguish making a class ready from constructing an object
+
+A static field belongs to a class. An instance field belongs to each object. Their initializers therefore solve different problems: establish shared class state once, and establish each new object's state separately. A block marked `static` is a static initializer. A bare block in the class body is an instance initializer; it is not a method and has no call syntax.
+
+Loading obtains a class definition. **Initialization** executes its required static initialization. These phases are distinct: merely mentioning a class in source, or obtaining its class literal, does not imply executing every static block. Creating an instance, invoking a declared static method, and reading/writing a declared nonconstant static field are ordinary initialization triggers. Reading a compile-time constant may not trigger its declaring class. The later class-loading lesson examines those boundaries in detail. [JLS class initialization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4.1)
+
+## Trace two constructions and one class initialization
+
+<JavaExample file="InitializerOrderLesson.java" output={"before first new\nstatic field\nstatic block 1\nsecond static block\ninstance field\ninstance block 2\nargument body 7\nno-argument body\nfirst=7\ninstance field\ninstance block 2\nargument body 9\nsecond=9"} />
+
+`main` begins without having created a Ticket. At the first `new Ticket()`, Ticket must be initialized. Its static field initializer calls `trace`, stores one, and is followed by both static blocks in textual order. The compiler does not print these lines: the running program does.
+
+Each new object starts with default field values. Its instance field initializer sets `value` to two; its instance block increments that object's `initializerRuns` and observes two. The chosen constructor then assigns its requested value. `Ticket()` delegates to `Ticket(7)` before printing its own body message. Delegation is two constructor bodies participating in **one object's** construction; it does not run the instance field/block sequence twice.
+
+| Phase | First object | Second object |
+| --- | --- | --- |
+| Ticket static initializers | Run in source order | Already completed |
+| Instance field and block | Set two; increment this object's counter | Set two; increment this object's counter |
+| Argument constructor body | Assign seven | Assign nine |
+| Delegating no-argument body | Runs after argument body | Not selected |
+
+`trace` receives a label and a value, prints the label and returns the value to the field initializer. It makes evaluation order observable without adding a collection or scheduling mechanism. The counters in the matching test establish that both construction paths initialize each object once.
+
+## Choose a constructor for ordinary required state
+
+<Diagram client:visible definition={"flowchart TD\n U[First active use of Ticket] --> C[Initialize class: static fields and blocks]\n C --> N[Allocate one object with default fields]\n N --> I[Instance fields and blocks]\n I --> A[Argument constructor body]\n A --> D[Delegating constructor body, if selected]\n C --> R[Later new expression: reuse initialized class]\n R --> N"} caption="Successful class initialization is reused. Each new object follows its own instance/constructor path; this-delegation does not repeat that object's initializers." />
+
+Put required parameters, validation and the object's main state transition in a constructor. An instance block can share work across constructor paths, but delegation to one constructor often expresses that policy more directly. Keep static initialization small: blocking I/O or fallible external configuration there creates a difficult global initialization boundary.
+
+For inherited objects, superclass construction also participates. The inheritance lesson explains why a superclass constructor calling an overridable method can observe subclass fields before their initializers run. Do not memorize “all blocks before all constructors”: the enclosing class, superclass and delegation path matter. [JLS instance creation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.5)
+
+## Practice: move a declaration and predict the observation
+
+<details>
+<summary>Move the instance block above the value initializer. What does it print?</summary>
+
+Writing `System.out.println(value)` there would be an illegal forward reference to the later field by simple name. Writing `System.out.println(this.value)` can observe its default zero before the later initializer sets two. The eventual constructor value can still become seven or nine. Source ordering and the forward-reference restriction are separate rules; qualifying the access does not move initialization earlier.
+
+</details>
+
+<details>
+<summary>Will calling new Ticket() a third time rerun the static blocks?</summary>
+
+No, after successful initialization of that class, further instances reuse its class state while receiving their own instance state. Different defining class loaders can define distinct runtime classes with the same binary name; that advanced loader-identity question is separate from constructing more instances of this one class.
+
+</details>
+
+## Initialization references
+
+- [JLS static and instance initializers](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.6)
+- [JLS initialization order and default values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.5)

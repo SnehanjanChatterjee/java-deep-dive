@@ -2,7 +2,7 @@
 title: "Text encodings and strict decoding"
 module: "libraries"
 group: "Text and encodings"
-summary: "A byte count is not a character count"
+summary: "Distinguish code units, code points and encoded bytes, and preserve decoder state across split input."
 order: 690
 version: "Java 8+"
 prerequisites: ["libraries/io-nio-networking", "language/arrays-strings-unicode"]
@@ -45,6 +45,24 @@ A delimiter protocol must define whether a delimiter is a byte sequence or a dec
 The solution accepts complete UTF-8 and empty input, rejects a truncated multibyte sequence and a malformed continuation, and rejects null input. An empty byte array is valid empty text; it is not EOF by itself. EOF is reported by the underlying source and determines whether more bytes can still arrive.
 
 For strict text input, call decodeStrict once the declared complete payload is present. For unbounded text streams, use a Reader/decoder with a deliberate incremental protocol rather than reading all content just to get one complete byte array.
+
+## Carry decoder state across one-byte input chunks
+
+<JavaExample file="EncodingBoundaryLab.java" output={"units=2, points=1, bytes=4\nreconstructed=true\nsurrogate rejected"} />
+
+The supplementary symbol is one code point, represented by two UTF-16 units and four UTF-8 bytes. OneByteInput deliberately returns at most one byte per bulk read. InputStreamReader retains its decoder state across those reads, so the four byte fragments reconstruct the original text. Decoding each fragment independently would lose the multibyte sequence.
+
+The Reader is a character-stream API, not a code-point iterator. Reading into a one-char array can deliver the two surrogate units in separate calls. The StringBuilder gathers those units before code-point-level interpretation. A complete code point can still be part of a larger visible grapheme; neither a byte count nor String.length counts every visible character.
+
+### Choose strictness in both directions
+
+| Boundary | Convenient replacement behavior | Strict policy |
+| --- | --- | --- |
+| Bytes to text | new String(bytes, charset) | CharsetDecoder with REPORT |
+| Text to bytes | String.getBytes(charset) | CharsetEncoder with REPORT |
+| Stateful byte stream to text | Reader carrying decoder state | InputStreamReader supplied with the configured decoder |
+
+The unpaired high surrogate has no complete Unicode scalar value to encode, so the strict encoder rejects it. Replacement can be appropriate for best-effort display; it changes the data and should not silently become a protocol validation policy. Charset instances can be shared, but encoder/decoder instances carry operation state and need their own ownership.
 
 ## References
 

@@ -152,8 +152,30 @@ For a high-CPU incident, collect running samples and process/thread CPU evidence
 
 This minimal final-state example waits through join and inspects the remaining Thread object. It establishes termination, while the larger lab demonstrates actual stack/ownership investigation.
 
-<span id="references"></span>
 <span id="diagnostic-interview-practice"></span>
+## Read a thread dump as a dependency graph
+
+| Stack/state evidence | What it can indicate | What still needs establishing |
+| --- | --- | --- |
+| BLOCKED at monitor entry | Contention for an intrinsic monitor | Which thread holds that same monitor and why |
+| WAITING inside Object.wait | A predicate wait after releasing that object's monitor | Which state transition/notifier can make progress |
+| WAITING in a latch/park | A coordination wait | Its release path; unrelated held locks remain relevant |
+| RUNNABLE in calculation/native I/O | The VM's runnable category | Actual CPU use or native/I/O waiting using other evidence |
+| Multiple stable opposing lock dependencies | Potential deadlock cycle | A closed dependency cycle rather than merely long contention |
+
+Draw waiter → resource → owner for each blocked operation. In this lab, waiter → MONITOR → owner → release latch → main. Main's input releases that latch; there is no edge back to waiter. Changing the code so main waited for waiter before releasing would create a different dependency problem. Thread state alone does not encode every application-level ownership edge.
+
+JFR event thresholds, recording settings and sampling affect what appears. Collecting a recording is not the same as interpreting a particular event. Correlate the recording interval, workload phase, relevant stacks and operation latency before choosing a fix. A heap histogram similarly identifies classes/counts, not the path responsible for retaining them.
+
+<details>
+<summary>Why might many idle pool threads in WAITING be normal?</summary>
+
+Workers can wait for new tasks while idle. Determine whether work is queued, whether required workers are active, and what requests are waiting for. An idle worker waiting on its task queue is different from all workers waiting for child tasks queued behind them. Follow the queue and dependency graph instead of treating the number of WAITING threads as an error count.
+
+</details>
+
+<span id="references"></span>
+
 ## Diagnostic-tool references
 
 - [jcmd support and command impact](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jcmd.html)

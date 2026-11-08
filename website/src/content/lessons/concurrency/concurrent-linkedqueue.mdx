@@ -1,9 +1,9 @@
 ---
 title: "ConcurrentLinkedQueue: nonblocking FIFO endpoints"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Use immediate endpoint outcomes, then follow logical removal and helping in the linked representation."
-order: 970
+order: 905
 version: "Java 8+"
 prerequisites: ["concurrency/concurrent-collections"]
 advanced: true
@@ -25,6 +25,14 @@ It is unbounded and rejects null elements. There is no capacity constructor that
 The first poll reports current emptiness. Offering A/B establishes their FIFO order. Peek observes A without claiming/removing it; the following poll removes A. After adding C, the next polls return B then C. The last null describes this operation's observation, not permanent shutdown while producers may still insert.
 
 This sequential trace isolates endpoint contracts. Under competition, two consumers must use poll to claim an item; peek followed by another operation does not reserve it for the observer. Actions before insertion are published through the queue's documented access/removal relationship. Later mutable element updates need another policy.
+
+## A peek is not a reservation
+
+Start with queue [A]. Caller one peeks and sees A. Caller two polls and receives A. Caller one now polls and receives null. Nothing violated FIFO: peek never claimed the item, and the one successful removal already delivered it to caller two.
+
+For a multi-step application operation, use the value returned by the **claiming poll**, not a previously peeked reference. Even reference equality between two observations would not prove no intervening removal/reinsertion occurred. A null poll also cannot prove a producer has permanently ended; termination requires the application's producer/lifetime protocol.
+
+**Interview question:** can size followed by poll reserve a batch of exactly that many elements? No. Size can traverse concurrently changing membership, and other consumers can remove items between calls. Drain with repeated poll under a declared finite/open-stream policy, or choose a mechanism supplying the required stronger ownership. The absence of one blocking lock does not turn a sequence of endpoint calls into a transaction. [ConcurrentLinkedQueue endpoint and size contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentLinkedQueue.html)
 
 ## Trace logical removal before physical cleanup
 

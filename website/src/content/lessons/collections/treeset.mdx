@@ -2,7 +2,7 @@
 title: "TreeSet"
 module: "collections"
 group: "Sets"
-summary: "Define ordered uniqueness with comparator contracts, tree navigation and backed views."
+summary: "Predict comparison-based uniqueness, reversed navigation and backed range changes while separating set equality from comparator ties."
 order: 500
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/treemap", "collections/ordering", "collections/hashset"]
@@ -75,6 +75,14 @@ A sorted-set wrapper can delegate to an ordered map with a shared marker, but in
 ### Practice solution structure
 
 To retain users by age and stable ID, compare age first and ID second, using comparison helpers rather than subtraction. Write tests for equal age/different ID, same ID policy, extreme ages, neighbor queries, range endpoints and mutation attempts. Whether equal IDs with changed ages should coexist is a domain identity question that the comparator alone cannot resolve coherently without a declared model.
+
+## Predict navigation after reversing the view
+
+For the source set 10,20,30, descendingSet traverses 30,20,10. lower(20) in that order is 30, and higher(20) is 10. Lower does not universally mean a smaller numeric value; it means strictly lower under that view's comparator.
+
+A subset with explicit endpoint flags is a live membership window. Clearing the ascending subset [10,30) removes 10 and 20 from the original set, leaving 30. Inserting outside its bounds fails. Copying the view into an appropriate new TreeSet detaches the container, while the comparator/element ownership policy remains significant.
+
+NavigableViews in the TreeMap chapter gives a complete executable map-and-set comparison, including descending bounds and range mutation. For a real null member under a null-compatible comparator, an empty-result sentinel needs special care: a null result from pollFirst could mean an empty set or a removed null member. Choosing a null policy is part of the API design, not merely a constructor convenience.
 
 <span id="java-implementation"></span>
 ## Implement sorted membership over a search tree

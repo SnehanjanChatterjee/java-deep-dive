@@ -1,0 +1,95 @@
+---
+title: "Read legacy Vector and Stack APIs"
+module: "collections"
+group: "Queues and priority"
+summary: "Distinguish Vector capacity from setSize, trace Stack's five operations and recognize inherited APIs that weaken a strict stack abstraction."
+order: 515
+version: "Java 8+"
+prerequisites: ["collections/arraylist", "collections/arraydeque"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Understand an older API before replacing it
+
+Vector is a growable indexed sequence with legacy synchronized operations. Stack extends Vector and adds last-in-first-out operations. These classes still appear in existing programs, so reading their behavior is useful even when Deque is the better starting contract for a new stack.
+
+<JavaExample file="LegacyVectorStack.java" output={"vector size=3, index 1=B\nsetSize grows=[A, B, C, null, null]\nsetSize shrinks=[A, B]\nstack iteration=[A, B, C]\npeek=C, search B=2, indexOf B=1\nmissing search=-1\npop=C\npop=B\npop=A\nempty peek rejected"} />
+
+The Vector starts with capacity two and size zero. Adding A,B,C creates three logical positions and grows storage as needed. This initial step resembles ArrayList; it does not create null-filled positions merely because capacity was requested.
+
+## setSize changes membership, capacity does not
+
+Vector.setSize(5) is a logical resize: after A,B,C, the two added positions contain null. setSize(2) removes positions beyond index one, leaving A,B. copyInto transfers the current references into a supplied array large enough to hold them.
+
+| Operation | Logical size effect | Ownership/cost |
+| --- | --- | --- |
+| Vector(initialCapacity) | Starts empty | Requests storage |
+| ensureCapacity | No new elements | May copy backing storage |
+| setSize(larger) | Adds real null positions | Can grow storage |
+| setSize(smaller) | Removes suffix positions | Does not clone surviving elements |
+| copyInto / toArray | Leaves vector membership unchanged | Copies references into array storage |
+| trimToSize | Preserves membership | Changes storage policy |
+
+Vector also has older names such as elementAt/addElement beside List's get/add. Its capacityIncrement configuration can choose a fixed growth increment; repeated fixed-increment growth has a different aggregate copy bound from geometric growth. Do not infer ArrayList's amortized policy merely because both store references in arrays.
+
+## Trace the stack from its top
+
+After push(A), push(B), push(C), the top is C. The inherited list sequence prints A,B,C from bottom to top. The stack's five principal operations are:
+
+| Operation | Meaning | Boundary |
+| --- | --- | --- |
+| push(value) | Place a value on top and return that value | Duplicates/null permitted |
+| peek() | Return top without removing it | EmptyStackException when empty |
+| pop() | Remove and return top | EmptyStackException when empty |
+| empty() | Test zero membership | Equivalent purpose to isEmpty |
+| search(value) | One-based distance from top of the nearest equal value | −1 when absent |
+
+Searching B returns two, while inherited indexOf(B) returns one from the bottom's zero-based list coordinates. These are different coordinate systems. The program then pops C, B and A, followed by the specified empty peek failure. A null peek result would be an actual stored null; an empty legacy stack throws instead.
+
+<Diagram client:visible definition={"flowchart LR\n B[Bottom: A] --> M[B]\n M --> T[Top: C]\n T --> P[pop returns C]\n S[search B] --> D[Distance 2 from top]"} caption="Stack iteration/indexing follows its inherited List sequence; push/pop/search use the top end." />
+
+## Inherited methods expose more than a stack
+
+A Stack variable can also call indexed List insertion/removal inherited through Vector. Client code can therefore change the middle or bottom without obeying a strict push/pop interface. A Deque reference exposes a more suitable endpoint contract; composition can further restrict an API to the exact allowed operations.
+
+With ArrayDeque.push, the top is the first end and iteration visits top to bottom. Converting a legacy Stack to a deque must preserve the intended pop sequence, not blindly assume both iteration directions are identical. Null policy also changes: ArrayDeque rejects null.
+
+Java constructors are not inherited. Stack supplies a no-argument constructor; Vector's capacity constructors do not make `new Stack<String>(20)` legal. Inherited methods and fields are a different relationship from constructor availability.
+
+## Synchronization does not make a whole protocol atomic
+
+Vector's synchronized operations do not automatically combine several calls into one transaction. Another thread can intervene between empty() and pop() unless access follows a complete shared protocol. Legacy synchronization also does not make returned mutable elements safe.
+
+Vector.elements returns an Enumeration with hasMoreElements/nextElement. It supplies no Iterator.remove. Vector's enumeration is not fail-fast, and structural mutation during its traversal has undefined results. The precise iterator/enumeration contract matters more than a generic “thread-safe collection” label.
+
+## Worked migration questions
+
+<details>
+<summary>Can ArrayList.ensureCapacity replace Vector.setSize?</summary>
+
+No. ensureCapacity preserves logical size, while setSize can add null elements or truncate membership. Add or remove the actual positions required by the new contract; do not replace a membership operation with a storage hint.
+
+</details>
+
+<details>
+<summary>Why does Stack.search use one rather than zero for the top item?</summary>
+
+It defines a one-based distance from the top, not a List index. An absent result is −1. When translating to a deque algorithm, choose an explicit traversal/counting policy rather than substituting an unrelated list index.
+
+</details>
+
+<details>
+<summary>Is Stack deprecated, and does being legacy make its behavior optional?</summary>
+
+The class is a legacy API with a documented contract; it is not deprecated merely because Deque is preferred. Existing code still needs correct empty, null, equality and synchronization reasoning. Choose a new abstraction deliberately and test the preserved observable behavior.
+
+</details>
+
+## References
+
+- [Vector size, storage and enumeration contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Vector.html)
+- [Stack operations and recommended Deque alternative](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Stack.html)
+- [JLS constructor declarations and inheritance](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.8)

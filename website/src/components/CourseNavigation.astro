@@ -26,8 +26,8 @@ const activeModule = lessons.find(lesson => lesson.id === currentId)?.data.modul
         {groups.map(group=>{
           const showGroupLabel=groups.length>1&&group.lessons.length>1&&group.title!=='Topics';
           return <section class="course-topic-group-section" aria-label={showGroupLabel?group.title:undefined}>
-            {showGroupLabel&&<h3 class="course-topic-group">{group.title}</h3>}
-            {group.lessons.map(lesson=><a href={url('learn/'+lesson.id+'/')} data-course-topic={lesson.id} aria-current={lesson.id===currentId?'page':undefined}><span>{lesson.data.title}</span><CaretRight size={13} className="course-topic-link-icon" aria-hidden="true"/></a>)}
+            {showGroupLabel&&<h3 class="course-topic-group"><span>{group.title}</span><span class="course-group-count">{group.lessons.length} lessons</span></h3>}
+            {group.lessons.map(lesson=><a href={url('learn/'+lesson.id+'/')} data-course-topic={lesson.id} aria-current={lesson.id===currentId?'page':undefined}><span class="course-topic-link-label">{lesson.data.title}</span><CaretRight size={13} className="course-topic-link-icon" aria-hidden="true"/></a>)}
           </section>;
         })}
       </div>

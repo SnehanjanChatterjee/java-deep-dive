@@ -76,5 +76,41 @@
   {
     "class": "ForeignLayoutLesson",
     "expected": "0:4\n7\nclosed"
+  },
+  {
+    "class": "VirtualInvocationLesson",
+    "expected": "after virtual run: calls=0, state=NEW\nafter start/join: calls=1, virtual=true"
+  },
+  {
+    "class": "ScopedAccessLesson",
+    "expected": "unbound fallback=guest\nunbound get=NoSuchElementException\ninside bound=true\ninside fallback=null\nafter bound=false"
+  },
+  {
+    "class": "StructuredFirstSuccessLesson",
+    "expected": "fallback"
+  },
+  {
+    "class": "HttpPostLab",
+    "expected": "200:POST:hello\nheader=echo\nGET=405\noversize=413"
+  },
+  {
+    "class": "CollectionFactories",
+    "expected": "array=[changed, C]\nview=[changed, C]\nsnapshot=[A, B]\nfactory=[A, B]\nmutable element=x!\nfixed-size add rejected\nsnapshot set rejected\nfactory null rejected\nduplicate set rejected\ncopyOf duplicate count=1\nduplicate map key rejected\nimmutable entry permits null=true\nMap.entry null rejected"
+  },
+  {
+    "class": "OptionalOperations",
+    "expected": "secondary\nempty branch\nabsent=true\nstream sizes=1/0\nprimitive sum=7"
+  },
+  {
+    "class": "ModernStreamOperations",
+    "expected": "ofNullable=0\nfinite iterate=[1, 2, 3, 4, 5]\ntakeWhile=[1, 2]\nfilter=[1, 2, 3]\ndropWhile=[0, 3]\nmapMulti=[2, -2]\ntoList mutation rejected\ntoList retains null=null"
+  },
+  {
+    "class": "DownstreamCollectors",
+    "expected": "downstream filter={a=[ants], b=[]}\nupstream filter={a=[ants]}\ndownstream flatMap={a=[a, e, n, p, s, t], b=[b, e, o]}\ntee average=3.25\nempty average present=false\nunmodifiable collector mutation rejected"
+  },
+  {
+    "class": "BuiltInGatherers",
+    "expected": "scan=[1, 3, 6]\nfold=[6]\nfixed=[[1, 2], [3]]\nsliding=[[1, 2], [2, 3]]\nshort sliding=[[1]]\nempty windows=[]\nmapConcurrent=[v1, v2, v3]"
   }
 ]

@@ -13,9 +13,14 @@ public final class FunctionalInterfacesLab {
     /** Invokes each implementation through the same interface method. */
     public static void main(final String[] args) {
         final TextRule named = new ThreeLetters();
+        final TextRule anonymous = new TextRule() {
+            /** Implements the same interface through an anonymous class. */
+            @Override public boolean accepts(final String text) { return text.length() == 3; }
+        };
         final TextRule explicit = (String text) -> { return text.length() == 3; };
         final TextRule concise = text -> text.length() == 3;
         System.out.println(named.accepts("cat"));
+        System.out.println(anonymous.accepts("cat"));
         System.out.println(explicit.accepts("dog"));
         System.out.println(concise.rejects("Java"));
     }

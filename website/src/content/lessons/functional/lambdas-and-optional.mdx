@@ -2,7 +2,7 @@
 title: "Lambdas and functional interfaces"
 module: "functional"
 group: "Lambdas and functional interfaces"
-summary: "Pass a behavior to another operation"
+summary: "Derive named, anonymous and lambda implementations from a functional method, then reason about syntax, target typing, capture and callback contracts."
 order: 550
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "generics/bounds-wildcards-erasure", "collections/ordering"]
@@ -20,13 +20,21 @@ A method can receive data such as a String. It can also receive an object whose 
 <span id="worked-example" aria-hidden="true"></span>
 ## Derive the lambda from its interface method
 
-<JavaExample file="FunctionalInterfacesLab.java" output={"true\ntrue\ntrue"} />
+<JavaExample file="FunctionalInterfacesLab.java" output={"true\ntrue\ntrue\ntrue"} />
 
 TextRule declares `boolean accepts(String text)`. The named ThreeLetters implementation overrides that method. A variable of type TextRule invokes it with `named.accepts("cat")`; the result is true. A lambda supplies the same method implementation without declaring another named class.
 
 Derive it in three steps. The target type is TextRule. Its abstract method accepts one String and returns boolean. Copy those parameters and write the body after the arrow: `(String text) -> { return text.length() == 3; }`. The compiler already knows the parameter type, so it can be omitted. A single returned expression can omit braces and return: `text -> text.length() == 3`.
 
 A lambda is still invoked through its interface method, here accepts. It is not called with a new universal function-call operator. rejects is a default method implemented by the interface; it delegates to accepts and does not create a second abstract requirement. The final output is true because Java has four UTF-16 code units. The example intentionally measures String.length, not human-perceived characters.
+
+## Compare a named class, an anonymous class and a lambda
+
+The complete source's second implementation is an anonymous TextRule class. It declares an override of accepts in a class body without introducing a separate source-level class name. Its first three output lines show the named, anonymous and explicit-lambda implementations accepting three-unit text. The final concise lambda rejects four-unit Java through its inherited default rejects operation.
+
+These mechanisms can implement the same interface but are not universally interchangeable. An anonymous class can declare additional fields/methods and has its own this. A lambda supplies the functional method's behavior and uses the enclosing this. An abstract class with one abstract method is still not a lambda target: the language requires an appropriate functional interface.
+
+<Diagram client:visible definition={"flowchart TD\n I[TextRule.accepts String to boolean] --> N[Named ThreeLetters implementation]\n I --> A[Anonymous TextRule implementation]\n I --> L[Lambda expression]\n N --> C[Call accepts through TextRule]\n A --> C\n L --> C"} caption="One interface invocation contract can have several implementation forms; their scope and identity semantics are not identical." />
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 ## Read the parameter and result shapes
@@ -45,6 +53,22 @@ A lambda is still invoked through its interface method, here accepts. It is not 
 
 The target interface supplies the type. A bare lambda does not declare a standalone nominal function type, and an ambiguous overload can need an explicit target or cast. @FunctionalInterface asks the compiler to check the interface's intent; it is not required to enable lambdas. Inherited override-equivalent declarations can form one abstract contract, while public Object methods, static/default/private methods do not add an abstract requirement.
 
+## Check syntax against the target method
+
+| Form | Valid purpose |
+| --- | --- |
+| `() -> 7` | No-argument value production |
+| `value -> value.length()` | One inferred parameter and an expression result |
+| `(left,right) -> left + right` | Two parameters; parentheses required |
+| `(String value) -> { return value.length(); }` | Explicitly typed parameter and returning block |
+| `value -> System.out.println(value)` | Void action through a compatible Consumer |
+
+An expression-bodied method invocation returning a value can sometimes be adapted to a void action by discarding its result. For example, a List.add invocation returns boolean but can supply a Consumer action. This can make overloads accepting different functional shapes ambiguous; an explicit target variable or appropriately typed block clarifies the intended contract.
+
+Do not mix explicitly typed and inferred parameter declarations in one lambda. Java 11 adds var parameter syntax, with its own consistent-parameter requirements; that is different from Java 10 var local variables. A block with a value result must satisfy its return-path/type rules. Statements such as loops require a block rather than pretending every body is one expression.
+
+The Object target alone does not identify a functional method. Casting a lambda to a specific functional interface supplies a target; it does not create a universal function type. Return/input conversion must fit that interface, including boxing and primitive specialization.
+
 ## Capture a value from the enclosing method
 
 ```java
@@ -56,6 +80,14 @@ System.out.println(longEnough.test("Java")); // true
 minimum is a captured local value. It must be final or effectively final: a local assigned once without the final keyword is also eligible. Reassigning it after capture is rejected. A captured final List reference can still point to a mutable list; local reassignment and referent mutation are different operations.
 
 Lambda this means the enclosing receiver. An anonymous class has its own this. Capturing a receiver can retain its object graph if a callback is stored in a long-lived listener collection. Fields are not subject to the same local-capture rule; shared mutable state still needs an appropriate access protocol.
+
+## Distinguish binding a local value from sharing mutable state
+
+Effectively final concerns assignments to the local variable, not merely statements after the lambda was written. Reassigning an initialized local before later capture can also make it ineligible. Branch assignments can still satisfy the language's definite-assignment/effectively-final rules; the compiler checks the whole relationship.
+
+A lambda retaining a final List reference can observe later changes to that same List object. It does not receive an automatic snapshot. A field read can also observe different state on a later invocation. When callbacks cross thread/lifetime boundaries, those aliases need an explicit ownership/publication protocol.
+
+A mutable one-cell counter can demonstrate capture, but is not a general solution to parallel aggregation. Prefer returned values, lawful collectors or an intentionally coordinated state abstraction for real concurrent work.
 
 ## Respect the callback's invocation contract
 

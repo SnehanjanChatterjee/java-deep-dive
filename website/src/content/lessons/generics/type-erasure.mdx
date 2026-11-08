@@ -2,7 +2,7 @@
 title: "Erasure, bridges and heap pollution"
 module: "generics"
 group: "Runtime representation"
-summary: "Inspect erased signatures and bridge methods, then trace how raw types can move failures to runtime."
+summary: "Inspect bridges and erased descriptors, then reproduce raw/varargs failures and the precise limits of checked runtime wrappers."
 order: 360
 version: "Java 8+"
 prerequisites: ["generics/bounds-wildcards-erasure", "objects/array-ownership"]
@@ -39,6 +39,30 @@ A raw List omits its type argument and permits legacy operations that bypass gen
 
 A teaching container backed by Object[] can justify a read cast when every write follows its T API. Raw aliases or an escaping array invalidate that argument. Arrays themselves are reified, so `new List<String>[10]` cannot safely enforce its promised generic component at runtime.
 
+## Locate the unsafe write and the later failure
+
+<JavaExample file="GenericFailureLab.java" output={"raw write: later read rejected\nvarargs alias: later read rejected\nchecked view: write rejected\nbacking alias: later read rejected"} />
+
+rawRead creates one ArrayList&lt;String&gt;, then aliases it as raw List. The raw add accepts Integer with an unchecked operation. The failure occurs later when the compiler-inserted String cast is applied to typed.get(0). The list still contains the integer reference; erasure did not dynamically enforce String at the raw write.
+
+checkedWrite instead passes the write through Collections.checkedList(backing,String.class). That wrapper checks the runtime class at its insertion boundary and rejects the Integer before storage. bypassRead retains another alias to the raw backing list; writing through that alias bypasses the wrapper and produces the later read failure again.
+
+A checked wrapper does not inspect every preexisting element when constructed, does not freeze mutable values, and cannot validate arbitrary nested generic arguments from only List.class. Runtime class tokens and full generic relationships are different information.
+
+The unsafe methods' narrow suppressions are part of this deliberately failing laboratory, not a recommendation to hide warnings in ordinary code. Removing them and compiling with -Xlint:unchecked exposes where evidence was discarded. A suppression changes diagnostics, not runtime behavior.
+
+## Read the bridge descriptor
+
+For Mapper&lt;T&gt;, the erased method accepts/returns Object. StringMapper's handwritten String-to-String method does not by itself have that descriptor. Its generated bridge accepts Object, casts to String, invokes the concrete method and returns the result as Object.
+
+| Caller input | Bridge action | Handwritten body reached? |
+| --- | --- | --- |
+| Valid String through Mapper&lt;String&gt; | Cast succeeds, delegate | Yes |
+| Incompatible object through a raw Mapper | Cast fails | No |
+| Null, if allowed by target body | Reference cast accepts null | Target policy decides later behavior |
+
+Bridge generation preserves overriding under erased dispatch. It does not create a new specialized runtime class for each argument. The same defining-loader declaration supplies the ordinary GenericBox runtime class across its parameterizations; other loaders and reflection declaration signatures are separate questions.
+
 ## Generic varargs combine two representation models
 
 A varargs parameter is an array, but a generic element parameterization is erased. Aliasing that array as Object[] can allow an incompatible parameterization and pollute the heap. @SafeVarargs asserts an implementation has been reviewed for safe operations and exposure; it adds no runtime element checking. Do not apply it merely to quiet warnings.
@@ -46,6 +70,27 @@ A varargs parameter is an array, but a generic element parameterization is erase
 <JavaExample file="CoreArrayOwnershipLab.java" output={"9\nfalse\ntrue\n1\ncomponent rejected"} />
 
 The first outputs revisit shallow array ownership. The fourth is 1 because Arrays.asList(new int[]`{1,2,3}`) treats one int[] object as its single generic T argument; it does not box each primitive component into an Integer list. The last output revisits String[]'s runtime store check, illustrating why generic and array type enforcement differ.
+
+## Explain why an array-store check cannot catch every generic mismatch
+
+polluted receives a List&lt;String&gt;[]-shaped varargs array whose runtime component class is List. Its Object[] alias stores a List&lt;Integer&gt;; the array can check that the value is a List, but cannot enforce its erased String argument. The later typed read inserts a String cast and fails. This is heap pollution, not proof that the JVM ignores array component classes.
+
+@SafeVarargs would be false for that implementation. It must not be added merely because the source compiles. In Java 8 the annotation is available on eligible static/final methods and constructors; Java 9 also permits private instance methods. It asserts reviewed safety of the varargs use and exposure, rather than adding per-element runtime validation.
+
+A List&lt;List&lt;String&gt;> API can preserve nested write checking without exposing a generic array. A reifiable List&lt;?&gt;[] is also a different type from List&lt;String&gt;[]: it says each row has an unknown argument and does not promise String elements. Neither a cast nor a raw alias can manufacture that missing guarantee.
+
+## Rejected declarations and safe alternatives
+
+| Attempt | Why it fails or needs unchecked evidence | Alternative |
+| --- | --- | --- |
+| new T() | No runtime constructor contract for the type variable | Supply a value or an explicit creation strategy |
+| new T[n] | Erased T is not a reified component class | Use a container or a correctly typed array factory |
+| new List&lt;String&gt;[n] | Runtime array class cannot enforce String arguments | List&lt;List&lt;String&gt;> or a correctly constrained reifiable view |
+| overload on List&lt;String&gt; versus List&lt;Integer&gt; alone | Both erase to the same parameter descriptor | Different operation names or a genuinely different signature |
+| Object instanceof List&lt;String&gt; | Cannot verify arbitrary element arguments | List&lt;?&gt; plus explicit element checks when the boundary requires them |
+| Raw List as an “any list” API | Discards checks for legacy compatibility | List&lt;?&gt; when the element type is genuinely unknown |
+
+Compiler-inserted casts, boxing and concrete data-structure work can still cost time/storage. Erasure avoids a separate specialized class per argument; it is not a universal promise that generic programs have no runtime costs.
 
 ## Practice: distinguish a raw type from a wildcard
 

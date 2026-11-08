@@ -5,7 +5,7 @@ group: "Arrays and strings"
 summary: "Distinguish UTF-16 units, Unicode code points, encoded bytes and visible text boundaries."
 order: 100
 version: "Java 8+"
-prerequisites: ["language/strings"]
+prerequisites: ["language/strings", "language/string-operations"]
 advanced: false
 ---
 
@@ -89,6 +89,20 @@ The declared code-point policy permits it: codePointCount is two. A visible-char
 <span id="implement-code-point-string-algorithms" aria-hidden="true"></span>
 
 Array covariance and nested copying build on the later reference model. Sorted-array search builds on ordinary traversal; code-point map algorithms follow the ordered-map chapter.
+
+
+## Compare char traversal with code-point traversal
+
+An indexed charAt loop and a toCharArray loop visit UTF-16 code units. For `"A\uD83D\uDE00B"`, the length is four: A, the high surrogate, the low surrogate and B. The code-point loop visits three points and advances by one, two and one code units. Casting the emoji's full int code point to char discards information; char cannot represent every Unicode point by itself.
+
+String.chars also exposes code units, while codePoints combines valid surrogate pairs into int values. Streams are taught later; choosing a stream does not by itself choose the correct text unit. StringTokenizer splits tokens, not characters, and split with a regex is not a substitute for declaring Unicode boundaries. A simple offset loop is sufficient for this chapter.
+
+<details>
+<summary>The third code point starts at which UTF-16 index in A😀B?</summary>
+
+Index three. A occupies index zero and the supplementary point occupies indexes one and two. `text.offsetByCodePoints(0, 2)` computes that offset without assuming every code point has width one. A code-point count is not automatically a usable substring offset. Combining accents and joined emoji can still contain several code points per user-perceived character, so neither count alone implements cursor movement for every text editor.
+
+</details>
 
 <span id="references" aria-hidden="true"></span>
 <span id="array-and-text-references" aria-hidden="true"></span>

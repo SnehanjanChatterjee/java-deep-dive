@@ -78,6 +78,21 @@ Output is 2, 4, 6 on separate lines. The continue skips printing odd numbers, bu
 
 </details>
 
+## Dry-run nested break and continue targets
+
+<JavaExample file="LoopControlLesson.java" output={"1:1\n1:3\n2:1\nafter loops"} />
+
+For row one, column one prints. Column two executes continue, which skips the print and performs the inner for update. Column three prints. Column four executes the unlabelled break, exiting only the inner loop; the outer loop proceeds to row two. That row prints column one and skips column two. At row two/column three, `break rows` leaves the labeled outer loop, so row three never begins. The statement after both loops still runs.
+
+A label names a statement; it does not create another thread or make a jump to arbitrary source text. Use it sparingly when the exit target would otherwise be unclear. In a while loop, a continue before an update can prevent progress. When debugging a loop, trace the condition and next update on **every** path, not only the path that printed output.
+
+<details>
+<summary>Why is an accidental semicolon after for(...) particularly misleading?</summary>
+
+It supplies an empty loop body. A following brace block is then a separate statement executed after that empty loop finishes. The source may compile while performing none of the intended repeated work. Braces and indentation help readers, but the language follows actual statements rather than indentation.
+
+</details>
+
 ## Control-flow references
 
 - [Dev.java: branching and loops](https://dev.java/learn/language/constructs/basics/controlling-flow/)

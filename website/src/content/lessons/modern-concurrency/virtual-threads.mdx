@@ -38,6 +38,14 @@ A virtual thread is a real Thread with lifecycle and interruption status; it is 
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
+## Use start rather than invoking a virtual Thread's run
+
+<JavaExample file="modern/VirtualInvocationLesson.java" output={"after virtual run: calls=0, state=NEW\nafter start/join: calls=1, virtual=true"} />
+
+The original first-thread example constructed a **platform** Thread with a Runnable. Its direct run call invoked the task on the caller. The virtual Thread API explicitly differs: invoking a virtual Thread object's run directly does nothing. In both cases direct run is not a way to start that Thread lifetime.
+
+This program constructs an unstarted virtual Thread, makes the direct call, observes zero task invocations and NEW, then starts and joins it. The task runs once through the started virtual execution. If the application simply wants an ordinary direct call, invoke the Runnable's own run method instead. [Java 21 Thread.run contract](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Thread.html#run())
+
 ## Trace a blocking task on carrier threads
 
 A platform thread is generally tied to an operating-system thread. The runtime schedules a virtual thread onto a carrier platform thread while it runs. During supported blocking operations, it can unmount, leaving the carrier available to execute another virtual thread. When the operation becomes ready, the task becomes runnable and can later mount on an available carrier.
@@ -76,6 +84,14 @@ Do not pool virtual threads to mimic a connection limit. Create one virtual thre
 <JavaExample file="ResourceBound.java" output={"1\n2"} />
 
 <span id="pinning-guidance-must-name-the-jdk"></span>
+## The task Thread is distinct from its current carrier
+
+Inside the virtual task, Thread.currentThread identifies that virtual Thread, rather than exposing whichever carrier currently executes it. The carrier can change across supported suspension/resumption while the task retains its Thread identity and call stack. Its ThreadLocal associations likewise belong to the virtual task Thread, not a borrowed carrier's task context.
+
+For a semaphore limit of two, a third virtual task can wait for admission without creating a third resource slot. It still occupies an application task lifetime and retains its reachable request state. Adding inexpensive waiting Threads therefore changes the cost of waiting, but does not answer how many requests the application should accept or how long they may remain useful.
+
+**Selection exercise:** a long CPU loop remains competing execution work; a suitable blocking service call can release the carrier while waiting. Neither case makes a downstream service unlimited. Select deadlines/admission around that service independently of whether its callers use virtual Threads. [JEP 444 scheduling and resource guidance](https://openjdk.org/jeps/444)
+
 ## Pinning and diagnostic guidance must name the runtime
 
 Blocking while holding a synchronized monitor could pin a carrier on Java 21–23. Java 24 changed monitor handling to remove that common cause. On the selected modern runtime, native/foreign interactions and other constraints can still matter. Read the actual target JDK's guidance and diagnostics before applying migration advice.

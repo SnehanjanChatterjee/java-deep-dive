@@ -42,6 +42,19 @@ They return 3 and 0. Assignment copies the reference; it does not copy the objec
 
 </details>
 
+## Trace a receiver instead of reading the class like a script
+
+The class body declares members; Java does not execute every method simply because it appears in the file. The launcher calls main, and main's statements create objects and call selected methods. Inside awardPoint, `points++` means `this.points++`: the call supplies the receiver. One method declaration can therefore operate on many independent cards without duplicating the method's source for each object.
+
+Use this three-step trace when predicting state: identify the object created by each new expression, connect reference assignments to those objects, then apply each instance call to its receiver. A null reference identifies no object; calling `missing.awardPoint()` fails before that instance method can operate on a card. A local variable named points would shadow the field, so use this.points when both names occur.
+
+<details>
+<summary>Does declaring ScoreCard third create a third card? Does calling points() award one?</summary>
+
+Neither. A declaration introduces a variable; it must later receive a reference before a read. A read operation returns the current stored number; only awardPoint mutates that number in this class. Separating queries from state changes makes both the API and its trace easier to reason about. The example's card intentionally uses ordinary int increment; a domain counter that must reject overflow needs an explicit policy, as the next constructor lesson supplies.
+
+</details>
+
 ## Class references
 
 - [Dev.java: declaring classes and fields](https://dev.java/learn/language/oop/classes-objects/creating-classes/)

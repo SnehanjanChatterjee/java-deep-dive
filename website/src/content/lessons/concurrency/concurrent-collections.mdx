@@ -1,9 +1,9 @@
 ---
 title: "Choosing concurrent collections by operation"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Match an actual shared operation to atomicity, iteration, ordering and capacity contracts."
-order: 930
+order: 880
 version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation", "collections/choosing-collections"]
 advanced: true
@@ -69,6 +69,24 @@ This code is a teaching queue, not an implementation of ConcurrentLinkedQueue or
 | Synchronized wrapper | Documented mutex protocol | Caller must coordinate complete traversal where required |
 
 The loose phrase fail-safe hides important differences. A snapshot array still points to the same mutable elements. A weakly consistent view can reflect some updates without representing one historical map.
+
+## Hold a synchronized wrapper's mutex for a traversal
+
+Collections.synchronizedMap protects individual operations through its wrapper mutex. Iterating is a sequence of operations, so its documented traversal protocol requires synchronizing on the **returned map wrapper** across the whole traversal:
+
+```java
+final Map<String, Integer> counts = Collections.synchronizedMap(new HashMap<>());
+counts.put("java", 2);
+synchronized (counts) {
+    for (final Map.Entry<String, Integer> entry : counts.entrySet()) {
+        System.out.println(entry.getKey() + "=" + entry.getValue());
+    }
+}
+```
+
+This excerpt assumes the displayed Map, Collections and HashMap imports; it illustrates the mutex protocol rather than launching competing tasks. Keep the original backing map private so another caller cannot bypass the wrapper. Synchronizing only on entrySet, an iterator or a separately created Object does not acquire the wrapper's specified mutex.
+
+The same common lock can cover a compound read/check/update when all participants follow it. Copying a live HashMap into a new HashMap without coordination does not make that traversal safe. Choose a documented concurrent traversal or obtain the required stable observation under its actual guard. [Collections synchronizedMap traversal contract](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html#synchronizedMap-java.util.Map-)
 
 ## Do not compose guarantees that were never promised
 

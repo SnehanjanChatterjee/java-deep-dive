@@ -64,6 +64,22 @@ One is multiplication's identity and gives the required zero-factorial result wh
 
 </details>
 
+## Return from one invocation and resume its caller
+
+<JavaExample file="MethodFlowLesson.java" output={"1\ncaller continues"} />
+
+The caller invokes printPositive for -1, zero and one. On the first two calls, the guard returns from that helper without printing. It does not return from main or end main's loop. The third call prints one; after all calls, main prints its continuation. A return value belongs to a call, and the place execution resumes belongs to its caller.
+
+Parameter names document roles but do not distinguish overload signatures. A non-void method whose if branches can both finish without a return is rejected; printing a value in a branch does not satisfy a return obligation. A recursive method also needs both a reachable stopping case and progress toward it. Merely adding `if (n == 0)` cannot save a recursive branch that calls itself again with unchanged n.
+
+## Solved coding exercise: detect a prime without overflowing the bound
+
+<JavaExample file="PrimeTrialDivisionLesson.java" output={"false\ntrue\nfalse\ntrue"} />
+
+IsPrime first rejects values below two; one is not prime. For each divisor from two, it returns false if remainder is zero. A composite number has a factor no larger than its square root, so testing all smaller possible divisors is sufficient. `divisor <= number / divisor` expresses that boundary for a positive number without evaluating an overflowing int square. Divisor is never zero.
+
+For 49, divisors two through six leave a nonzero remainder; seven divides exactly and returns false. For 97, divisors two through nine fail and the next bound fails, so true is returned. The invariant is that no previously tested divisor divides number. Worst-case work is O(sqrt(n)) trial divisions with constant working storage. The test includes Integer.MAX_VALUE to exercise the bound that a naive `divisor * divisor <= number` can break. This is a teaching primality test for int input, not a cryptographic primality algorithm.
+
 ## Method references for further reading
 
 - [Dev.java: defining methods](https://dev.java/learn/language/oop/classes-objects/defining-methods/)

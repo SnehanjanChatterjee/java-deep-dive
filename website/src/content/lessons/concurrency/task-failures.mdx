@@ -1,9 +1,9 @@
 ---
 title: "Submitted task failures and result ownership"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Executors and futures"
 summary: "Observe a task failure through its Future and keep completion signals distinct from successful results."
-order: 870
+order: 845
 version: "Java 8+"
 prerequisites: ["concurrency/executors-futures", "concurrency/semaphore"]
 advanced: true
@@ -29,6 +29,19 @@ The `throw new IllegalStateException` after get is a guard: if the supposedly fa
 An uncaught exception from a Runnable passed directly to execute can reach the worker's uncaught-exception handler. Submit normally uses a FutureTask wrapper that catches the task's failure and records it for get. Ignoring that handle can make a failed task look quiet. Replacing submit with execute changes the observation channel; it is not a generic repair for missing error handling.
 
 A worker's termination, a latch reaching zero, and a successful computation are different facts. CountDown in finally can signal failure as well as success. A caller must validate results before combining them.
+
+## Distinguish rejection from failure inside accepted work
+
+| Point | What can fail | Who observes it |
+| --- | --- | --- |
+| Submission | Rejection before normal acceptance | Submitting caller, according to the executor's policy |
+| Callable or Future-wrapped Runnable body | Computation throws | Future.get reports ExecutionException with its cause |
+| Plain execute Runnable body | Uncaught task failure escapes that execution | Caller if invoked inline; otherwise the facility's hooks/worker uncaught policy |
+| Owner waiting in get | Owner is interrupted | That waiting caller receives InterruptedException |
+
+A successful submit return establishes a handle, not a successful computation. A task's InterruptedException captured as an ExecutionException cause is also distinct from interruption of the caller doing get. Preserve that cause so the owner can decide what failed.
+
+A submitted task's failure is normally captured by its Future wrapper, so an uncaught-exception handler alone is not a complete failure-observation strategy. Keeping every Future but never retrieving or otherwise observing its failure is another form of losing errors. For several independent tasks, define whether to inspect all outcomes, cancel remaining work after a selected failure, or collect partial results. A latch countdown supplies none of these domain policies. [Future outcome contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html)
 
 ## Combine admission, completion and failure deliberately
 

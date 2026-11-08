@@ -1,8 +1,8 @@
 ---
 title: "Method references and function composition"
 module: "functional"
-group: "Composition and absence"
-summary: "Name an existing implementation"
+group: "Functions and method references"
+summary: "Resolve static, bound, unbound, constructor and super references, observing receiver timing, this scope and comparator composition."
 order: 560
 version: "Java 8+"
 prerequisites: ["functional/lambdas-and-optional"]
@@ -28,24 +28,37 @@ When a lambda only calls an existing method, a method reference can name that me
 
 The reference does not invoke the target body just by being declared. Calling apply/get does. A bound receiver is evaluated when the reference is created: a null receiver fails then. `() -> receiver.work()` defers that dereference until invocation. Constructor references can target different overloads depending on their functional signature.
 
+## Observe receiver evaluation, virtual dispatch and super
+
+<JavaExample file="CallbackTiming.java" output={"bound reference: creation failed\nlambda created\nlambda: invocation failed\nchild/base\nthis=enclosing/anonymous"} />
+
+missing::trim evaluates a null receiver while creating the reference, so the first failure occurs before a callback object can be used. The lambda () -> missing.trim() can be created; its dereference happens only when get is called. “Method reference is a shorter lambda” describes a useful invocation shape, not permission to ignore evaluation timing.
+
+The parent-typed receiver actually refers to Child. An ordinary bound virtual reference still reaches the child's override. Child's super::greet deliberately selects its superclass body instead, producing child/base. A bound receiver is not the same as freezing every later field value inside that object.
+
+The final Scope experiment returns enclosing from lambda this and anonymous from the anonymous implementation's own this. Identical-looking member names can therefore resolve to different receivers. Captured context can also keep an enclosing object reachable while a stored callback remains live.
+
+## Read additional arguments from the target type
+
+`String::substring` can target `BiFunction<String,Integer,String>` as `(text,start) -> text.substring(start)`: the first functional argument supplies the receiver, the second the method's index. With a bound text::substring, a two-index target can instead supply only the begin/end indexes.
+
+Constructor references also use target shape. `Supplier<List<String>>` with ArrayList&lt;String&gt;::new selects the no-argument constructor; `IntFunction<List<String>>` with that same constructor spelling selects the capacity constructor. A requested capacity still does not create list positions. `String[]::new` accepts a length and produces that runtime array component type.
+
 ## Compose transformations in a declared order
 
 trim produces a String; length consumes a String and produces Integer. trim.andThen(length) therefore computes length(trim(input)). Function.compose reverses that relationship: f.compose(g) computes f(g(input)). The intermediate output/input types must fit.
 
 For " java ", trim yields "java", then length yields 4. Reversing these particular functions would not type-check: length returns Integer, while trim needs String. Composition is a typed data flow, not a request to call arbitrary functions in either order.
 
-Predicate.and/or short-circuit. nonempty.and(shortText) invokes shortText only when nonempty returned true; or invokes the second only when the first returned false. That can avoid invalid accesses, but side effects/exceptions also make the order observable. Reordering filters is valid only when their contracts permit it.
+These are the same composition contracts used with explicitly written lambdas. The method-reference spelling selects an implementation; it does not add purity, memoization, exception recovery or a different effect order. The preceding predicate/function chapter supplies complete short-circuit and consumer-order experiments.
 
-Consumer.andThen sequences side effects; if the first action throws, the next is not performed. Supplier alone does not cache anything. Memoization would require explicit storage and failure/concurrency policy.
+## Reverse one comparator key or the whole policy
 
-## Express the previously named comparator
+<JavaExample file="ComparatorComposition.java" output={"ascending=[B:10, C:10, A:20]\nboth keys reversed=[A:20, C:10, B:10]\npoints only reversed=[A:20, B:10, C:10]"} />
 
-```java
-final Comparator<CollectionOrdering.Score> order =
-        new CollectionOrdering.ByPointsThenId();
-```
+CollectionOrdering.Score exposes immutable id and points accessors. `comparingInt(Score::points).thenComparing(Score::id)` produces B:10,C:10,A:20. Reversing that whole comparator reverses both keys: A:20,C:10,B:10. Reversing only comparingInt before adding thenComparing produces A:20,B:10,C:10, with ascending IDs inside point ties.
 
-This named object remains a valid functional implementation. For an accessible value type with point/id accessors, Comparator.comparingInt(value -> value.points()).thenComparing(value -> value.id()) constructs the same kind of two-stage policy. A method reference can shorten a pure accessor lambda. The comparison relation, tie policy and equality obligations do not change because its spelling becomes shorter.
+The composition order is the comparison contract. Shorter syntax does not repair inconsistent equality, arithmetic overflow in a handwritten subtraction comparator, or mutable ordering state. Compile this example with the preceding CollectionOrdering source; the data model is shared explicitly rather than copied into unrelated versions.
 
 ## Worked exercise: expand an unbound reference
 

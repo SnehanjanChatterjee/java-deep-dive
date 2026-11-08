@@ -2,7 +2,7 @@
 title: "Collection contracts and implementation choices"
 module: "collections"
 group: "Collection foundations"
-summary: "Store a changing group of values"
+summary: "Choose an interface by ordering, uniqueness, lookup and mutation requirements before comparing its storage implementations."
 order: 380
 version: "Java 8+"
 prerequisites: ["generics/bounds-wildcards-erasure","collections/algorithm-complexity"]
@@ -11,6 +11,7 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts"></span>
 ## Store a changing group of values
@@ -36,6 +37,12 @@ System.out.println(names);             // [Ada, Mira]
 ```
 
 This fragment needs imports for java.util.List and java.util.ArrayList inside a class/method. Positions start at zero. A repeated value is a separate position in a list. contains and remove(Object) use value equality; they do not mean “the exact same allocated object.” The dedicated ArrayList chapter supplies a complete runnable file and explains indexed removal separately.
+
+## Interpret a method result before reading printed output
+
+put on a map, add on a set and add on a list have different result meanings. A Set.add returning false means the value was already a member; it is not a generic insertion error. A List.add normally adds another position even if an equal value already exists. A Map.put can return an old value without changing cardinality.
+
+A Queue also needs a declared removal policy. FIFO is common, but PriorityQueue selects by priority and a stack selects the last pushed value. Neither a Queue variable nor a printed element order proves FIFO. The <a href={lessonUrl('learn/collections/collection-operations/')}>shared-operation chapter</a> follows addAll, containsAll, removeAll, retainAll and toArray with concrete states.
 
 ## Follow the interface hierarchy
 

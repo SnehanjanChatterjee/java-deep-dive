@@ -45,6 +45,33 @@ Without the input copy, the original caller can mutate the stored route after co
 
 </details>
 
+## Prove stability from every available mutation path
+
+List the constructor inputs, stored fields, exposed accessors, subclass hooks and mutable collaborators. The route closes its input path by copying, its output path by copying, and its subclass path by being final. The primitive elements need no further object copy. A route containing mutable Stop objects would need a per-Stop policy as well; marking only the array field final would leave those objects writable.
+
+Final is one way to control subclass behavior, not a logical prerequisite for every immutable design. A non-final type can carefully restrict construction and overridable observations, but the proof becomes harder because subclasses can expose changing state or alter equality. Prefer the simpler final value class when extension is not a requirement. Do not claim final universally provides a performance gain or turns a referenced graph immutable.
+
+<details>
+<summary>Is returning a fresh copy wasteful if the caller only reads it?</summary>
+
+It has an O(n) cost, but is required by this array-returning API's ownership promise. Changing the API to indexed read operations can avoid exposing a mutable array and avoid copying on every read; it also changes client ergonomics. Choose deliberately rather than deleting a defensive copy while keeping the same stability claim. Equality and hash computation also have costs, even for an immutable value.
+
+</details>
+
+## Keep one shared instance only when the domain needs one
+
+A singleton-style API restricts ordinary construction and returns a class-wide shared instance. It solves an identity/ownership requirement, not immutability by itself. The eager form uses concepts already taught: a private constructor, a private static final field and a public static accessor. This source excerpt comes from ObjectOperationsLesson, whose full copy/clone demonstration appears after exceptions:
+
+```java
+private static final ObjectOperationsLesson INSTANCE = new ObjectOperationsLesson();
+private ObjectOperationsLesson() { }
+public static ObjectOperationsLesson instance() { return INSTANCE; }
+```
+
+Class initialization establishes INSTANCE before the ordinary instance accessor use. Calls return copies of the same reference; the matching runnable demonstration compares two results as true. The class is final, so ordinary subclassing cannot introduce another construction path. The claim is about this runtime class and its ordinary API, not one universal object across separate JVM processes or distinct defining class loaders.
+
+If the shared instance exposes mutable state, that state needs the same invariants and concurrency policy as any other shared object. Do not replace dependencies with global singletons solely to avoid constructor parameters: tests and clients may need independently configured instances. Lazy initialization, concurrent publication, reflection and serialization boundaries require additional contracts; eager construction here avoids introducing unlearned double-checked locking as an introductory pattern.
+
 ## Ownership references
 
 - [JLS: final fields and variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.4)

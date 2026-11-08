@@ -1,9 +1,9 @@
 ---
 title: "ConcurrentSkipListMap: ordered concurrent navigation"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Use neighbors, backed ranges and atomic endpoint removal before studying probabilistic index levels."
-order: 980
+order: 910
 version: "Java 8+"
 prerequisites: ["concurrency/concurrent-collections", "collections/treemap"]
 advanced: true
@@ -33,6 +33,14 @@ The implementation maintains an ordered linked base level and sparser index leve
 <Diagram client:visible definition={"flowchart TD\n H[Search at index level] --> Q{Next key precedes query?}\n Q -->|yes| R[Move right]\n R --> Q\n Q -->|no| D[Descend toward base list]\n D --> B[Locate matching key or neighbor]\n B --> O[Return one operation outcome]"} caption="Index levels guide a search to ordered base membership. They do not create an immutable duplicate map." />
 
 Atomic link/value transitions coordinate updates. Logical marking can precede physical unlinking; traversals can help cleanup. The source supplies the marker/helping interference cases that a static layered drawing omits. Treat these details as implementation analysis rather than the public contract.
+
+## Separate a returned entry from a backed range view
+
+Suppose the map contains 10=first. Obtain firstEntry and a tailMap starting at ten. Now replace key ten's value with changed. The previously returned entry still describes its captured mapping 10=first, while a later lookup through the backed tail view reports changed. Calling setValue on that returned entry is unsupported; use a supported map update to change membership/value.
+
+The entry snapshot copies the key/value references, not the historical fields of a mutable value object. A backed view also enforces its key-range bounds when inserting through that view. Neither mechanism locks the whole range for an application that reads entries and acts later.
+
+**Selection exercise:** exact-key independent counts fit a concurrent hash map. A need for floor/ceiling neighbors and comparison-ordered ranges points toward a concurrent navigable map. That choice supplies ordering semantics; it is not a claim that every skip-list operation is faster or that one traversal is a global point-in-time transaction. [ConcurrentSkipListMap entry and view contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentSkipListMap.html)
 
 ## Individual entry snapshots are not a map snapshot
 

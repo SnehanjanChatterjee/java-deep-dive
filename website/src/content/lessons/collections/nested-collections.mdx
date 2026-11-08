@@ -1,0 +1,86 @@
+---
+title: "Nested lists, independent rows and collection keys"
+module: "collections"
+group: "Lists and arrays"
+summary: "Construct and copy nested containers while distinguishing row creation, indexed replacement, jagged dimensions and mutable hash membership."
+order: 415
+version: "Java 8+"
+prerequisites: ["collections/arraylist", "generics/typed-ownership"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## A list of lists stores row references
+
+A List of List of Integer is not a rectangular block of integer storage. The outer list stores references to row lists, and each row owns its own size and storage. Rows can have different lengths, be shared by several positions, or be absent until constructed. Generics describe the nested element type, not the dimensions.
+
+<JavaExample file="NestedCollections.java" output={"[[0, 17, 0], [0, 0, 0, 9]]\n[[5, 17, 0], [0, 0, 0, 9]]\n[[0, 17, 0], [0, 0, 0, 9]]\n[[8, 0], [8, 0]]\ndistinct frozen rows=[[A, B]]"} />
+
+matrix creates each row with a new ArrayList inside the loop. Its cells are Integer values, initialized to the declared number. The two row objects are independent. For r rows and c columns, construction uses O(r + rc) work/storage, counting row objects even when c is zero.
+
+## Create a row before replacing one of its cells
+
+`grid.get(0).set(1,17)` means: get the first row object, then replace that row's existing cell one. Neither get nor set creates a missing row/cell. Constructing an outer ArrayList with capacity two still leaves outer size zero.
+
+| Expression | Effect |
+| --- | --- |
+| outer.add(new ArrayList&lt;&gt;()) | Creates one row position referencing an empty row |
+| outer.get(0).add(17) | Appends the first cell to that row |
+| outer.get(0).set(0,18) | Replaces the existing first cell |
+| outer.get(0).add(0,19) | Inserts a cell and shifts the row suffix |
+| outer.add(0,newRow) | Inserts a row and shifts outer row positions |
+
+In the complete program, replacing row zero's second cell gives [0,17,0]. Appending 9 to row one makes it [0,0,0,9]. The grid is now jagged. A loop must use each current row's size rather than assuming all rows equal row zero.
+
+A primitive int[][] has different component/storage rules, but also stores row-array references at its outer level. The array-ownership chapter explains that related alias model. A List&lt;List&lt;Integer&gt;> is also not assignable from List&lt;ArrayList&lt;Integer&gt;> merely because ArrayList implements List; generic parameterizations are invariant. The copyRows parameter deliberately uses an extends wildcard for its outer reader.
+
+## Copy the outer list, copy rows, or copy elements?
+
+An outer-only new ArrayList&lt;&gt;(grid) creates a new list of the same row references. After setting grid[0][0] to five through the row API, both outer lists observe [5,17,0]. copyRows instead constructs a new list for each row and retains the earlier [0,17,0].
+
+<Diagram client:visible definition={"flowchart TD\n G[Original outer list] --> R[Shared row: 5 17 0]\n O[Outer-only copy] --> R\n D[Per-row copy] --> C[Different row: 0 17 0]"} caption="Copying one container level does not automatically copy the next level. Integer elements are immutable in this example." />
+
+Per-row copying costs O(number of rows + total cells), including jagged rows. It shares Integer elements safely because those values are immutable. With mutable element objects, copying rows alone would still share them. A correct deep snapshot must state exactly which mutable levels are detached.
+
+## Diagnose a repeated-row alias
+
+Collections.nCopies(2,sharedRow) repeats the same reference twice. Wrapping the result in new ArrayList makes the outer structure mutable but does not produce new row objects. Changing aliases.get(0).set(0,8) therefore changes the row seen at both positions: [[8,0],[8,0]].
+
+A useful identity check is `grid.get(0) == grid.get(1)`. It should be false when the design requires independent rows. Equality of row contents is a different question: two independent zero-filled rows can compare equal.
+
+## A set of sets has membership semantics at both levels
+
+The final example builds two String sets with the same members in different encounter orders. They are equal as sets, so an outer set stores one distinct row membership. Outer Set uniqueness is not based on which row object was allocated or the order in which its inner values were inserted.
+
+Using mutable sets as outer hash-set members is dangerous: the inner set's hashCode depends on its members. Editing a row after insertion can invalidate the outer membership relation. freezeDistinctRows copies each row into a private LinkedHashSet, wraps it and wraps the outer set. Strings/null are immutable values under this stated element model, so the membership used as a key remains stable. Changing the original input row later does not change the stored row.
+
+This function preserves the source's supplied encounter order for diagnostics while defining equality by membership. An unordered source cannot recreate an ingestion history it never supplied.
+
+## Worked exercises and boundaries
+
+<details>
+<summary>Does matrix(2,0,0) have no rows?</summary>
+
+It has two empty, independent row lists. Its total cell count is zero. matrix(0,3,0) has no rows at all. These are different shapes; retain row count separately when zero-column rectangles matter.
+
+</details>
+
+<details>
+<summary>How would a nested unmodifiable view differ from the supplied snapshot?</summary>
+
+Wrapping the original outer list alone leaves row mutation possible. Wrapping original rows as well blocks writes through those wrappers but can still observe other aliases. A snapshot first copies the required mutable levels, then exposes the desired unmodifiable boundary. The generic type syntax does none of that automatically.
+
+</details>
+
+<JavaExample file="NestedCollectionsTest.java" />
+
+The tests check dimensions, independent row identities, jagged edits, null-row failure, nullable cells, detached row copies and frozen set membership. Invalid indexes still follow each list's ordinary bounds contract.
+
+## References
+
+- [List indexed insertion, replacement and equality](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html)
+- [Collections.nCopies repeats one element reference](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html#nCopies-int-T-)
+- [Set equality and mutable-element warning](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Set.html)

@@ -88,6 +88,19 @@ The complete implementation above uses a deque plus a visited identity set. Test
 
 </details>
 
+## Work through a weak-reference cleanup queue
+
+A ReferenceQueue receives reference objects, not the original referents. A cache can retain a WeakReference wrapper carrying its entry identifier, poll the queue, then remove the corresponding stale entry. It must keep that wrapper reachable while interested in notification; merely registering it does not make the queue retain every registered wrapper. A referent becoming weakly reachable, clearing and eventual queue observation are different events.
+
+Calling `clear()` explicitly removes the wrapper's reference but does not by itself imply that the wrapper was enqueued. Calling `enqueue()` explicitly is also not proof that the collector discovered a particular heap condition. This distinction allows deterministic tests of application cleanup bookkeeping without asserting when an actual collector must run. [Reference operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ref/Reference.html)
+
+<details>
+<summary>Can a final field pointing to an ArrayList keep its elements alive?</summary>
+
+Yes. Final prevents reassignment of that field after initialization under its language rules; it does not freeze the list's contents or weaken its references. A root path through the owning object and list can retain every stored element. Removing elements changes those paths; reassigning an unrelated local to null does not. Draw identities and edges before deciding what lifetime a modifier implies.
+
+</details>
+
 ## References for runtime memory and reachability
 
 - [JVM runtime areas and representation freedom](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html)

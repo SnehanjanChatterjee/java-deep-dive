@@ -2,7 +2,7 @@
 title: "Deserialization filters, compatibility and invariant checks"
 module: "platform"
 group: "Serialization"
-summary: "Deserialization filters, compatibility and invariant checks with focused examples, failure traces and solved practice."
+summary: "Bound input and object graphs, validate restored invariants and distinguish representation compatibility from valid values."
 order: 1250
 version: "Java 17+"
 prerequisites: ["platform/serialization-and-security", "platform/annotations"]
@@ -44,6 +44,25 @@ Which check rejects an oversized byte array? Which catches restored score -1? Wh
 <summary>Answer</summary>
 
 The pre-stream byte-length check handles the first, Score.readObject's invariant check the second, and the explicit instanceof root check the third. None authorizes a caller: authentication/authorization belong to the application operation boundary. Matching UID, a valid graph and a valid score can all coexist with an unauthorized operation. Test rejection categories independently rather than asserting only a message containing rejected.
+
+</details>
+
+## Separate a rejected graph from a rejected value
+
+| Input variation | Expected failure boundary | Why another check is insufficient |
+| --- | --- | --- |
+| Excessive byte array before parsing | Pre-stream size limit | A root-type test comes too late to bound that allocation |
+| Unexpected reported class | Type filter | A matching top-level type would not constrain every nested type |
+| Excessive references/depth/array length | Graph/resource limit | A small set of class names can still describe an enormous graph |
+| Score outside its invariant | readObject validation | The allowed Score class name says nothing about its field values |
+| Unexpected final root | Post-read type check | Substitution hooks can affect the resulting object |
+
+The supplied filter rejects a resource-limit violation before deciding a class-specific status. Reversing that order and returning ALLOWED immediately for Score would skip graph checks for that callback. UNDECIDED is a status passed to the surrounding filter policy; it is not a synonym for rejected, nor proof that some other policy rejects every unlisted event.
+
+<details>
+<summary>Is keeping serialVersionUID constant enough to add a new positive quantity field safely?</summary>
+
+No. An older stream may have no value for the field, so zero can be restored under a compatible representation evolution. Decide how to migrate that data or reject it if the new invariant cannot be satisfied. Validation belongs on the reconstruction path as well as ordinary construction. A serialization proxy can centralize reconstruction, but still needs input and graph boundaries.
 
 </details>
 

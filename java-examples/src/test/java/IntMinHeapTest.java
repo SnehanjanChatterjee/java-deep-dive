@@ -24,4 +24,15 @@ public final class IntMinHeapTest {
         assertEquals(Integer.MIN_VALUE, heap.poll()); assertEquals(0, heap.poll());
         assertEquals(0, heap.poll()); assertEquals(Integer.MAX_VALUE, heap.poll());
     }
+    @Test public void testBottomUpHeapifyAndInputCopy() {
+        final int[] input = {9, 4, 7, 1, 2};
+        final IntMinHeap heap = new IntMinHeap(input);
+        input[0] = -100;
+        for (final int value : new int[] {1, 2, 4, 7, 9}) { assertEquals(value, heap.poll()); }
+        final IntMinHeap empty = new IntMinHeap(new int[0]);
+        empty.offer(3); assertEquals(3, empty.poll());
+        assertEquals(7, new IntMinHeap(new int[] {7}).poll());
+        assertThrows(NullPointerException.class, () -> new IntMinHeap(null));
+        assertThrows(IllegalArgumentException.class, () -> new IntMinHeap(new int[(1 << 20) + 1]));
+    }
 }

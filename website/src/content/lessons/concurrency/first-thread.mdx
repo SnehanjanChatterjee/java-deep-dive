@@ -1,9 +1,9 @@
 ---
-title: "Your first Runnable, Thread and join"
+title: "Runnable, Thread, start and join"
 module: "concurrency"
 group: "Threads and tasks"
 summary: "Create one worker, distinguish start from run, and derive legal execution schedules."
-order: 740
+order: 735
 version: "Java 8+"
 prerequisites: ["concurrency/processes-and-threads", "functional/lambdas-and-optional"]
 advanced: false
@@ -11,11 +11,13 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
-import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
+import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 
 ## Give an execution some work
 
-A `Runnable` is an object describing an action with no arguments and no returned result. Its `run()` method is the action. A `Thread` is an execution that can run that action. Keeping work separate from execution lets the same task be called directly, run on a new thread, or later submitted to an executor.
+A `Runnable` is an object describing an action with no arguments and no returned result. Its `run()` method is the action. A `Thread` object represents one thread lifetime and provides operations such as start and join. Constructing that object does not create a running execution. Calling its `start()` requests the separate execution that invokes the action; calling `run()` directly invokes an ordinary method on the caller's execution.
+
+Keep three things distinct: the task description, the Thread object used to control one lifetime, and the execution that runs statements. The same Runnable can be called directly by main, passed to a new Thread, or later submitted to an executor. Each choice gives a different owner/execution arrangement without changing the Runnable interface.
 
 The lambda below creates one Runnable. It prints the name of the thread **currently executing** the action. Creating the lambda does not invoke it.
 
@@ -36,7 +38,9 @@ The output is deterministic here because the direct call finishes before start a
 
 The program above calls `task.run()` directly. Calling `worker.run()` directly is also an ordinary call on the current execution; it does not start that Thread object. Compare the two choices below. The selector changes both the highlighted code and the state being explained.
 
-<ThreadingVisuals client:visible model="execution" />
+<BasicThreadMotion client:visible model="execution" />
+
+The work marker stays in the caller lane for direct run and crosses into the worker lane after start. It represents execution responsibility, not a Runnable object physically moving between threads. The action and its references remain separate from that marker. The start path chooses main waiting in join before completion; the complete examples below also explain the legal earlier-completion case. [Thread invocation and completion contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.html)
 
 ### Run the two invocation choices as complete programs
 
@@ -62,8 +66,14 @@ Start creates the independent execution. Join waits if that execution has not en
 
 Now imagine main prints `main continues` immediately after start and **before** join. The worker's print and that new main print can appear in either order. Neither source placement in separate methods nor the worker's name establishes an order between them. The final print still follows the worker's termination.
 
+### Distinguish source order from execution order
+
+`start()` can return before the task starts, or the task can finish before main next runs. A drawing must choose one schedule to display; that choice does not prohibit the other legal schedule. The named-class and anonymous-Runnable forms in the following construction lesson implement the same separation without requiring the lambda syntax to carry the whole explanation.
+
 | Relationship | Required order |
 | --- | --- |
+| Two statements executed by main | Main's program order |
+| Main's start request and worker's task | Start precedes the started execution's actions |
 | Direct task call and later start in main | Direct call finishes first |
 | Two statements executed by the same worker | Worker preserves their program-order behavior |
 | Main's print after start versus worker's first print | Either may be observed first |

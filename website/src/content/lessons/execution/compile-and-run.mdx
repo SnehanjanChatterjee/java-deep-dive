@@ -61,6 +61,19 @@ The first command creates `HelloJava.class`. The second names the class to launc
 
 `System.out.println("Hello, Java!");` calls an existing output method. The text between double quotes is a String literal. The semicolon ends this statement. Program execution enters main, prints the line, reaches the closing brace and returns to the launcher.
 
+## Recognize source text that does not execute
+
+A comment explains the program to a reader; it is not an output instruction. Ordinary whitespace and indentation separate tokens and make block structure readable, while braces determine the structure. Keep one statement per line while learning so a compiler location and a dry run are easy to connect. Java is case-sensitive: Main and main are different names.
+
+Println adds a line terminator after its text. Print leaves the cursor on the same output line, so two print calls can appear together. Text inside quotes is data: writing `"System.out.println"` prints those words rather than calling a second method. A String's straight double quotes must be part of valid source; typographic quotation marks copied from formatted notes are not interchangeable syntax.
+
+<details>
+<summary>The source says Hello again, but launch prints Hello, Java! What should be checked first?</summary>
+
+Confirm the file was saved, compilation succeeded, and the launcher selected that compilation's class file. A console transcript can show a successful old artifact even when the newest source has an error. The following compilation lesson makes that artifact boundary explicit instead of treating source editing as immediate program execution.
+
+</details>
+
 <span id="common-mistakes" aria-hidden="true"></span>
 <span id="launch-and-build-mistakes" aria-hidden="true"></span>
 
@@ -101,6 +114,7 @@ The statements execute in source order and each println ends its line. The resul
 ## Follow the greeting through the JVM
 
 Next, follow <a href={lessonUrl('learn/execution/compilation-and-jvm/')}>how the compiler and JVM use this greeting</a>: which file is produced, when main starts and when output appears. Then organize the same program with packages and a classpath. Individual bytecode instructions follow methods and objects in JVM foundations. Source-file launching is another mode on newer JDKs; the two commands here deliberately expose compilation and launch separately.
+
 
 <span id="references" aria-hidden="true"></span>
 <span id="execution-references" aria-hidden="true"></span>

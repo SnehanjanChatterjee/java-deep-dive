@@ -18,4 +18,12 @@ public final class StringInterviewAlgorithmsTest {
         assertFalse(StringInterviewAlgorithms.firstUnique("aabb").isPresent());
         assertThrows(NullPointerException.class, () -> StringInterviewAlgorithms.firstUnique(null));
     }
+    @Test public void testTrailingWhitespacePolicy() {
+        assertEquals("", StringInterviewAlgorithms.stripTrailingWhitespace(""));
+        assertEquals("", StringInterviewAlgorithms.stripTrailingWhitespace(" \t\n\u2003"));
+        assertEquals("  Ada", StringInterviewAlgorithms.stripTrailingWhitespace("  Ada \t"));
+        assertEquals("A\uD83D\uDE00", StringInterviewAlgorithms.stripTrailingWhitespace("A\uD83D\uDE00\u2003"));
+        assertEquals("A\u00A0", StringInterviewAlgorithms.stripTrailingWhitespace("A\u00A0"));
+        assertThrows(NullPointerException.class, () -> StringInterviewAlgorithms.stripTrailingWhitespace(null));
+    }
 }

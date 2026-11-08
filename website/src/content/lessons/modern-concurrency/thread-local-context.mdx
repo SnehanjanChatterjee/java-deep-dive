@@ -3,7 +3,7 @@ title: "ThreadLocal, worker reuse and task context"
 module: "concurrency"
 group: "Thread context"
 summary: "Begin with ordinary parameters, then bound a per-thread association across nesting and worker reuse."
-order: 990
+order: 915
 version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation"]
 advanced: true
@@ -36,6 +36,16 @@ A pool can reuse one worker for task A then task B. If A installs request contex
 <span id="scope-and-failure-restoration"></span>
 <span id="virtual-threads-and-scoped-values"></span>
 <span id="implement-scoped-restoration"></span>
+## Observe one key with two independent associations
+
+<JavaExample file="ThreadLocalIsolationLesson.java" output={"0\n1\n7"} />
+
+Main installs seven for one ThreadLocal key. A newly started ordinary worker uses that **same key object**, but its get initializes its own association to zero. It changes its own value to one, records it, and removes its association in finally. Main joins and still reads seven from main's association, then removes that association too.
+
+ThreadLocal does not assign one process-global value to its key. Main setting seven is also not inheritance into an ordinary ThreadLocal association. Conversely, if values themselves reference one deliberately shared mutable object, separate associations do not clone that object or protect its fields.
+
+Remove affects only the calling thread. Main cannot clean a reused worker's binding merely by calling remove after a Future completes; install/restore/remove must run at the worker's task boundary. This is why the wrapper below executes finally **around the action on that worker**, rather than only around submission by the owner. [Java 8 ThreadLocal association and initialization](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html)
+
 ## Implement scoped restoration on a reused worker
 
 <JavaExample file="ThreadContextLesson.java" output={"outer\ninner\nouter\nnull"} />

@@ -68,6 +68,14 @@ JShell is useful for isolated expressions, but implicit imports and the selected
 
 </details>
 
+## Keep imports, package names and files distinct
+
+The package declaration names the type's namespace; the directory layout mirrors that namespace for predictable tools and classpath lookup. A package named study.tools is distinct from study: a subpackage does not automatically receive package access to its parent's types. An import shortens an accessible type name in source and cannot bypass an access restriction. Java.lang types such as String and System are available without individual imports.
+
+An on-demand import such as java.util.* does not include java.util.concurrent subpackages. Two single-type imports with the same simple name conflict; use an unambiguous qualified type name where needed. After static methods are familiar, a static import can similarly shorten an accessible static member's name, such as Math.max. It does not make instance state static, and an ordinary import does not copy any class into a project. [JLS imports and packages](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.5)
+
+Prefer conventional UpperCamelCase type names, lowerCamelCase methods/variables and lowercase package components. These are readability conventions rather than an alternative type system. Keep one public top-level type in its matching source filename for the javac workflow shown here. A file with no package declaration belongs to an unnamed package; use named packages for code intended to form a larger reusable project.
+
 ## Tools references
 
 - [Dev.java: core JDK tools](https://dev.java/learn/jvm/core-tools/)

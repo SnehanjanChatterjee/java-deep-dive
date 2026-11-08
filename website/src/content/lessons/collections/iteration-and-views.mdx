@@ -2,7 +2,7 @@
 title: "Iterators, views and collection ownership"
 module: "collections"
 group: "Iteration and views"
-summary: "Visit every element without knowing storage"
+summary: "Implement and trace independent iterators, then distinguish live views, structural snapshots and mutable element aliases."
 order: 390
 version: "Java 8+; factory methods 9/10+"
 prerequisites: ["collections/choosing-collections"]
@@ -53,6 +53,29 @@ removeShortNames calls next before testing each name. If the name is short, iter
 
 Removing directly through the list during enhanced-for can invalidate the hidden iterator. Best-effort fail-fast detection may then throw ConcurrentModificationException, including in a single thread. It is a debugging aid, not synchronization and not a guaranteed race detector. Snapshot and weakly consistent iterators have different contracts in the concurrency module.
 
+## Implement Iterable without making the container its own cursor
+
+<JavaExample file="IntRange.java" output={"2\n3\n4\nindependent=2/3/2"} />
+
+An IntRange stores immutable bounds; each iterator call constructs a different Cursor with its own next value. Enhanced-for obtains one cursor and calls its methods. Starting a second traversal does not reset the first cursor. In the source's explicit comparison, left returns two then three while right independently returns two.
+
+The half-open interval includes start and excludes endExclusive. next first checks availability, then returns the old cursor value and increments. An empty range has no next value. remove inherits Iterator's unsupported default because this range has no membership mutation API. Its constructor rejects a descending bound pair rather than silently changing the intended direction.
+
+| Action on range [2,5) | hasNext result | Returned value | Cursor afterward |
+| --- | --- | --- | --- |
+| Create cursor | — | — | 2 |
+| hasNext twice | true both times | — | 2 |
+| next | — | 2 | 3 |
+| next | — | 3 | 4 |
+| next | — | 4 | 5 |
+| hasNext / next | false / NoSuchElementException | — | 5 |
+
+Iterator also has forEachRemaining from Java 8. It supplies remaining values to an action and consumes that traversal; Functional Java teaches the Consumer/lambda syntax for the action. Do not call Iterator “exactly three methods” and omit that default operation. ListIterator adds previous, hasPrevious, nextIndex, previousIndex, add and set; its mutation eligibility needs both cursor and last-returned state.
+
+<JavaExample file="IntRangeTest.java" />
+
+For an end bound Integer.MAX_VALUE, the final eligible value is MAX_VALUE−1. Advancing it reaches the excluded bound and stops without another increment. Including MAX_VALUE in an int-based half-open range would require a different representation, such as a wider bound or explicit exhausted flag; computing MAX_VALUE+1 in int would overflow.
+
 ## Views, copies and fixed-size containers
 
 In the program, `view = names.subList(0, 1)` has indexes relative to that range. `view.set(0, "Ada")` replaces the same backing element, so names changes. The previously created copy keeps Mira. Both containers would still share mutable element objects if the elements were mutable.
@@ -68,6 +91,18 @@ In the program, `view = names.subList(0, 1)` has indexes relative to that range.
 Unmodifiable means the collection API does not permit mutation through that reference. Deep immutability additionally requires stable reachable state. Structural parent mutations outside the subList protocol can invalidate the view; retaining a small view can also retain a much larger backing structure. Copy a range when independent lifetime is required.
 
 Map keySet/values/entrySet are backed views. Supported removal through one removes mappings from the map. A values view can contain repeated equal values because distinct keys may map to the same value. Do not confuse a Map.Entry with an independent immutable snapshot.
+
+## Name the actual iteration guarantee
+
+| Iterator source | Membership seen during traversal | Mutation through iterator |
+| --- | --- | --- |
+| ArrayList / LinkedList | Live container with best-effort fail-fast interference checks | Supported remove; ListIterator adds more operations |
+| CopyOnWriteArrayList | The array snapshot captured for that iterator | Mutating iterator operations unsupported |
+| ConcurrentHashMap views | Weakly consistent traversal, potentially reflecting some updates | Follow the particular view's supported operations |
+
+“Fail-safe” is not one general Java iterator contract. A snapshot of references does not freeze mutable element objects, and a weakly consistent traversal is not a whole-map snapshot. The concurrency module later supplies complete examples for those contracts.
+
+An iterator's own supported remove is different from removing through another alias. Exhaustion is also different from removal eligibility: hasNext does not itself consume an element or erase a previously returned element. Check the exact iterator contract after other bulk traversal operations or failures rather than extrapolating a global state rule.
 
 ## Extend traversal for list editing
 
@@ -92,4 +127,5 @@ These APIs extend the older collection contracts; they are a version-labelled ad
 - [Iteration, removal and implementing Iterable](https://dev.java/learn/api/collections-and-streams/collections-framework/iterating/)
 - [Iterator contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Iterator.html)
 - [ListIterator cursor and mutation rules](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/ListIterator.html)
-\n- [Sequenced collections, Java 21](https://openjdk.org/jeps/431)\n
+
+- [Sequenced collections, Java 21](https://openjdk.org/jeps/431)

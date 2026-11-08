@@ -1,0 +1,61 @@
+---
+title: "SynchronousQueue and zero-buffer handoff"
+module: "concurrency"
+group: "Concurrent collections"
+summary: "Transfer directly between a producer and consumer without mistaking a waiting transfer for a stored queue element."
+order: 890
+version: "Java 8+"
+prerequisites: ["concurrency/blocking-queues"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## No slot exists between producer and consumer
+
+An ArrayBlockingQueue of capacity one can hold one item even when no consumer is currently taking it. A SynchronousQueue has no internal element capacity, including no single slot. Each successful insertion matches a corresponding removal by another thread. A producer may wait for a consumer, or a consumer may wait for a producer.
+
+It implements the BlockingQueue API but its queue-inspection methods describe no stored collection. Size is always zero and remainingCapacity is zero. These observations do not mean no participant is waiting on a transfer.
+
+## Contrast refusal and successful transfer
+
+<JavaExample file="SynchronousHandoffLesson.java" output={"unpaired accepted=false\nreceived=payload\nstored=0"} />
+
+The first immediate offer runs before any consumer exists. It returns false: unpaired was not accepted and must not be reported as delivered. Next, the program starts one consumer that calls take. Main uses a timed offer for payload, permitting either arrival order within the demonstration's allowance.
+
+A successful offer means the handoff matched; main joins the consumer before reading the value it recorded. That join also accounts for the owned worker's termination. Finally interrupts and joins on an exceptional owner path so an abandoned consumer is not deliberately left waiting.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant P as Producer\n participant H as Synchronous handoff\n participant C as Consumer\n P->>H: immediate offer without receiver\n H-->>P: false, nothing accepted\n C->>H: take waits for sender\n P->>H: timed offer payload\n H-->>C: payload\n H-->>P: successful match"} caption="Matching transfers have no intermediate stored element. Either participant can be the one that initially waits." />
+
+## Transfer does not acknowledge business processing
+
+After take returns, the consumer may perform an expensive operation or fail. The producer's successful offer does not establish that this later processing succeeded. If an acknowledgement is required, model it separately through a result handle, reply channel or domain-specific protocol.
+
+The handoff copies an object reference and supplies the documented publication relationship for actions before insertion and after access/removal. It does not clone mutable data or prevent the sender retaining an alias. The application still decides which participant may mutate the payload after transfer.
+
+Interruption and timed expiry report incomplete waiting, not an invented payload. As with other BlockingQueues, null is prohibited. There is no universal close operation; finite batches, interruption or explicit terminal messages need their own ownership rules.
+
+## Handoff changes executor admission
+
+ThreadPoolExecutor can use a SynchronousQueue as its work queue. With no receiver ready, an offer cannot simply store the task for later. The pool then considers creating a worker up to its maximum or applying rejection policy. This is why a cached-style pool can grow workers rather than accumulate buffered tasks.
+
+A direct handoff does not itself bound active tasks or downstream resource usage. A large maximum can still create too many platform Threads. A small maximum can reject immediately under pressure. Design the entire admission policy, not just the queue type.
+
+Fair construction influences the order of waiting producers/consumers under the documented policy. It does not promise a fixed end-to-end processing order after transfer or reserve a processor for an awakened participant.
+
+## Exercise and interview questions
+
+**Can size reveal a producer waiting to transfer?** No. Size describes stored elements; this queue stores none.
+
+**Is it equivalent to a capacity-one queue?** No. Capacity one can accept an unmatched item into storage. Zero-buffer transfer requires the peer operation.
+
+**Does a successful put mean the consumer finished processing?** It establishes the transfer, not the result of subsequent application work.
+
+Use the complete reference program to replace the timed offer with put. In the ordinary successful path the same value is received, but the owner loses the explicit waiting allowance. Keep an interruption/termination policy for the case where the consumer never arrives.
+
+## Primary contracts
+
+- [SynchronousQueue handoff and collection behavior](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/SynchronousQueue.html)
+- [BlockingQueue memory effects](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/BlockingQueue.html)
+- [ThreadPoolExecutor direct-handoff queues](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ThreadPoolExecutor.html)

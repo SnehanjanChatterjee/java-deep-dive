@@ -40,6 +40,20 @@ With one available processor, a scheduler can run some of A, then some of B, the
 
 A context switch preserves execution state so a thread can resume later. The scheduler does not promise to switch after every source line, in creation order, or fairly enough to justify a correctness argument. Programs must not require a lucky schedule.
 
+## Trace two executions on one processor
+
+A machine does not need two processor cores to have two live threads. For example, one core can execute main's first statement, switch to a worker's first statement, then return to main. That is concurrent progress through overlapping lifetimes. Parallel execution additionally means work runs at the same time on different execution resources.
+
+| Chosen time slice | Execution | Statement completed |
+| --- | --- | --- |
+| 1 | Main | Start worker |
+| 2 | Worker | Calculate a local intermediate value |
+| 3 | Main | Perform independent work |
+| 4 | Worker | Finish its calculation and return |
+| 5 | Main | Join returns after detecting termination |
+
+This is one legal illustrative schedule, not a fixed time-slice duration or a promise that every runnable thread gets the next turn. A single core still needs synchronization when operations interleave on shared state. Two CPU-bound calculations also do not automatically finish sooner merely because they use two Threads. Blocking work can benefit from overlapping waits, while actual speed depends on the workload and available resources. [Java's execution and synchronization model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html)
+
 ## Exercise: identify ownership before starting threads
 
 A program has two worker methods. Each declares `int index`, and both receive the same `ArrayList<String>` reference. Are the indexes shared? Is the list shared? Would constructing another local variable pointing to that list isolate it?

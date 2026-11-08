@@ -1,9 +1,9 @@
 ---
 title: "Volatile variables and immutable snapshot publication"
 module: "concurrency"
-group: "Shared state and synchronization"
+group: "Memory model and visibility"
 summary: "Publish a consistent configuration generation and distinguish publication from a compound update."
-order: 770
+order: 785
 version: "Java 8+"
 prerequisites: ["concurrency/memory-model"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+
 import InterleavingLab from '../../../components/InterleavingLab.astro';
 
 <span id="concepts"></span>
@@ -51,6 +52,14 @@ Calling read twice can legitimately select different generations. Writing two vo
 Compare the protocols below. Plain and volatile increments can both follow the same losing schedule: each caller reads zero before either writes. Synchronizing the complete operation changes which steps can overlap. The model isolates this atomicity question; it does not enumerate every observation permitted for a racy plain field.
 
 <InterleavingLab id="volatile-increment-comparison" stage="memory" />
+
+## Volatile applies to a field, not a whole object
+
+Volatile is a field modifier; it is not a modifier for a method, constructor or invocation-local variable. A volatile reference orders supported reads/writes of that reference. It does not turn every field of its referenced object into a volatile variable or make a multi-step operation one indivisible transition.
+
+For a volatile immutable snapshot initially containing count zero, A and B can both read that snapshot, each construct count one, and each assign its replacement reference. Both reference assignments are atomic and follow volatile ordering, yet one increment is lost. The missing operation is a conditional update over the observed old state, or one common lock around read/compute/publish.
+
+For a one-way publication flag, place payload writes **before** the volatile flag write and payload reads **after** the reader observes the relevant flag value. Reading the payload first and the flag afterward cannot retroactively justify the earlier read. A flag that is repeatedly reset also requires a generation/state protocol; one boolean alone does not describe which batch an observed payload belongs to. [JLS volatile fields and happens-before](https://docs.oracle.com/javase/specs/jls/se8/html/jls-8.html#jls-8.3.1.4)
 
 ## Final fields and construction escape
 

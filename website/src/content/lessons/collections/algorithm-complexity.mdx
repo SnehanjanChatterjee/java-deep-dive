@@ -2,7 +2,7 @@
 title: "Compare algorithm time and space complexity"
 module: "collections"
 group: "Collection foundations"
-summary: "Count work, distinguish growth from timings, and explain worst-case, expected and amortized costs."
+summary: "Count work and storage, distinguish expected from amortized costs, and derive bounds for one or several input dimensions."
 order: 370
 version: "Java 8+"
 prerequisites: ["language/arrays", "language/methods-and-recursion"]
@@ -44,6 +44,25 @@ In `linear`, initialization and the final failed condition add fixed overhead ar
 Two loops one after another add their costs. Visiting n items and then n items gives 2n, which is O(n). Nested loops multiply only when their iteration ranges justify it. An inner traversal of half, then a quarter, then an eighth has a different total from blindly assuming every nested loop is quadratic.
 
 The sorted-array search lesson repeatedly removes about half the candidate range. After k halvings, only about n/2^k candidates remain; reaching a constant-sized range takes logarithmic levels. This bound assumes random indexed access and bounded comparison cost. A different representation can change the cost of reaching a midpoint.
+
+## Keep two independent input sizes
+
+For r rows with c cells in every row, a full visit takes r×c cell visits, not r² unless the dimensions happen to be equal. For jagged rows of lengths c₀,c₁,..., the work is their sum, plus visiting the row containers. A method receiving two separate lists of lengths n and m can likewise have O(n+m) sequential traversal or O(nm) all-pairs work.
+
+Building a hash membership index from m values and checking n candidates has expected O(m+n) key operations under suitable hashing. It also stores O(m) memberships. Repeatedly scanning the second list instead can take O(nm) comparisons. State both sizes and include index construction; quoting only the later lookup cost omits part of the algorithm.
+
+For geometric growth with an initial capacity of two, append counts make the amortized argument concrete:
+
+| Append number | Capacity after append | References copied by this expansion |
+| --- | --- | --- |
+| 1–2 | 2 | 0 |
+| 3 | 4 | 2 |
+| 4 | 4 | 0 |
+| 5 | 8 | 4 |
+| 6–8 | 8 | 0 |
+| 9 | 16 | 8 |
+
+Nine element writes and fourteen copied references are separate cost components. The total remains proportional to n as the sequence grows; the ninth call itself still copies eight references.
 
 ## Distinguish best, worst and expected cases
 

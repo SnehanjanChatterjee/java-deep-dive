@@ -2,7 +2,7 @@
 title: "Files, paths and resource ownership"
 module: "libraries"
 group: "Files and paths"
-summary: "Open a file through a path"
+summary: "Resolve paths, select file operations and process bounded input while making resource ownership explicit."
 order: 680
 version: "Java 8+; text convenience methods 11+"
 prerequisites: ["reliability/exceptions-and-resources", "functional/streams-and-collectors"]
@@ -76,6 +76,31 @@ Returning a Stream from inside a try-with-resources block that has already close
 **Does a charset change bytes automatically in Files.copy?** No. Copy transfers file contents; text decoding/encoding is a different operation.
 
 **Does clear on a future ByteBuffer erase data?** No. That name concerns buffer state, not file deletion or secure erasure. The buffer chapter shows the distinction.
+
+## Resolve names and choose open options
+
+On one filesystem, resolving a relative child appends it to the base. Resolving an absolute child returns that child rather than forcing it inside the base. Relativize describes a route between compatible paths; it does not move a file. Different providers/root kinds may make the operation invalid. Neither resolve nor normalize proves filesystem authorization or existence.
+
+| Option/operation | Effect to choose deliberately |
+| --- | --- |
+| CREATE | Create a missing file; not exclusive creation |
+| CREATE_NEW | Fail if the target already exists under the operation's contract |
+| TRUNCATE_EXISTING | Discard existing content when opening for appropriate writing |
+| APPEND | Write at the end; do not assume cross-process record atomicity |
+| REPLACE_EXISTING | Permit replacement in the specified copy/move operation |
+| ATOMIC_MOVE | Request an atomic move; unsupported cases can fail |
+
+The default options of a particular Files convenience method matter. Do not open an existing file under a truncating default while intending to append. Copy/move failures can also leave states requiring investigation; an existence precheck does not make the later operation transactional.
+
+## Process bounded text without retaining an entire line
+
+<JavaExample file="BoundedTextScan.java" output={"nonblank=2\ncharacter limit rejected"} />
+
+countNonblank borrows its Reader. It processes a 512-unit buffer, retains only a count and whether the current line contains a unit greater than ASCII space, and leaves closure to the caller. CR and LF terminate a candidate line; empty/whitespace-only segments do not add to the nonblank count. At EOF, an unterminated nonblank final line still counts.
+
+The maximum counts UTF-16 units, including line endings. The helper reads at most one unit beyond the remaining budget to distinguish exact-limit EOF from excess input, then rejects excess. It does not allocate an unbounded String for an extremely long line. Character limits, byte limits and user-visible character counts are different contracts. Processing n accepted units takes O(n) work and fixed-size working storage.
+
+If a read fails, its IOException propagates. A zero-progress Reader is rejected rather than spun indefinitely. Some input may already have been consumed when failure occurs; this scanner does not promise stream rollback. The caller can supply an owned BufferedReader opened with Files.newBufferedReader and close it outside this helper.
 
 ## References
 

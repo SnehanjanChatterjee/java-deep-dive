@@ -2,7 +2,7 @@
 title: "Comparable, Comparator and ordering policies"
 module: "collections"
 group: "Ordering"
-summary: "Decide what \u201ccomes before\u201d means"
+summary: "Define natural and external comparison policies and predict their distinct effects on sorting, set membership and priority ties."
 order: 400
 version: "Java 8+"
 prerequisites: ["collections/iteration-and-views", "objects/equality-and-immutability"]
@@ -33,6 +33,16 @@ An ordering must be coherent: reversing operands reverses the sign, comparison i
 Score equality in this example includes ID and points. Both shown orders compare to zero exactly when those fields match. Comparing points alone would make B:10 and C:10 equivalent under comparison, even though they are unequal values. A List sorted by that comparator can retain both. A TreeSet using it would retain one, because comparison zero defines sorted-set membership. HashSet uses equals/hashCode instead.
 
 A tie-breaker is part of domain meaning. If IDs represent identity independently of points, choose a value model that enforces that identity policy rather than expecting an arbitrary comparator to reconcile conflicting models.
+
+## Supply the comparator to the operation that needs it
+
+A type implementing Comparator is an object that compares two values. It does not make every instance of that type implement Comparable. Calling Collections.sort(values) still requests natural element ordering. Use Collections.sort(values, policy) when the policy is external.
+
+A comparator can intentionally return zero for values with different display fields. A stable List sort keeps their relative order; a TreeSet treats them as one comparison-equivalent member; a PriorityQueue permits ties and does not promise their removal order. Equality, sort stability and tie scheduling are separate contracts.
+
+A useful null policy can be composed with Comparator.nullsFirst or nullsLast around a valid non-null comparator. It does not make arbitrary element methods null-safe; the wrapper handles null before delegating. Changing between those policies changes boundaries in ordered containers.
+
+Do not confuse an object's identity hash with a unique identifier. System.identityHashCode ignores a hashCode override but can collide too. Use actual equality/identity according to the algorithm rather than sorting or deduplicating solely by hash numbers.
 
 ## Apply the policy to different operations
 

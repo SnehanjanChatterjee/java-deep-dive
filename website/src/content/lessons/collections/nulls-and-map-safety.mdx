@@ -1,0 +1,103 @@
+---
+title: "Null policies and safely shared maps"
+module: "collections"
+group: "Implementation practice"
+summary: "Compare concrete null policies, view and snapshot guarantees, and the distinct synchronization contracts of common map choices."
+order: 525
+version: "Java 8+; factory comparisons 9/10+"
+prerequisites: ["collections/treeset", "collections/arraydeque", "collections/priorityqueue", "collections/map-views-and-updates"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Ask which implementation is being used
+
+“Set accepts null” and “Map is thread-safe” are incomplete statements. Those are interfaces with implementations that make different eligibility, ordering and concurrency promises. A constructor or wrapper can also change the supported operations without changing the variable's declared interface.
+
+<JavaExample file="CollectionNullPolicies.java" output={"ArrayList=true\nLinkedList=true\nHashSet=true\nTreeSet natural=false\nTreeSet null-order=true\nArrayDeque=false\nPriorityQueue=false\nHashMap key/value=true/true\nLinkedHashMap key/value=true/true\nTreeMap key/value=false/true\nHashtable key/value=false/false\nConcurrentHashMap key/value=false/false\nConcurrentSkipListMap key/value=false/false\nfloor null key=null, entry exists=true"} />
+
+The observation helpers attempt insertion into a supplied mutable container and catch only its NullPointerException rejection. They do not classify a null container argument as a policy decision, and they let unrelated failures such as UnsupportedOperationException propagate. A duplicate HashSet null insertion is still accepted storage even though Set.add reports no membership change.
+
+## Compare elements, keys and values separately
+
+| Concrete implementation | Null element/key | Null map value | Relevant meaning |
+| --- | --- | --- | --- |
+| ArrayList / LinkedList / Vector / Stack | Allowed elements | — | Multiple null positions can exist |
+| HashSet / LinkedHashSet | At most one null member | — | Ordinary set uniqueness |
+| TreeSet / TreeMap with natural order | Rejected element/key | TreeMap allows values | Comparison must handle the key |
+| TreeSet / TreeMap with a suitable null-ordering Comparator | Can be allowed | TreeMap allows values | The supplied comparison policy is decisive |
+| ArrayDeque / PriorityQueue | Rejected elements | — | Null is also an empty retrieval sentinel |
+| HashMap / LinkedHashMap | One null key | Allowed | containsKey distinguishes mapped-null from absence |
+| Hashtable | Rejected key | Rejected | Its legacy synchronization does not add null support |
+| ConcurrentHashMap / ConcurrentSkipListMap | Rejected key | Rejected | Their concurrent contracts use null as unambiguous absence |
+
+The interface alone cannot supply a universal matrix row. Eligibility of queries can differ from eligibility of insertion too: querying an ineligible value may throw or report no match under the applicable contract. Null-compatible storage does not mean it is useful domain data.
+
+LinkedList.poll returning null is ambiguous when an actual null element is allowed. ArrayDeque's prohibition removes that ambiguity. TreeMap values are not ordered, so its natural-order restriction on keys does not imply a restriction on null values.
+
+## Fixed-size, unmodifiable, snapshot and deeply immutable
+
+<JavaExample file="modern/CollectionFactories.java" output={"array=[changed, C]\nview=[changed, C]\nsnapshot=[A, B]\nfactory=[A, B]\nmutable element=x!\nfixed-size add rejected\nsnapshot set rejected\nfactory null rejected\nduplicate set rejected\ncopyOf duplicate count=1\nduplicate map key rejected\nimmutable entry permits null=true\nMap.entry null rejected"} />
+
+This complete program requires Java 10+ for copyOf; of factories/Map.entry begin at Java 9. Arrays.asList retains the original array backing and permits set. The unmodifiable wrapper blocks writes through that reference while observing backing edits. List.copyOf and List.of(array) retain a detached reference snapshot, so later array replacement does not change them.
+
+All those structures can still reference a mutable StringBuilder. The program changes its text through the original alias and the list observes x!. “Unmodifiable” is a container operation guarantee, not recursive immutability.
+
+Factory policies also differ from ordinary mutators. Set.of rejects duplicate supplied elements, while Set.copyOf consumes a collection and collapses duplicates. Map.of rejects duplicate supplied keys, unlike repeated HashMap.put replacement. The factories reject nulls. SimpleImmutableEntry is unmodifiable but permits null components; Map.entry rejects them. Match the exact API, not only the adjective “immutable.”
+
+## Choose the shared-map contract, not a benchmark winner
+
+| Choice | Operation coordination | Traversal/compound-operation responsibility |
+| --- | --- | --- |
+| Ordinary HashMap | None supplied | Shared mutation needs one external protocol |
+| Collections.synchronizedMap(backing) | Wrapper operations coordinate on its documented mutex | All access must follow the wrapper; traversal and larger protocols need the same lock |
+| Hashtable | Legacy synchronized operations | Several calls are not automatically one transaction |
+| ConcurrentHashMap | Documented concurrent/per-key operations | Weakly consistent traversal; mutable values and multi-key invariants remain separate |
+| ConcurrentSkipListMap | Concurrent ordered/navigable operations | Sorted/range semantics at expected logarithmic search cost; not a global snapshot |
+
+A synchronized wrapper is backed by the supplied map. If another caller keeps accessing the raw backing HashMap, wrapper synchronization does not repair that bypass. Lock the returned map, not its keySet view, when following the documented iteration protocol. Separate method locks do not make containsKey followed by put atomic as a pair.
+
+A safely published, fully constructed map that is subsequently read-only is another valid design; it is different from generally thread-safe mutation. Immutable values and publication still need their own reasoning. An access-ordered LinkedHashMap get can mutate recency links, so calling every get a harmless shared read is wrong.
+
+## Avoid version-specific concurrency myths
+
+Current ConcurrentHashMap is not a fixed array of sixteen independently writable segments. Older implementations used segment-based organization; a concurrencyLevel constructor hint is not a promise that exactly sixteen threads can write. An ordinary HashMap cannot become concurrent merely by using its compute method.
+
+ConcurrentMap defaults and concrete implementations can have different callback retry/atomicity guarantees. A caller that needs a per-key atomic update should use the documented operation; a cache with an index plus recency list still needs one protocol covering both structures. No container coordinates arbitrary mutations inside its value objects.
+
+The concurrency module develops <a href={lessonUrl('learn/concurrency/concurrenthashmap/')}>ConcurrentHashMap</a> and <a href={lessonUrl('learn/concurrency/concurrent-skiplistmap/')}>ConcurrentSkipListMap</a> after threads/publication/atomicity are taught. This comparison identifies the contract to study; it does not substitute a timing contest for that reasoning.
+
+## Worked selection questions
+
+<details>
+<summary>A map stores null values today. Can it be replaced by ConcurrentHashMap without changing callers?</summary>
+
+Not directly: insertion of null values will fail, and null can no longer represent a present stored value. Decide a deliberate domain representation, migrate it and then use the selected concurrent operations. Replacing a data structure can be a semantic change.
+
+</details>
+
+<details>
+<summary>Does wrapping a map in unmodifiableMap make it safe to share?</summary>
+
+It blocks writes through that wrapper. Other aliases can still mutate the backing map, values can be mutable and publication can still be incorrect. A detached immutable-value snapshot can provide a stronger design, but it must be constructed and published under that promise.
+
+</details>
+
+<details>
+<summary>Does an article's faster ConcurrentHashMap benchmark establish the best implementation for a sorted range query?</summary>
+
+No. The workload might not include the needed ordering, range, traversal or synchronization costs. A hash map does not expose ordered neighbors at all. Choose correct semantics first and measure a representative complete workload when performance matters.
+
+</details>
+
+## References
+
+- [Collection eligibility is implementation-specific](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collection.html)
+- [List/Set/Map factory policies](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html)
+- [Synchronized wrappers and required iteration mutex](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html#synchronizedMap(java.util.Map))
+- [Hashtable null and synchronization contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Hashtable.html)
+- [ConcurrentHashMap nulls, iteration and atomic operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentHashMap.html)
+- [ConcurrentSkipListMap ordering and expected costs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentSkipListMap.html)

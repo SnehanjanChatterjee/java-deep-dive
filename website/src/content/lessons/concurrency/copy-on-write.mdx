@@ -1,9 +1,9 @@
 ---
 title: "CopyOnWriteArrayList and snapshot iteration"
 module: "concurrency"
-group: "Concurrent data structures"
+group: "Concurrent collections"
 summary: "Follow two array generations and distinguish stable membership from mutable element contents."
-order: 960
+order: 900
 version: "Java 8+"
 prerequisites: ["concurrency/concurrent-collections", "concurrency/volatile-publication"]
 advanced: true
@@ -57,6 +57,14 @@ Two thread-safe get calls need not select one array generation if a writer chang
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
 <span id="coding-exercise-and-solution"></span>
+## Register once without a contains/add race
+
+For a listener registry, two callers can both observe contains(listener) as false and then both add it. Each call can be thread-safe while the composite decision permits duplicates. AddIfAbsent represents the complete conditional membership change under the list's update protocol.
+
+If caller A successfully registers listener L and caller B then performs addIfAbsent(L), B reports no new insertion. A dispatcher that captured its iterator **before** registration still uses the earlier array; a later dispatcher can capture the new membership. Unregistering L similarly cannot remove L from an already captured iterator. Decide whether a callback already selected by a dispatch is allowed to finish after unregistration.
+
+Snapshot membership is especially useful when callbacks run outside the membership-update lock. It does not make each callback safe to invoke concurrently or freeze a mutable listener's fields. Keep listener behavior/state ownership separate from registration. A subList is also a backed range with its own documented restrictions after external structural changes, rather than a new durable snapshot API; use an iterator/toArray when that is the required contract. [CopyOnWriteArrayList conditional membership and traversal](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CopyOnWriteArrayList.html)
+
 ## Exercise and complete reference solution
 
 Capture an iterator, replace/append membership, then compare the old traversal with the current list. Add one mutable element and explain why the snapshot still returns its changed contents. `SnapshotIterationLesson` is the complete solution.

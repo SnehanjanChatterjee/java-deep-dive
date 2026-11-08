@@ -2,7 +2,7 @@
 title: "LRU cache implementation"
 module: "collections"
 group: "Implementation practice"
-summary: "Combine a key index and recency list, implement constant-time updates, and prove eviction behavior."
+summary: "Implement and trace a count-bounded cache whose hash index and doubly linked recency list share exactly one node per key."
 order: 530
 version: "Java 8+"
 prerequisites: ["collections/hashmap", "collections/linkedhashmap", "collections/linkedlist"]
@@ -92,6 +92,14 @@ The helpers take a known live node under the class's private invariant. They are
 Capacity one is a valuable boundary. Insert A, access A repeatedly, replace A and then insert B. Before B, there is still exactly one real A node. B insertion temporarily introduces a second real node; A is oldest, so eviction removes A from both structures. B must remain retrievable and size must be one.
 
 For a larger cache, replacing the least-recent key moves it to the recent end. The next new insertion must evict the next-oldest key, not the key just replaced. A missing get must not refresh another entry or consume capacity. The existing tests cover these observable decisions rather than asserting private pointer addresses.
+
+## Dry-run the sentinel links at capacity one
+
+Start with head ↔ tail. put(A,1) connects head ↔ A ↔ tail and indexes A to that exact node. get(A) temporarily detaches the node, reconnects head/tail, then appends the same node. Size and index membership remain one. Replacement put(A,9) updates that node rather than allocating a duplicate.
+
+put(B,2) creates one new B node, giving head ↔ A ↔ B ↔ tail before enforcing the bound. head.next identifies A. Remove A's index mapping, connect head.next to B and B.previous to head, then clear A's obsolete links. The final index/list describe exactly B. Removing only the list node would leave a retrievable stale key; removing only the index entry would leave a future eviction victim with no live mapping.
+
+The four append assignments also explain why a known node is required: set node.previous to the old recent neighbor, node.next to tail, connect the old neighbor's next and update tail.previous. Unlink needs both neighbors directly. A singly linked node without its predecessor cannot supply the same constant-time middle detachment contract.
 
 <span id="common-mistakes"></span>
 

@@ -1,0 +1,93 @@
+---
+title: "Map callbacks: compute, merge and nullable values"
+module: "functional"
+group: "Map callbacks"
+summary: "Trace exactly when map callbacks execute, install a value or remove a mapping, including mapped-null cases."
+order: 563
+version: "Java 8+"
+prerequisites: ["functional/method-references", "collections/hashmap"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Let the map operation supply the key or old value
+
+A word counter often reads a count, selects a default and writes an incremented count. A grouping operation first finds or creates a list, then appends an element. Map's Java 8 callback methods express those update policies while supplying the relevant key/value arguments. They are ordinary single-threaded operations on HashMap; their names do not supply concurrent coordination.
+
+Before tracing them, distinguish **no mapping**, **a mapping to null**, and **a mapping to a non-null value**. HashMap can represent all three. A callback's null result can mean “do not install” or “remove,” depending on the operation.
+
+## Observe the callbacks that actually run
+
+<JavaExample file="MapCallbacks.java" output={"A=4, calls=[absent, present]\ncompute removed=true\nmerged A=7, calls=[absent, present, merge]\nmerge removed=true\nnull mapping retained=true\nreplaceAll total=4"} />
+
+The calls list records callback invocations independently of map iteration order. A starts mapped to null. The first computeIfPresent skips its callback. computeIfAbsent then calls the factory and installs 3. Calling it again skips the factory because 3 is already present. The later computeIfPresent receives 3 and installs 4. The first result is therefore A=4 with calls `[absent, present]`.
+
+compute returns null for A and removes its mapping. The first merge installs supplied 5 directly, because A is absent. The second merge receives old 5 and incoming 2, invokes its remapper and installs 7. Its callback adds one merge entry to calls. Returning null from the next merge removes A again. Each operation expresses one mapping update; the implementation determines its search strategy.
+
+## Read each callback's argument and null policy
+
+| Operation | Callback arguments | When invoked | Meaning of a null result |
+| --- | --- | --- | --- |
+| computeIfAbsent | key | Absent or mapped to null | Do not install a non-null value; an existing null mapping can remain |
+| computeIfPresent | key, old value | Present with a non-null old value | Remove that mapping |
+| compute | key, old value | Always, with null for absence or mapped-null | Leave absent or remove an existing mapping |
+| merge | old value, supplied value | Only when an old non-null value exists | Remove that mapping |
+| replaceAll | key, old value | For the mappings traversed | Install null if that map allows null values |
+| forEach | key, value | For the mappings traversed | No returned value: a BiConsumer performs an action |
+
+For merge, both the supplied value and remapping function must be non-null even though HashMap otherwise permits null values. It is not equivalent to a generic put allowing any value. Callback objects themselves also have the operation's documented null requirements; a missing callback is different from a callback that returns null.
+
+<Diagram client:visible definition={"flowchart TD\n M[merge with non-null incoming value] --> P{Old value non-null?}\n P -->|no| I[Install incoming value without callback]\n P -->|yes| C[Apply remapper to old and incoming]\n C --> R{Result is null?}\n R -->|yes| D[Remove mapping]\n R -->|no| U[Install result]"} caption="merge distinguishes a missing usable value from an existing non-null value. A null remapping result is deletion, not a stored null." />
+
+## Use a factory only when a value is needed
+
+For a map of category to list, `groups.computeIfAbsent(category, key -> new ArrayList<>()).add(item)` obtains one non-null list when the callback succeeds. The returned list is still mutable. A null factory result would cause the subsequent add to dereference null; do not treat the fluent spelling as a presence proof independent of the factory contract.
+
+For counting, `counts.merge(word, 1, Integer::sum)` means a new word starts at one and an existing non-null count is incremented. Integer addition can wrap; use an exact or wider arithmetic policy when the count domain requires one. For a maximum timestamp, the remapper would select a maximum, not automatically the “latest inserted” value. Choose the domain rule deliberately.
+
+## Replace or visit all present mappings
+
+The end of the program keeps B mapped to null and adds C=2. replaceAll invokes its callback for both mappings. The declared rule turns null into zero and doubles a non-null value, yielding B=0 and C=4. forEach then sums their values and prints total four. No assertion depends on which mapping was visited first.
+
+replaceAll is a sequence of updates, not an all-or-nothing transaction. If a later callback throws, earlier replacements can remain. A callback that modifies the same map through another path can invalidate traversal; best-effort ConcurrentModificationException is neither rollback nor a correctness protocol.
+
+## Separate a compound expression from an atomic contract
+
+`if (!map.containsKey(key)) map.put(key, value)` has a check-then-act gap when callers share a map. Replacing those calls with computeIfAbsent on an ordinary HashMap supplies no thread safety. A synchronized wrapper requires its documented locking protocol, and all access must use that protocol.
+
+ConcurrentMap and ConcurrentHashMap have stronger, operation-specific contracts. A general ConcurrentMap's default operation may retry callbacks; ConcurrentHashMap documents its own atomic per-key behavior. Neither makes a cross-key invariant or a mutable value object's later updates atomic. Keep callbacks short and avoid recursive updates to the same map.
+
+## Worked questions
+
+<details>
+<summary>Does computeIfAbsent repair a mapping that currently stores null?</summary>
+
+It invokes the factory for that case. A non-null result replaces the null value. A null result leaves the existing null mapping present: the program's B branch demonstrates that containsKey can remain true. Absence and mapped-null are different even when get returns null for both.
+
+</details>
+
+<details>
+<summary>Can replaceAll store null when compute deletes on null?</summary>
+
+Yes, in a map such as HashMap that permits null values. replaceAll replaces values for existing mappings; compute defines null as deletion. Reusing one callback across methods without checking this difference can change cardinality unexpectedly.
+
+</details>
+
+<details>
+<summary>When should a callback return an Optional instead of a nullable map value?</summary>
+
+Only when the declared map value type is Optional and that presence dimension is useful. A returned Optional.empty is then a non-null map value, not an instruction to remove the key. Keep the map's update sentinel separate from the domain value's absence semantics. The Optional chapter develops that result contract.
+
+</details>
+
+Plain conditional updates and backed views are covered in <a href={lessonUrl('learn/collections/map-views-and-updates/')}>Map views and conditional updates</a>. The dedicated concurrent-map lesson develops per-key atomicity after the concurrency foundations.
+
+## References
+
+- [Map callback and conditional-update contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Map.html)
+- [HashMap callback behavior and limitations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/HashMap.html)
+- [ConcurrentMap defaults and possible retries](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentMap.html)
+- [ConcurrentHashMap atomic per-key methods](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ConcurrentHashMap.html)

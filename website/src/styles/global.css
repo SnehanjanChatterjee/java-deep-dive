@@ -366,7 +366,15 @@
 .diagram-viewport:focus-visible,.table-scroll:focus-visible{outline:2px solid var(--green);outline-offset:3px}
 
 /* Distinguish structural labels, navigation links and source actions. */
-.course-topic-link-icon{margin-top:3px;color:var(--muted)}
+.course-topic-link-icon{align-self:center;margin-top:0;color:currentColor;flex-shrink:0}
+.course-topic-list a{cursor:pointer}
+.course-topic-list .course-topic-link-label{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:3px;text-decoration-color:color-mix(in srgb,currentColor 45%,transparent)}
+.course-topic-group{display:flex;flex-direction:column;gap:2px;border-bottom:1px solid var(--line);padding:0 9px 7px;margin:18px 0 5px;font-size:10px;line-height:1.5;letter-spacing:.6px;font-weight:650;cursor:default}
+.course-group-count{font-size:10px;letter-spacing:0;text-transform:none;font-weight:400}
+.course-topic-list a:hover .course-topic-link-label,.course-topic-list a:focus-visible .course-topic-link-label{text-decoration-thickness:2px;text-decoration-color:currentColor}
+.course-topic-list a:focus-visible{outline:2px solid var(--green);outline-offset:1px}
+.article :is(p,li,summary){overflow-wrap:anywhere}
+#main-content{scroll-margin-top:76px}
 .course-topic-list a:hover{border-color:var(--control-border);color:var(--green)}
 .course-topic-list a[aria-current="page"] .course-topic-link-icon{color:inherit}
 .course-navigation-footer>a:hover,.course-home:hover,.breadcrumbs a:hover{text-decoration:underline;text-underline-offset:3px}

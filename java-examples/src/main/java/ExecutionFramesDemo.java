@@ -5,6 +5,11 @@ public final class ExecutionFramesDemo {
         return value * 2;
     }
 
+    /** Subtracts the right argument from the left with ordinary int semantics. */
+    public static int difference(final int left, final int right) {
+        return left - right;
+    }
+
     /** Supplies the value traced in the bytecode lesson. */
     public static void main(final String[] args) {
         System.out.println(twice(3));

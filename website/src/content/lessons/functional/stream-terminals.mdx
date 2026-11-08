@@ -1,0 +1,111 @@
+---
+title: "Stream sources, terminal results and closure"
+module: "functional"
+group: "Stream sources and operations"
+summary: "Choose finite or bounded sources, interpret empty terminal results, and distinguish consumed pipelines from closed resource owners."
+order: 584
+version: "Java 8+; later conveniences labelled separately"
+prerequisites: ["functional/stream-operations"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Choose the element source and its bounds
+
+<JavaExample file="StreamSources.java" output={"array slice=[B, C]\nprimitive sum=6\none array element=1\nrange=[1, 2, 3]\nrangeClosed=[1, 2, 3, 4]\niterate=[1, 2, 4, 8]\ngenerate=[x, x, x]\nbuilder=[left, right]\nconcat=[A, B, C]\nmap values sum=5\nentries=[A2, B3]\nparallel then sequential=true/false\nconfigured count=2"} />
+
+Arrays.stream(words,1,3) uses a half-open array range and emits B,C. Arrays.stream(int[]) produces IntStream whose sum is six. Stream.of(intArray) instead has one int[] reference element, so count is one. Generic type inference does not individually box a primitive array.
+
+| Source | Meaning | Lifetime/termination |
+| --- | --- | --- |
+| collection.stream / parallelStream | Elements from that container | Source mutation/non-interference policy still applies |
+| Arrays.stream | Object or supported primitive-array components, optionally a slice | The array is not cloned |
+| Stream.of / empty | Supplied reference values / no values | Null elements are possible in Stream.of |
+| Stream.builder | Add values, then build once | Reusing a built builder is rejected |
+| generate(supplier) | Repeated independent production | Unbounded unless later demand terminates |
+| iterate(seed,next) | Seed, then repeated next(previous) | Unbounded Java 8 form |
+| concat(left,right) | Left traversal followed by right | Closure of the concatenated stream closes both sources |
+| Map keySet/values/entrySet.stream | Keys, values or associations | Map itself has no direct stream method |
+
+The source constrains encounter order. A TreeMap entry view has key comparison order; HashMap does not. Generating an infinite stream does not itself allocate infinite storage. A terminal operation that never terminates or buffers unbounded data creates the actual problem; choose limits and stage order deliberately.
+
+IntStream/LongStream offer range and rangeClosed for unit-step numeric ranges. range excludes its end; rangeClosed includes it. DoubleStream does not supply those integer range methods. Primitive streams additionally provide sum, average, summaryStatistics, boxed and conversion APIs. Empty average is OptionalDouble, while empty sum is zero; they are different result contracts.
+
+## Ask independent questions using fresh pipelines
+
+<JavaExample file="StreamTerminals.java" output={"count=3\nmin/max=1/3\nfirst=3\nany present=true\nempty any/all/none=false/true/true\ntyped array=[A, B]\nordered actions=[3, 1, 2]\niterator total=3\nspliterator=[4, 5]\nterminal=2, closed=false\nafter close=true\nempty maximum=false"} />
+
+count returns long cardinality. min/max use the supplied comparator and return Optional because empty input has no extremum. findFirst uses encounter order when one exists; findAny permits any eligible result and is not a promise of randomness or “the last parallel worker.” The source asserts only presence for findAny.
+
+| Terminal | Return meaning | Empty-input behavior |
+| --- | --- | --- |
+| count | Number of result elements | 0 |
+| min / max | Comparison extremum | Empty Optional |
+| findFirst / findAny | First/some eligible element | Empty Optional |
+| anyMatch | At least one predicate match | false |
+| allMatch | No counterexample to the predicate | true |
+| noneMatch | No predicate match | true |
+| forEach / forEachOrdered | Perform terminal actions | No actions |
+| toArray | Materialize result references | Empty array |
+| reduce / collect | Operation-defined reduction | Identity/empty/container policy of that overload |
+
+allMatch and noneMatch on empty are true because no counterexample exists. The predicate is not invoked in any empty matching case. A caller needing “nonempty and all valid” must separately express nonemptiness; allMatch alone does not establish it.
+
+Each source expression in the complete program is fresh. Saving a pipeline and running count then max on it is invalid reuse, even when the original collection still exists unchanged.
+
+## Match the array component and null contract
+
+toArray() returns Object[]. The generator overload toArray(String[]::new) selects a String array component. A requested narrower component that cannot hold some result element can fail with ArrayStoreException; a cast from Object[] does not convert its runtime class.
+
+Reference streams may contain nulls, but not every terminal can represent a selected null. findFirst/findAny and Optional-based extrema cannot return Optional.of(null). Filter or explicitly model that domain case before retrieval. A typed array can retain null if its component type permits it; unmodifiable collector/factory null policies are separate.
+
+## Distinguish effect order from evaluation order
+
+forEach does not supply encounter-order effects on a parallel stream. forEachOrdered does, but does not promise every upstream callback executes sequentially on one thread. The complete program's ordered action result follows 3,1,2; the parallel chapter explains the stronger scheduling distinctions.
+
+Terminal actions can still throw. A partial sequence of external effects is not automatically rolled back. A result-oriented collect is usually clearer than mutating an external ArrayList from parallel callbacks.
+
+## Escape traversal only when the caller owns it
+
+iterator and spliterator are terminal escape hatches for controlled traversal. An Iterator retains hasNext/next state. Spliterator supplies tryAdvance/forEachRemaining and, when supported, trySplit; its characteristics describe actual source properties. Splitting does not guarantee one specific number of partitions or thread count.
+
+The source program sums an Iterator and collects a Spliterator traversal. These streams own no external handles. For resource-backed sources, escaping an iterator does not transfer cleanup to magic: keep the source stream open while traversing and close its owner afterward.
+
+## Consumption does not equal closure
+
+The onClose experiment counts two elements while its closed flag remains false. Exiting try-with-resources then runs the registered close handler and makes it true. A terminal operation consumes a pipeline; it does not generally invoke close.
+
+Files.lines, Files.list and Files.walk have real resource lifetimes. Closing a stream can invoke registered handlers; those handlers are different from optional peek observations. Close handlers follow their documented order and failure/suppression contract. Do not return an iterator or stream whose owning resource was already closed in a local block.
+
+## Worked terminal choices
+
+<details>
+<summary>How do you require every returned element to be valid and also require some input?</summary>
+
+allMatch alone accepts empty. Choose an explicit nonempty result representation or combine a real presence condition with validation under one deliberate traversal. Do not consume the same stream twice to ask isPresent and then allMatch.
+
+</details>
+
+<details>
+<summary>Does findAny mean a uniformly random sample?</summary>
+
+No. It relaxes selection to any eligible element. A random-sampling algorithm needs its own distribution and state contract, not merely findAny or unordered.
+
+</details>
+
+<details>
+<summary>What result should an empty maximum return?</summary>
+
+The no-identity contract returns empty Optional. The caller can require a value, return a domain absence or supply a deliberately valid fallback. Zero is not a universal maximum identity when negative values are legal.
+
+</details>
+
+## References
+
+- [Java 8 Stream factories and terminal operations](https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html)
+- [Primitive IntStream operations and ranges](https://docs.oracle.com/javase/8/docs/api/java/util/stream/IntStream.html)
+- [BaseStream traversal, modes and close handlers](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/BaseStream.html)
+- [Files resource-backed streams](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/nio/file/Files.html)

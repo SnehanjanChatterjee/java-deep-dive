@@ -1,0 +1,74 @@
+---
+title: "Interrupt status and cancellation boundaries"
+module: "concurrency"
+group: "Lifecycle and interruption"
+summary: "Trace interrupt, isInterrupted and interrupted separately, including the flag-clearing behavior of interruptible waits."
+order: 760
+version: "Java 8+"
+prerequisites: ["concurrency/thread-lifecycle"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## An interruption is a request the task must interpret
+
+`target.interrupt()` requests interruption of the target Thread. It does not forcibly make an arbitrary method return. Each task needs a response policy: propagate interruption, stop at a safe boundary, or deliberately handle the request while preserving the caller's contract.
+
+There are three similarly named operations. Keep their target and effect separate.
+
+| Operation | Whose status? | Effect |
+| --- | --- | --- |
+| `target.interrupt()` | The target Thread | Request interruption; supported blocked operations can react specially |
+| `target.isInterrupted()` | The target Thread | Inspect without clearing |
+| `Thread.interrupted()` | Current caller | Inspect and clear |
+
+`interrupted()` is static. Writing it through a variable does not change its target to that variable's Thread. Use `Thread.interrupted()` so the consuming operation and its caller are explicit.
+
+## Observe each flag transition
+
+<JavaExample file="InterruptStatusLesson.java" output={"first inspect=true\nsecond inspect=true\nconsume=true\nafter consume=false\nsleep threw\nafter sleep exception=false"} />
+
+The worker interrupts itself, making the chosen state deterministic. Two isInterrupted calls both return true because neither consumes the request. Thread.interrupted returns true and clears it; the next inspection is false. Main's status is not cleared by code running in the worker.
+
+The worker sets its status again before sleep. Sleep detects that pending interruption and throws InterruptedException rather than completing an ordinary delay. Its documented interruption path clears status, so the catch observes false. No other thread is racing to interrupt this worker again; in an application, a new request can race with an observation.
+
+The catch deliberately ends this small status experiment. A library method doing useful work normally must propagate or preserve the cancellation signal rather than print the exception and continue its main loop.
+
+## Choose a boundary policy
+
+If a method can declare InterruptedException, usually propagate it after required finally cleanup. Its caller then decides how the larger operation ends. If a Runnable boundary cannot throw the checked exception, a common policy is to clean up, restore status with `Thread.currentThread().interrupt()`, and return.
+
+Restoring is not permission to repeat the same interruptible wait in an unconditional loop. That wait may immediately throw again, producing a busy failure loop. A deliberate retry policy must explain why cancellation is being deferred and when it will be observed.
+
+| Event | Required distinction |
+| --- | --- |
+| wait, sleep or join reports interruption | Their contract clears the waiting caller's status |
+| A program manually throws `new InterruptedException()` | Throwing this object alone does not clear any flag |
+| Intrinsic monitor acquisition is waiting | It is not an interruptible lock-acquisition API |
+| Explicit `lockInterruptibly()` is waiting | It supplies an interruptible acquisition contract |
+| `LockSupport.park()` returns after interruption | It does not clear status through an InterruptedException path |
+
+The explicit-lock and AQS lessons develop the last mechanisms. An interrupt request also does not prove that a socket, database operation or native call stopped; read the actual operation's contract.
+
+## CPU work needs explicit cancellation checkpoints
+
+A CPU loop does not call an interruptible wait merely by calculating. It can periodically inspect currentThread().isInterrupted, finish or discard its current chunk under a declared rule, release resources and return. Chunk size determines how much work may occur before another check; it is not a measured cancellation-latency guarantee.
+
+Use isInterrupted for a non-consuming check. Use Thread.interrupted only when this boundary deliberately consumes and handles the request. A separate volatile stop flag is another protocol, but it does not automatically wake a sleeping/waiting worker. Avoid mixing flag meanings without one owner and a clear wakeup policy.
+
+## Exercise and interview questions
+
+**Why can two consecutive interrupted calls return true then false?** The first consumed the current thread's status. Another interrupt between calls could make the second true again.
+
+**Why might a catch see false after an interrupt?** A wait/sleep/join interruption path cleared status while throwing. That is why swallowing the exception loses cancellation information.
+
+**Does interrupting main while it joins a worker interrupt that worker?** No. Main's wait fails; cancelling the separately owned worker is an additional decision.
+
+For the complete exercise, use `InterruptStatusLesson` to predict each line before running it. Then replace the two isInterrupted calls with Thread.interrupted: the first becomes true and the second false, so the later consume is also false. The changed output follows explicit status consumption, not scheduler timing.
+
+## Primary contracts
+
+- [Thread interruption, inspection and consuming inspection](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html#interrupt--)
+- [JLS 17.2: wait sets and interruption](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.2)
+- [Official interruption tutorial](https://docs.oracle.com/javase/tutorial/essential/concurrency/interrupt.html)

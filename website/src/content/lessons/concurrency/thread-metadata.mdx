@@ -1,0 +1,68 @@
+---
+title: "Thread names, identity, daemon status and priority"
+module: "concurrency"
+group: "Threads and tasks"
+summary: "Read properties from the intended Thread and distinguish descriptive metadata from execution guarantees."
+order: 745
+version: "Java 8+; threadId Java 19+"
+prerequisites: ["concurrency/thread-construction"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## The receiver and the caller can be different Threads
+
+In main, `worker.getName()` asks about the object referenced by worker. `Thread.currentThread().getName()` asks about the execution making the call. Before start, worker already has a name, while main is still the caller. Inside the started worker's task, currentThread identifies that worker.
+
+A name is a mutable diagnostic label. It need not be unique. Two Thread objects named `same-name` are still two objects and can represent two independent lifetimes. Use an explicit task/role identifier for application decisions; renaming a diagnostic label must not change whose turn it is to update state.
+
+## Observe stable properties
+
+<JavaExample file="ThreadMetadataLesson.java" output={"same name=true\nsame object=false\ncaller is first=false\nworker observed daemon=true\nworker finished=true"} />
+
+The first two Threads are constructed but never started. The program compares their equal name strings and unequal object references. Constructing them does not keep the process alive. The third Thread is configured as daemon **before** start. Its task records its own daemon status, then returns. Main joins it before reading that recorded value.
+
+The join matters even for a daemon. It deliberately keeps main alive until this required work completes; daemon status does not provide a result or cleanup acknowledgement. There is no timing race in the reported final `!isAlive()` because main has completed the join.
+
+| Property | Useful for | Does not establish |
+| --- | --- | --- |
+| Name | Readable logs and thread dumps | Unique object/task identity or priority |
+| Object reference | Referring to this Thread's operations and lifetime | That the receiver is the current caller |
+| Thread ID | Correlating diagnostic observations | Submission order, application role or permission |
+| Daemon status | Whether this thread alone keeps the JVM running | Lower scheduling priority or reliable final cleanup |
+| Priority | Platform-thread scheduling input | A portable happens-before edge or exact run order |
+
+## Daemon status is a process-lifetime policy
+
+The JVM can begin shutdown when no started non-daemon thread remains. It does not promise to let daemon tasks finish or run their finally blocks first. Essential persistence, resource release and required output therefore need an owned completion protocol. Logging work is not automatically expendable merely because it runs in the background.
+
+A newly constructed platform Thread ordinarily inherits its creator's daemon status and priority. Set the intended policy explicitly before starting an owned worker rather than relying on whichever thread happened to construct it. Changing daemon status on a live platform thread throws IllegalThreadStateException. Daemon status is unrelated to the operating system's notion of a daemon service.
+
+Virtual threads, studied later, are always daemon and have fixed priority. Their many lightweight lifetimes still need an owner to keep required work alive.
+
+## Priority cannot implement a dependency
+
+Platform Thread priorities range from `MIN_PRIORITY` through `MAX_PRIORITY`, with `NORM_PRIORITY` as the normal value. An out-of-range argument is invalid. Scheduling effects depend on the runtime and platform; priority ten does not prove a task starts or finishes before priority one. It also cannot repair a data race, release another thread's lock or guarantee starvation freedom.
+
+To require B to consume A's finished result, use a completion relation such as join or a suitable task result. To protect an invariant, use a sharing protocol. Repeatedly raising priorities is neither protocol.
+
+## Numeric IDs belong to diagnostics
+
+Java 19 added `Thread.threadId()`. When targeting that API or later, it is the supported final accessor; older material often shows `getId()`, deprecated since Java 19. The Java 8 examples here compare actual object references instead of introducing a newer API or adding a deprecated call.
+
+For a Java 19+ diagnostic experiment, compare `first.threadId() != second.threadId()` while retaining both references. Print the relationship rather than claiming fixed values such as one and two. Application request IDs need their own semantics; a reusable worker can process many different requests under one thread identity.
+
+## Exercise and interview questions
+
+**Two tasks print the same thread name. Did only one task run?** No conclusion follows from the name alone. An executor might reuse one worker, or distinct Threads might share a name. Inspect the actual creation/submission and lifetime relationships.
+
+**Can daemon work be made required?** Yes: main can join it, or another owner can account for its completion. Its daemon flag alone still cannot keep the process alive.
+
+**How would the example change if main called the daemon's run directly?** No new lifetime would start. `currentThread().isDaemon()` would describe main, not the configured receiver. The first-thread execution visual demonstrates this same receiver/caller distinction.
+
+## Primary contracts
+
+- [Java 8 Thread metadata and daemon configuration](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html)
+- [Java 19 threadId and getId availability](https://docs.oracle.com/en/java/javase/19/docs/api/java.base/java/lang/Thread.html#threadId())
+- [Java 21 virtual-thread metadata constraints](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Thread.html)

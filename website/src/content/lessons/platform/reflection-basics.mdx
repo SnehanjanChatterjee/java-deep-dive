@@ -2,7 +2,7 @@
 title: "Reflection: discovery, construction and invocation"
 module: "platform"
 group: "Annotations and reflection"
-summary: "Reflection: discovery, construction and invocation with focused examples, failure traces and solved practice."
+summary: "Discover constructors and methods, invoke exact declared signatures and diagnose lookup, access and target failures."
 order: 1160
 version: "Java 8+"
 prerequisites: ["generics/generic-types", "objects/inheritance-and-composition", "reliability/exception-contracts"]
@@ -50,6 +50,21 @@ A type declares `public void setLevel(int level)`. Will `getMethod("setLevel", I
 <summary>Answer</summary>
 
 No: request int.class for lookup. A later invocation can accept a compatible boxed argument under its conversion rules, but that does not alter the lookup signature. If the target body throws, inspect/preserve InvocationTargetException.getCause. If lookup fails, there was no target-body execution to diagnose. Cache member metadata only when the owning type/loader and access policy remain appropriate; reflection is not automatically faster or simpler than a direct interface.
+
+</details>
+
+## Erasure, varargs and discovery order
+
+A generic method declared with an unbounded T has Object in its erased parameter descriptor. Requesting String.class because this invocation will pass a String does not find a separately reified T=String overload. Generic metadata can describe a TypeVariable or ParameterizedType, but it does not turn every List instance into a runtime List-of-String class.
+
+Invocation itself has a varargs boundary: Method.invoke accepts an Object array representing the target's argument list. A target expecting one String[] needs that array treated as **one argument**, not accidentally expanded as several invocation arguments. Casting that array expression to Object is one way to express the intended boundary. The actual target signature remains unchanged.
+
+Do not assign business priority from the order of getDeclaredMethods. Reflection's returned member order is not a source-order selection contract. Use explicit metadata and reject duplicate candidates where uniqueness is required. When inspecting generated/erased code, bridge and synthetic methods may appear; treat them deliberately rather than counting every returned Method as a distinct user-authored operation. [Member lookup and invocation](https://docs.oracle.com/javase/8/docs/api/java/lang/reflect/Method.html)
+
+<details>
+<summary>Why can discovery find a private field while reading it fails?</summary>
+
+Discovery identifies metadata. Reading needs a valid receiver/type and applicable access permission. Inspect the access failure and module openness separately from lookup. Caching a Method or Field is not permission to use it on any receiver or pass private-member capabilities to arbitrary code.
 
 </details>
 

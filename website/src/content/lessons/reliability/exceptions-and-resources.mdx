@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
@@ -95,6 +96,21 @@ A opens, B's initialization throws X and A.close throws Z. Which exception is ca
 X is primary, with Z suppressed on X. B never completed initialization, so that resource declaration does not close B. This differs from B opening successfully and failing in the body. Preserve both primary and suppressed diagnostics, and do not claim an operation succeeded merely because a catch returned a default. A custom diagnostic graph formatter must also avoid cycles if it traverses arbitrary cause/suppressed relationships.
 
 </details>
+
+
+## Run the failure during resource initialization
+
+<JavaExample file="ResourceInitializationLesson.java" output={"open A\nopen B\nclose A\nprimary=open B\nsuppressed=close A"} />
+
+First is successfully initialized before second begins. B records its opening attempt and throws before its declaration acquires a completed Resource. The body is never entered. A is closed during unwinding; B has no automatic close invocation from that failed declaration. When A's cleanup also fails, the opening failure stays primary and the close failure is suppressed on it. Trace(false) in the same source exercises the successful cleanup variant.
+
+A constructor acquiring several external resources must account for partial acquisition itself when it can fail before returning a wrapper. Try-with-resources closes successfully established resource variables, not every external thing a failed constructor touched internally. This is an ownership boundary, not merely a reversed loop over names.
+
+## Read the closing interface's actual promise
+
+AutoCloseable.close may declare Exception and is not universally required to be idempotent. Closeable narrows its checked failure to IOException and specifies that closing an already closed stream has no effect. A concrete type may promise more than its broad interface; read that type's contract before retrying close or sharing a resource between owners. In Java 9+, an existing final or effectively final local can appear as a resource (`try (reader)`); the Java 8 declarations above remain valid on later releases. [AutoCloseable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html), [Closeable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Closeable.html)
+
+Continue with <a href={lessonUrl('learn/reliability/console-input/')}>console input and borrowed streams</a> for a full Reader/Scanner example, including why an input helper should not silently close process-wide System.in. Closing a resource is separate from rejecting malformed text, and both policies need to remain visible to the caller.
 
 <span id="references" aria-hidden="true"></span>
 <span id="exception-and-resource-references" aria-hidden="true"></span>

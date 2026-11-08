@@ -64,6 +64,25 @@ Earlier preview examples using ShutdownOnFailure are not interchangeable with th
 Cancellation uses cooperative interruption. A child ignoring it or blocked in a noninterruptible operation can delay close indefinitely. A configured timeout can select an outcome without guaranteeing that all child cleanup already finished; close still accounts for those child threads. The scope cannot safely force arbitrary code to stop.
 
 <span id="context-inheritance-and-resource-ownership"></span>
+## Choose a result policy for interchangeable candidates
+
+Sometimes a parent needs **both** results. Sometimes either of two interchangeable sources can answer its one question. Those are different policies; the first completion might be a failure and therefore is not necessarily the desired answer.
+
+<JavaExample file="modern/StructuredFirstSuccessLesson.java" output={"fallback"} />
+
+Select validates both Callable references before opening a scope. It uses the Java 25 preview anySuccessfulResultOrThrow Joiner, forks the candidates and returns join's selected String. Main's first candidate throws through a finally that opens failurePath; the second waits for that signal before supplying fallback. The signal establishes that the failing body reached its abrupt-exit path, not that the framework has already processed its completion. The try-with-resources boundary closes before select returns to its caller, accounting for remaining child lifetimes even after a successful result has been selected.
+
+| Candidate outcomes | This first-success policy |
+| --- | --- |
+| Failure and success | Return the successful value |
+| Two successes | Select one permitted successful outcome; no fixed winner asserted |
+| Two failures | Throw FailedException with one actual failure cause |
+| Selected success while another child remains active | Request cancellation and account for child termination during closure |
+
+If cancellation already occurred before a later fork can start work, that subtask need not execute its body. Do not require a side effect from every forked candidate. A peer ignoring interruption can still delay close, and a timeout cannot manufacture its cleanup.
+
+Compile/run with the same `--enable-preview --release 25` / `--enable-preview` flags as the earlier scope examples. This is a preview-specific spelling of the stable ownership question: which result policy justifies ending the parent's work, and who accounts for the children that remain? [Java 25 scope Joiner policies](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/StructuredTaskScope.html)
+
 ## Context and external resources remain explicit
 
 The supported scope mechanism captures scoped bindings when opening and permits controlled child inheritance under its lifetime rules. Keep values immutable where practical: the binding does not freeze an object.

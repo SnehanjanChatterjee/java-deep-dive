@@ -1,0 +1,90 @@
+---
+title: "TCP sockets, connection lifetimes and message boundaries"
+module: "libraries"
+group: "TCP sockets"
+summary: "Use Socket and ServerSocket in two ordinary processes, frame one bounded UTF-8 message and distinguish TCP from datagrams."
+order: 715
+version: "Java 8+"
+prerequisites: ["libraries/message-framing", "reliability/exceptions-and-resources"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## A socket is an endpoint, not an application message
+
+A TCP connection provides a reliable ordered byte stream between endpoints. Java's Socket exposes input/output streams for an established connection. ServerSocket listens at a local address and port; accept returns a **different Socket** representing one accepted connection. Closing the listening socket and closing an accepted connection have different effects.
+
+TCP does not preserve the boundaries of write calls as application messages. The receiver can obtain part of one write or bytes from several writes together. Define a protocol above that stream. The preceding lesson used byte-length prefixes; this introductory socket program uses a bounded LF-terminated UTF-8 line.
+
+## Run a complete client and server from one source file
+
+<JavaExample file="SocketLineLesson.java" />
+
+The class has two modes, run in separate terminal processes. It needs no thread creation or framework to explain the socket lifecycle. The server binds only to the local loopback address and requests port 0, letting the operating system select an available port.
+
+In the first terminal:
+
+```bash
+javac SocketLineLesson.java
+java SocketLineLesson server
+```
+
+It prints `port=` followed by the selected number. In a second terminal, within the server's 30-second acceptance window, replace PORT with that number:
+
+```bash
+java SocketLineLesson client PORT
+```
+
+The client prints `reply=hello`. The server prints `served one request`, closes the accepted connection and its listener, then exits. PORT is a placeholder, not a fixed port guaranteed to be available. Start the server again for another exchange; this program deliberately serves one request.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant S as Server process\n participant C as Client process\n S->>S: bind loopback and print selected port\n C->>S: connect\n S->>S: accept returns connected Socket\n C->>S: UTF-8 hello plus LF\n S->>C: echo same bounded line plus LF\n C->>C: read complete reply and close\n S->>S: close connection and listener"} caption="Connection establishment, message framing and resource closure are separate stages." />
+
+## Follow each method and its invariant
+
+`serve` owns the listener and accepted Socket through nested try-with-resources. The accepted socket receives its own read timeout. `request` validates the port, owns its client socket, supplies an explicit connect timeout and then configures reads. The listener's accept timeout does not automatically configure every later connection read.
+
+`reader` adapts bytes to a strict UTF-8 decoder, and `writer` uses a strict UTF-8 encoder. They return character wrappers over a socket owned by their caller. `readFrame` retains at most 64 UTF-16 units, returns only after LF and rejects EOF before the delimiter. An empty LF-terminated line is a valid empty message. A connection ending with undelimited text is a truncated frame, not an invented complete message.
+
+`writeFrame` rejects an embedded LF or excessive length before writing, appends one LF and flushes. Flush passes pending character-encoder bytes to the underlying stream; it does not prove that the peer has processed them. The reply supplies the application-level observation in this small protocol.
+
+The length budget counts UTF-16 units, matching the Reader/String model, while the preceding length-prefixed protocol counts UTF-8 bytes. These are intentionally different protocols. Accepted frame processing takes O(n) work and O(n) retained text with n bounded by 64. Transport buffering and socket resources are additional implementation costs.
+
+## Blocking, deadlines and closure
+
+A connect timeout bounds the selected connection attempt. SO_TIMEOUT concerns a blocking read/accept under the corresponding API; it is not a complete end-to-end deadline and does not make every output write bounded. An EOF, timeout, malformed encoding and connection refusal require different interpretation. The example propagates I/O failures instead of printing its success output after a failed exchange.
+
+SocketChannel offers another I/O interface and can be configured for nonblocking operation. A nonblocking connection needs readiness, partial input/output state and admission policies; changing the class name does not supply those protocols. Threading later provides another way to serve overlapping clients, with its own ownership and capacity requirements.
+
+## TCP, UDP and HTTP answer different questions
+
+| Java facility | Data model | Application responsibility |
+| --- | --- | --- |
+| Socket / ServerSocket | TCP byte stream | Define framing and own connection lifetime |
+| DatagramSocket / DatagramPacket | Individually addressed datagrams | Handle loss, duplicates, order and receive-buffer limits as required |
+| HttpClient | HTTP requests and responses | Select method/status/body/deadline and application semantics |
+
+UDP keeps datagram boundaries but does not supply TCP's ordered reliable stream. Receiving into a buffer that is too small can truncate a datagram. HTTP supplies a higher-level protocol; it is not a synonym for a raw socket or a guarantee that a received status is application success. The next lesson develops that request/response layer.
+
+## Interview exercises
+
+<details>
+<summary>Can one write of hello plus LF be assumed to arrive in one read?</summary>
+
+No. readFrame keeps consuming decoded units until the protocol delimiter, retaining partial state as necessary. The decoder also carries multibyte UTF-8 state between underlying reads. The sender's write calls do not define TCP message boundaries.
+
+</details>
+
+<details>
+<summary>Why is waiting for the peer to close instead of sending LF a different protocol?</summary>
+
+EOF can frame one final body, but then connection reuse and half-close/lifetime policies matter. In this program, both sides wait for LF. If the client waits for a reply without completing its request frame, the server waits for that delimiter until its read timeout; no thread priority or extra flush supplies the missing delimiter.
+
+</details>
+
+## References
+
+- [Socket streams, connection and timeout contracts](https://docs.oracle.com/javase/8/docs/api/java/net/Socket.html)
+- [ServerSocket binding and accept](https://docs.oracle.com/javase/8/docs/api/java/net/ServerSocket.html)
+- [DatagramSocket packet delivery](https://docs.oracle.com/javase/8/docs/api/java/net/DatagramSocket.html)

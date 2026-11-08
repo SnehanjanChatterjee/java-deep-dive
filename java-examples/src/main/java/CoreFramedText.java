@@ -40,6 +40,8 @@ public final class CoreFramedText {
     /** Encodes one complete frame using byte length and strict UTF-8 conversion. */
     public static ByteBuffer encode(final String text) throws CharacterCodingException {
         Objects.requireNonNull(text, "text");
+        // Valid UTF-8 needs at least one byte per UTF-16 code unit. Bound temporary encoding too.
+        if (text.length() > MAX_BYTES) { throw new IllegalArgumentException("invalid frame length"); }
         final ByteBuffer payload = StandardCharsets.UTF_8.newEncoder().onMalformedInput(CodingErrorAction.REPORT)
                 .onUnmappableCharacter(CodingErrorAction.REPORT).encode(CharBuffer.wrap(text));
         if (payload.remaining() > MAX_BYTES) { throw new IllegalArgumentException("invalid frame length"); }

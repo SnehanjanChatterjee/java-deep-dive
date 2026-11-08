@@ -3,7 +3,7 @@ title: "Phaser: registration, arrival and departure"
 module: "concurrency"
 group: "Coordination utilities"
 summary: "Track changing phase participation explicitly and distinguish arrival, waiting and deregistration."
-order: 840
+order: 820
 version: "Java 8+"
 prerequisites: ["concurrency/cyclic-barrier"]
 advanced: true
@@ -27,6 +27,16 @@ The Phaser begins with one registered parent. The parent registers each child **
 The initial three means parent plus two children. Each child writes its own result slot and calls arriveAndDeregister in finally. Main calls arriveAndAwaitAdvance: it reports its own arrival and waits until the remaining children arrive. Their deregistrations let the phase advance while leaving only the parent registered. Joining then accounts for actual worker termination.
 
 The parent reads the completed slots, observes one remaining registered party, then deregisters itself. With the default termination policy, no parties remaining terminates the Phaser. That terminal state is distinct from forcibly stopping a thread.
+
+## Dry-run registration and a disappearing participant
+
+Begin phase zero with the parent registered: registered=1, unarrived=1. Register two children before starting them: registered=3, unarrived=3. Each child's arriveAndDeregister records its phase-zero arrival **and** removes its future registration. After both children, only the parent's arrival remains. The parent's arrival completes phase zero and permits advancement under the phaser's policy.
+
+Arrival does not inherently wait. `arrive()` returns the arrival phase; a participant that must wait can subsequently await advancement from that phase. `arriveAndAwaitAdvance()` combines those responsibilities. Calling arrive twice for one conceptual contribution violates the application protocol; registration is an accounting contract, not a scheduler that prevents mistaken calls.
+
+Registration after a phase has already advanced joins the phase selected by the API's coordination, not an earlier phase a caller hoped to join. That is why this program registers children before they can run. The registered parent keeps the intended first phase from completing prematurely.
+
+Use the interruptible/timed advancement API when the waiting caller needs that policy. The convenience arrive-and-await form does not throw InterruptedException. Termination makes waiting operations return their termination indication; it still does not interrupt or join child threads. [Phaser registration and arrival methods](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Phaser.html)
 
 ## Separate arrival from waiting
 

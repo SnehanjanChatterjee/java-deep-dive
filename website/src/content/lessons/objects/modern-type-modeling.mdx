@@ -83,6 +83,20 @@ No. Copying changes ownership, not the array equality contract. Independent copi
 
 </details>
 
+
+## Read the generated API before choosing a record
+
+`Range` exposes start() and end(), not JavaBeans getStart()/getEnd() setters/getters. Its component fields cannot be reassigned by clients. A record can add operations such as length, implement an interface and declare static constants, but cannot add a hidden instance field outside its header. If a component should not be part of the published value representation, a conventional class may express that boundary better.
+
+Component equality follows the record contract, rather than primitive `==` for every possible type. In particular, generated floating-point component comparisons treat NaN values as equal and distinguish positive from negative zero. Reference components use their equality behavior. Arrays therefore retain array identity semantics unless explicitly handled. These are independent choices from validation and copying. [Record generated-member contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html)
+
+<details>
+<summary>Can a compact constructor normalize parameters before implicit assignments?</summary>
+
+Yes: a component parameter can be normalized, such as replacing text with text.trim(), and the generated assignments store the resulting parameter values after the compact body. Assigning this.component directly in that compact body is not the compact-constructor form. Validate or normalize the parameters, then allow the implicit assignment; use a normal canonical constructor when explicit field assignment is required.
+
+</details>
+
 <span id="references" aria-hidden="true"></span>
 <span id="modern-language-references" aria-hidden="true"></span>
 

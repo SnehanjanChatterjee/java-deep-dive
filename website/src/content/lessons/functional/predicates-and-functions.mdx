@@ -1,0 +1,101 @@
+---
+title: "Predicates, functions and callback composition"
+module: "functional"
+group: "Functions and method references"
+summary: "Invoke and compose callback roles with explicit short-circuit, transformation, side-effect and value-production semantics."
+order: 558
+version: "Java 8+; Predicate.not 11+"
+prerequisites: ["functional/lambdas-and-optional"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Match the callback to the operation's question
+
+A selection asks whether to keep a value. A transformation asks what value to produce. An action performs an effect, while a supplier produces a value when called. These differences determine both the functional interface and its invocation method.
+
+<JavaExample file="PredicateFunctions.java" output={"true\ntrue\n[a, Java]\nlength calls=2\nor skips unsafe branch=true\nandThen/compose=8/7\nAB\nfresh containers=true\nremoveIf/replaceAll=[JAVA]"} />
+
+select receives Predicate&lt;? super T&gt; because the predicate consumes each source T. It creates a new encounter-ordered result list and does not change source membership. It calls test once for each value under this ordinary loop's contract. The predicate, not a generic type argument, determines whether a null element is valid.
+
+## Read the principal interface families
+
+| Interface | Method/shape | Example responsibility |
+| --- | --- | --- |
+| Predicate&lt;T&gt; | test(T) → boolean | Decide whether a name is accepted |
+| Function&lt;T,R&gt; | apply(T) → R | Convert text to a length |
+| Consumer&lt;T&gt; | accept(T) → void | Append a diagnostic or perform a controlled effect |
+| Supplier&lt;T&gt; | get() → T | Construct or retrieve a value on demand |
+| UnaryOperator&lt;T&gt; | apply(T) → T | Replace text with normalized text |
+| BinaryOperator&lt;T&gt; | apply(T,T) → T | Combine two values of the same type |
+| BiFunction&lt;T,U,R&gt; | apply(T,U) → R | Combine two possibly different inputs |
+| BiPredicate&lt;T,U&gt; | test(T,U) → boolean | Decide a relationship between two inputs |
+| BiConsumer&lt;T,U&gt; | accept(T,U) → void | Process a key/value association |
+
+Primitive specializations such as IntPredicate, ToIntFunction&lt;T&gt;, IntUnaryOperator and ObjIntConsumer&lt;T&gt; choose primitive input/result contracts. They are not interchangeable with every boxed generic interface. For example, Function&lt;String,Integer&gt;.apply returns an Integer reference, while ToIntFunction&lt;String&gt;.applyAsInt returns int. Domain overflow/null rules still need to be stated.
+
+A function-shaped type does not promise purity. A supplier does not promise a cached value or a fresh object. In this source, fresh returns new ArrayList explicitly, so two get calls create distinct containers. A supplier returning a captured list instead would share it.
+
+## Trace short-circuiting before relying on it
+
+guardedLengthChecks combines a non-null test with the length predicate using and. For [null,"a","Java"], the first test rejects null without executing length. The length body therefore runs twice, not three times. A captured one-element array records that count; final prevents rebinding the array reference, not changing its cell.
+
+| Composition | First result | Is second predicate invoked? | Result |
+| --- | --- | --- | --- |
+| first.and(second) | false | No | false |
+| first.and(second) | true | Yes | Second result |
+| first.or(second) | true | No | true |
+| first.or(second) | false | Yes | Second result |
+
+The or example accepts null in its first branch and skips a second branch that would dereference it. Reversing that order would throw before reaching the guard. negate reverses one predicate's boolean result; it does not undo side effects or catch its failures.
+
+Predicate.isEqual(value) constructs an equality test using null-safe value comparison, not reference identity. The source's separately allocated "Java" String matches. Predicate.not, available from Java 11, is a static negation helper, often useful with method references; Java 8 callers can use predicate.negate().
+
+## Compose values in the intended direction
+
+Let plusOne(x)=x+1 and timesTwo(x)=2x. plusOne.andThen(timesTwo) computes 2×(x+1), giving eight for three. plusOne.compose(timesTwo) computes 2x+1, giving seven. Matching input/output types make both expressions legal here, but not equivalent.
+
+For functions of different types, the intermediate result must be accepted by the next function. A String-to-Integer function cannot feed a function requiring String without another conversion. Function.identity returns its argument; it neither clones nor freezes it.
+
+Consumer.andThen sequences effects. The program appends A then B. If the first action throws, the second is not invoked by that composition. Exception/failure handling remains visible at the callback boundary; the generic interface cannot silently translate every failure into success.
+
+## Apply a predicate or operator to ordinary collection methods
+
+The source copies the input into an editable list, uses removeIf to delete null/short text, then replaceAll to uppercase each surviving String with Locale.ROOT. The result is [JAVA]. removeIf consumes Predicate; List.replaceAll consumes UnaryOperator because an in-place replacement must still be String.
+
+This differs from Stream.map, which can produce a different element type into a new result pipeline. It also differs from static Collections.replaceAll(list,old,new), which replaces equality-matching values without a callback. Fluent names do not make those contracts interchangeable.
+
+A callback with mandatory effects is appropriate only when the caller guarantees the required invocations. The explicit select loop has that contract. Stream intermediate stages can be skipped by optimization or short-circuiting, so an observational counter in peek is not a dependable audit protocol.
+
+## Worked questions
+
+<details>
+<summary>Can an and composition validate a nullable input safely?</summary>
+
+Yes when the first predicate rejects null and the second only dereferences after that success. A logical reordering can change failures and side effects. Keep predicates pure when they will be used under stream contracts requiring stateless behavior.
+
+</details>
+
+<details>
+<summary>Does Supplier&lt;List&lt;T&gt;> imply memoization?</summary>
+
+No. Each get invokes the supplied behavior. Explicit construction can return a new list; a captured reference can return the same list. Memoization needs storage and a declared retry/failure/concurrency policy.
+
+</details>
+
+<details>
+<summary>Why use Predicate&lt;? super T&gt; rather than Predicate&lt;T&gt; in select?</summary>
+
+The callback consumes each T. A predicate accepting Object can validly decide whether a String should be selected. The lower-bounded argument admits that relationship without claiming arbitrary predicates have the same exact parameterization.
+
+</details>
+
+## References
+
+- [java.util.function role and primitive-specialization conventions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/package-summary.html)
+- [Predicate composition and equality factories](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/Predicate.html)
+- [Function composition order](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/Function.html)
+- [Consumer sequencing and failure propagation](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/function/Consumer.html)

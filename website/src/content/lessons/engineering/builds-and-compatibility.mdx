@@ -141,6 +141,24 @@ The supplied reference artifacts demonstrate four outcomes: old client with v1 p
 
 A migration note should state source/API target, actual runtime/toolchain, resolved dependency changes, removed/internal API use, processor configuration and observed behavior checks. Record unsupported or unrun combinations honestly. A library's successful clean build cannot establish compatibility for client/runtime combinations it never exercised.
 
+## Keep a compatibility matrix instead of one passing build
+
+| Consumer artifact | Library artifact | Question answered |
+| --- | --- | --- |
+| Old source recompiled | New library | Source compatibility for that consumer |
+| Old class files unchanged | New library | Binary linkage for those descriptors |
+| Existing semantic assertions | New library | Required behavior for tested inputs |
+| Packaged application | Supported runtime | Actual launch/API/class-file compatibility |
+
+The lab's retained String overload repairs one old binary descriptor, but changing Hello to Welcome can still break a caller's behavioral expectation. A test that recompiles everything together would miss the old binary linkage failure. Conversely, one successful old-client launch would not show that adding an unrelated reference overload made a new source call with null ambiguous.
+
+<details>
+<summary>Why can a covariant return override work while changing a library method's return descriptor breaks a client?</summary>
+
+A Java compiler can emit a bridge where the language's overriding/erasure rules require one, preserving a callable inherited signature. That does not mean arbitrary API descriptor edits automatically keep every old member. Inspect the produced descriptors/bridges and test a separately compiled client. Source-level assignability and the runtime member requested by an old class file remain distinct questions.
+
+</details>
+
 ## References
 
 - [JLS binary compatibility](https://docs.oracle.com/javase/specs/jls/se25/html/jls-13.html)

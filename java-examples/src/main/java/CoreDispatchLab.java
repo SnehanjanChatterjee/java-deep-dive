@@ -16,7 +16,7 @@ public final class CoreDispatchLab {
     private static String choose(final Integer value) { return "Integer"; }
     /** Demonstrates the later variable-arity phase. */
     private static String choose(final int... values) { return "varargs"; }
-    /** Prints the signatures and implementations selected for four calls. */
+    /** Prints the signatures and implementations selected for five calls. */
     public static void main(final String[] args) {
         final Parent receiver = new Child();
         final Object argument = "text";

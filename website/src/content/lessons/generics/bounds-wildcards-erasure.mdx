@@ -2,7 +2,7 @@
 title: "Bounds, wildcards and safe data flow"
 module: "generics"
 group: "Bounds and wildcards"
-summary: "Choose bounds and wildcards by tracing which values an API can safely read and write."
+summary: "Trace producer/consumer permissions, invariance, wildcard capture and inherited comparison bounds against complete generic algorithms."
 order: 340
 version: "Java 8+"
 prerequisites: ["generics/generic-methods", "objects/interfaces"]
@@ -70,6 +70,39 @@ Copy reads T values from `List<? extends T>` and appends them to `List<? super T
 Max rejects empty input, seeds best from the first non-null element and compares each remaining value. Its bound `T extends Comparable<? super T>` permits comparison inherited from a compatible supertype. It uses O(n) comparisons and O(1) auxiliary storage. Number alone would not establish an ordering operation. An intersection such as `T extends Number & Comparable<T>` combines capabilities, with a class bound first.
 
 Swap accepts `List<?>` but cannot name its unknown element type directly. SwapCaptured introduces one T for that particular captured list, allowing a value read as T to be written back as T. Two independent wildcards need not represent the same unknown type. The helper preserves the relationship without an unchecked cast.
+
+## Dry-run the source and destination views
+
+Start with a List&lt;Integer&gt; [3,1,2] and empty List&lt;Number&gt;. copy's source wildcard captures a type bounded by T; reading one element as T is safe. The destination wildcard accepts T because its unknown type is a supertype of T. After the three adds, the Number destination contains the same three Integer references.
+
+| Signature choice | Integer source accepted? | Number destination accepted? | Meaning |
+| --- | --- | --- | --- |
+| List&lt;Number&gt; for a number reader | No | — | Requires exactly that parameterization |
+| List&lt;? extends Number&gt; | Yes | — | Read a bounded unknown subtype |
+| List&lt;? super Integer&gt; for a writer | — | Yes | Write Integer into a compatible supertype container |
+| List&lt;?&gt; | Yes as an unknown list | Not an arbitrary writer | Read Object without discarding generic checks |
+
+You cannot add Double to an extends Number view because it might point to the original Integer-only list. Adding even an Integer is not generally safe either: the captured subtype might be a different Number subtype. Null is type-compatible but can still be rejected by the actual collection.
+
+With a super Integer view, existing data might include Double if the underlying list is List&lt;Number&gt;. Reading as Integer would therefore need evidence the wildcard does not provide. Reading as Object is always safe; an instanceof check can then refine a particular runtime element.
+
+## Capture one unknown type, not several unrelated unknowns
+
+swap accepts List&lt;?&gt;. Reading its left position yields the unknown captured type, but the source declaration cannot write that type name directly. swapCaptured introduces T for this exact list. Both saved values and both set calls now use one T.
+
+The implementation reads both indexes before either write. A rejected second read therefore leaves the sequence unchanged. Supported set operations can still have their own failure behavior; type safety is not a transaction or a mutability guarantee.
+
+Two independently declared List&lt;?&gt; parameters do not mean their element types are equal. A method moving an arbitrary value from one into the other needs a named shared relationship or a checked conversion, not a wildcard repeated twice.
+
+## Explain the comparison bound instead of memorizing it
+
+Comparable&lt;X&gt; supplies compareTo(X). A subtype can inherit comparison against its parent type. If Child extends Parent and Parent implements Comparable&lt;Parent&gt;, Child can compare to another Child through the Parent contract. Comparable&lt;? super T&gt; permits that relationship; requiring Comparable&lt;T&gt; can reject it.
+
+An intersection bound combines required capabilities. T extends Number & Comparable&lt;T&gt; permits Number methods and comparison; the class bound, if present, comes first. This is different from choosing either type, and different from a wildcard representing one unknown argument. The first bound also determines erasure, which matters to later binary descriptors.
+
+Number by itself supplies numeric conversions, not Comparable. A method must not call compareTo merely because its current Integer caller happens to support it.
+
+<JavaExample file="GenericAlgorithmsTest.java" />
 
 ## Practice: choose the minimum necessary permission
 

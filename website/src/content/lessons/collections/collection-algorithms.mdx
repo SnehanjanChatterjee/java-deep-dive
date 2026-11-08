@@ -1,0 +1,111 @@
+---
+title: "Sorting, searching and rearranging collections"
+module: "collections"
+group: "Ordering"
+summary: "Apply Collections algorithms with the required ordering and mutation permissions, and trace insertion points, copies and rearrangements."
+order: 405
+version: "Java 8+"
+prerequisites: ["collections/ordering", "collections/collection-operations"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Reuse an algorithm without changing its preconditions
+
+Collections.sort, reverse, binarySearch and copy operate on an existing List. They do not turn every Collection into a sortable sequence or supply missing positions. Choose an algorithm only after stating the receiver's order, supported operations and element relation.
+
+<JavaExample file="CollectionAlgorithms.java" output={"[1, 1, 3, 4]\nmissing 2=-3\n[1, 1, 2, 3, 4]\n[1, 1, 4, 3, 2]\n[2, 1, 4, 3, 1]\n[2, 1, 4, 3, 1, 0]\n[2, 7, 4, 3, 9, 9]\nfrequency=1\ndisjoint=false\nmin/max=2/9\nsublist=-1\nshuffle preserves values=true"} />
+
+The program deliberately uses mutable ArrayLists. Its results depend on specified logical order, not an implementation's private array layout.
+
+## Sort a list under one comparison policy
+
+The input [4,1,3,1] sorts to [1,1,3,4]. Natural sorting requires mutually comparable elements; an external Comparator must be supplied to the comparator overload. Merely making a class implement Comparator does not give its instances a natural Comparable order.
+
+Sorting is stable: an ordered input's comparison-equivalent values retain their relative order. Stability does not discard duplicates. TreeSet instead uses comparison zero for uniqueness, so replacing a sorted list with a sorted set changes semantics.
+
+Collections.sort accepts List, including LinkedList, when the needed mutation is supported. It does not directly accept Queue or Set. It is not intrinsically “better than Arrays.sort”; one works with list operations, the other with arrays. The sort implementation is not a universal constant-extra-space promise. The API contract and the selected algorithm's temporary storage must be distinguished.
+
+## Decode the binary-search result
+
+binarySearch requires the list to be sorted under the same ordering used by the search. Searching an unsorted list has no useful specified result. A nonnegative result is one matching index; with duplicates, it need not be the first or last occurrence.
+
+An absent result encodes the insertion point as `-(insertionPoint) - 1`. For [1,1,3,4], searching for 2 gives insertion point two and result −3. Decode it as `-result - 1`, then insert at that position:
+
+| Step | Value |
+| --- | --- |
+| Sorted sequence | [1,1,3,4] |
+| Search for 2 | −3 |
+| Insertion position | 2 |
+| After insertion | [1,1,2,3,4] |
+
+A result of −1 means insertion at zero. Insertion after the final element of size n is encoded as −n−1. A found duplicate index can be used for a valid sorted insertion, but does not promise an earliest/latest tie position. The complete insertSorted method implements this decoding.
+
+For a random-access list, search performs logarithmic comparisons and indexed access. A large linked list can require O(n) link traversal even though comparison count remains O(log n). Repeatedly locating the midpoint can dominate the arithmetic.
+
+## Rearrange positions without comparing values
+
+reverse changes traversal sequence, not element values. rotate(list,distance) moves positions cyclically; positive distance moves the final part toward the front. swap exchanges two indexed values. These need replacement support, not necessarily structural size changes.
+
+The source follows this exact sequence:
+
+| Operation | Sequence |
+| --- | --- |
+| After sorted insertion | [1,1,2,3,4] |
+| reverse | [4,3,2,1,1] |
+| rotate by 2 | [1,1,4,3,2] |
+| swap indexes 0 and 4 | [2,1,4,3,1] |
+
+shuffle rearranges positions using a randomness source. It is not sorting and is not a security-sensitive random-choice protocol. The example supplies a Random explicitly, then sorts the result and checks that the values/multiplicities survived. It does not assert one portable shuffle layout as an API guarantee.
+
+## Copy into positions that already exist
+
+Collections.copy(destination,source) overwrites the first source.size existing destination positions. It does not append or grow the destination. A new ArrayList with large capacity and size zero is still too short.
+
+The program builds six real zero elements with new ArrayList&lt;&gt;(Collections.nCopies(6,0)), then copies five values into them. The sixth position remains outside the copied range. Both containers share element references; copying does not clone mutable values.
+
+fill replaces every existing position with the same supplied reference. replaceAll(list,old,new) replaces equality-matching values. These are static Collections algorithms; List.replaceAll(UnaryOperator) is a different callback operation taught later.
+
+## Query content without changing it
+
+| Algorithm | Question answered | Boundary to remember |
+| --- | --- | --- |
+| min / max | Least/greatest value under the selected comparison | Empty input has no result and throws NoSuchElementException |
+| frequency | How many elements equal the given value? | Counts occurrences, not distinct classes |
+| disjoint | Do the inputs share no member? | Their membership relations must be suitable |
+| indexOfSubList / lastIndexOfSubList | Where does a matching contiguous sequence begin? | −1 means absent; an empty target has specified boundary behavior |
+| addAll(collection,values...) | Add several values through Collection.add | Returns whether anything changed |
+
+Most scan/rearrangement algorithms take linear visits under ordinary bounded element/index operations. Sorting requires more comparison work; list representation and comparator cost still matter. They are not all O(1) just because the caller writes one method invocation.
+
+## Small factories and wrapper families
+
+emptyList, singletonList and nCopies supply unmodifiable sequence structures. nCopies repeats one reference; it does not call a constructor n times. Copying it into ArrayList detaches list structure, not referenced objects. Repeating the same mutable row is the aliasing bug traced in <a href={lessonUrl('learn/collections/nested-collections/')}>nested collections</a>.
+
+unmodifiable wrappers preserve a live backing relationship. Synchronized wrappers provide a locking protocol, not arbitrary compound atomicity. Checked wrappers add runtime class checks at writes through that wrapper, not verification of every existing/nested value. The ownership, safe-map and erasure chapters develop those different guarantees.
+
+## Solved practice
+
+<details>
+<summary>Why can sort succeed on Arrays.asList but copy into new ArrayList&lt;&gt;(10) fail?</summary>
+
+Arrays.asList supports replacing its existing elements, which sorting needs, although it rejects structural resizing. The new ArrayList has capacity ten and size zero, so copy has no destination positions to overwrite. Add elements first or use a constructor that copies the source instead.
+
+</details>
+
+<details>
+<summary>How do you insert a missing 0 or 9 into [1,3,5]?</summary>
+
+Search for 0 returns −1, decoded to position zero. Search for 9 returns −4, decoded to position three. In each case insertion preserves ascending order. A search using reverse order against that ascending list would violate the precondition.
+
+</details>
+
+<JavaExample file="CollectionAlgorithmsTest.java" />
+
+## References
+
+- [Collections algorithm contracts, stability and optional mutations](https://docs.oracle.com/javase/8/docs/api/java/util/Collections.html)
+- [List.sort and representation-dependent costs](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html#sort(java.util.Comparator))

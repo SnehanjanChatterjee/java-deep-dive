@@ -2,7 +2,7 @@
 title: "PriorityQueue and binary heaps"
 module: "collections"
 group: "Queues and priority"
-summary: "Study priority ordering, binary heaps, sift algorithms and top-k selection."
+summary: "Implement sift operations and bottom-up heapify, explain unsorted heap storage and retain top-k candidates with bounded state."
 order: 520
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/ordering", "collections/dynamic-array"]
@@ -52,6 +52,25 @@ Repeated offer builds a heap in O(n log n) worst-case work. Bottom-up heapify st
 
 <CollectionTrace kind="priorityqueue" />
 
+## Build the heap bottom-up in the supplied implementation
+
+The complete IntMinHeap now also has an array constructor. It copies the input into its own storage, sets size and sifts each internal node downward from size/2−1 through zero. Children are already valid heaps by the time their parent is processed. The constructor does not modify the caller's array.
+
+For input [9,4,7,1,2], the final internal-node index is one. Sifting its 4 below child 1 yields [9,1,7,4,2]. Sifting root 9 then lifts 1, chooses the smaller next child 2, and places 9 at the final hole: [1,2,7,4,9]. Both repairs preserve the complete-tree shape.
+
+| Parent being repaired | Already valid children | Active array afterward |
+| --- | --- | --- |
+| 1, value 4 | Leaf values 1 and 2 | [9,1,7,4,2] |
+| 0, value 9 | Heaps rooted at 1 and 7 | [1,2,7,4,9] |
+
+Many nodes can move only one level, fewer can move two, and progressively fewer can move more. Summing those heights gives O(n) heapify work, rather than n independent worst-case logarithmic insertions. The copied backing array costs O(n) storage; the iterative repair itself uses constant extra state.
+
+peek/element read the head, while poll/remove() also repair it. remove(Object) and contains(Object) search by equality and can be linear; comparison-equivalent priority is not the same as value equality. A heap can contain several equal priorities. A copy into a list followed by sorting is a different result operation from repeatedly polling and consuming the queue.
+
+<JavaExample file="IntMinHeapTest.java" />
+
+The tests include bottom-up construction, unchanged input, empty/singleton reuse, bounds and sorted repeated removal. Sorted removal proves the observable heap contract without requiring its active array to be a sorted sequence.
+
 ## Top-k selection with bounded candidate storage
 
 <JavaExample file="CoreTopK.java" output={"[5, 6, 7]"} />
@@ -81,7 +100,7 @@ A scheduler needs more than a min-heap: stable tie policy, task cancellation, de
 <span id="java-implementation"></span>
 ## Implement a min-heap and top-k selection
 
-<JavaExample file="IntMinHeap.java" />
+<JavaExample file="IntMinHeap.java" output={"1\n2\n3\n4"} />
 
 This complete single-file min-heap does not use a built-in queue. `offer` reserves a position and moves ancestors downward while comparing against the inserted value. `poll` saves the minimum, removes the last element, selects the smaller child at each step and writes the replacement into the final hole. `peek` defines empty behavior through NoSuchElementException in this exercise; the library's poll uses null for emptiness.
 

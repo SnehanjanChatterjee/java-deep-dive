@@ -47,6 +47,21 @@ Yes: the catch completes normally, so following statements run. But success woul
 
 </details>
 
+## Inspect captured application frames without guessing library internals
+
+<JavaExample file="ExceptionTraceLesson.java" output={"NumberFormatException\nparseCount\nloadCount\nmain"} />
+
+The failure originates during parsing. ApplicationFrames reads getStackTrace in its captured order and keeps only frames whose declaring class is this example. ParseCount appears before loadCount and main because the trace runs outward from the failure. It uses method names instead of asserting a release-specific library frame count or source line number. GetClass().getSimpleName supplies the exception category for this small display.
+
+This is an intentionally filtered teaching view. It omits library frames, messages, causes and suppressed failures, so it is not a replacement for preserving a complete Throwable in application diagnostics. A frame named main means that invocation led to the failure, not that the source line calling main necessarily contained the defective parsing logic. Stack traces can also be replaced or disabled by exception APIs; treat them as diagnostic information, not an authorization proof.
+
+<details>
+<summary>An inner catch handles the failure and completes normally. Will an outer catch automatically run too?</summary>
+
+No. Once handled, execution follows that catch's normal continuation. An outer handler participates only if a failure still propagates, for example because the inner catch rethrows or throws another exception. A finally can also affect completion, examined in the next lesson. Catch blocks are alternatives selected by matching, not a list of callbacks all invoked for one failure.
+
+</details>
+
 ## Exception-flow references
 
 - [Dev.java: exception objects and handler search](https://dev.java/learn/language/annotations-exceptions/exceptions/what-is-an-exception/)

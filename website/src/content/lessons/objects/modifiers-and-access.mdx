@@ -1,0 +1,70 @@
+---
+title: "Access boundaries and declaration modifiers"
+module: "objects"
+group: "Interfaces and inheritance"
+summary: "Apply package and protected access correctly and distinguish final, abstract, static and other declaration policies."
+order: 188
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition", "objects/constructors-and-access", "execution/packages-and-tools"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Ask where the declaration may be used
+
+Access controls which code may name/use a declaration; scope controls where a name is available without qualification. A source import changes neither access nor runtime authorization. A type must itself be accessible before a public member inside it is useful to a caller. Public types in named modules also participate in module readability/exports, developed later.
+
+| Access | Ordinary class-member boundary |
+| --- | --- |
+| private | Declaring top-level nest, including its related nested classes |
+| no modifier | Same package; often called package-private |
+| protected | Same package, plus restricted subclass access from outside the package |
+| public | Where the declaring type and module boundary allow it |
+
+Package-private has no default keyword. The keyword default in an interface method means something else. A top-level class can be public or package-private, not private/protected; nested member types have additional access choices.
+
+## Run a protected-access example in two packages
+
+Save the files under the shown package directories:
+
+<JavaExample file="projects/access-control/src/base/Parent.java" label="src/base/Parent.java" />
+<JavaExample file="projects/access-control/src/base/PackagePeer.java" label="src/base/PackagePeer.java" />
+<JavaExample file="projects/access-control/src/client/Child.java" label="src/client/Child.java" output={"2\n5\n4"} />
+
+```bash
+mkdir -p out
+javac -d out src/base/Parent.java src/base/PackagePeer.java src/client/Child.java
+java -cp out client.Child
+```
+
+PackagePeer belongs to base, so it may read Parent's protected value and packageValue through any Parent reference. Child is outside base; its inherited protected access is permitted through this or an expression of type Child (or a Child subtype). In read, other has type Child, so other.value is legal. Replacing the parameter type with Parent makes that field access illegal even if a particular argument happens to be a Child at runtime.
+
+Child cannot directly read packageValue or secret. SecretValue deliberately exposes the selected private value through a public final method; private does not prevent the declaring class from publishing a controlled operation. Parent's protected constructor supports super construction, but does not make `new Parent()` an unrestricted expression in an unrelated external class. [JLS protected receiver and constructor access](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.6.2)
+
+## Read final according to what it modifies
+
+| Declaration | What final restricts | What it does not establish |
+| --- | --- | --- |
+| Local/parameter | Reassigning that variable | Immutability of referenced objects |
+| Instance field | Assignment after its permitted initialization | A deeply immutable object graph |
+| Static field | Assignment after class initialization rules permit it | A compile-time constant for every field type/initializer |
+| Instance method | Overriding that method | Absence of state changes or a universal speed improvement |
+| Class | Subclassing that class | An immutable instance |
+
+A blank final instance field is assigned exactly as required along each successful construction path; it need not have an initializer at the declaration. A final local can likewise be assigned after declaration if definite-assignment rules establish a single assignment. A constant variable is a narrower category: a final primitive/String initialized with a constant expression. A final reference to a mutable array is not such an immutable container guarantee. [JLS final variables](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.12.4)
+
+## Match other modifiers to their declaration kind
+
+Abstract classes cannot be directly instantiated, but can initialize inherited state through constructors. An abstract method declares an implementation obligation and has no body; it cannot also be private, static or final. Abstract and final on one class would demand and prohibit subclass completion simultaneously. A concrete method can exist in an abstract class, and an abstract class need not declare an abstract method.
+
+Static members belong to the class rather than an implicit receiver. Synchronized on a method uses a particular monitor: the receiver for an instance method, the Class object for a static one. It does not exclude all threads from every method everywhere. Volatile applies to fields and gives memory-ordering semantics, but does not make increment an atomic transaction. Native methods have an externally provided implementation rather than a Java body. Transient changes ordinary serialization's default field selection rather than ordinary field accessibility. Their complete contracts appear in concurrency and platform lessons; use a modifier for its actual semantics rather than its reassuring name.
+
+## Practice: repair an illegal protected read
+
+<details>
+<summary>Child needs to compare two arbitrary Parent values from another package. Is a cast the best access policy?</summary>
+
+Only cast when the values really must be Child instances and that narrowed contract is intended. Otherwise publish an appropriate operation on Parent, keep collaborating code in the intended package, or redesign the relationship. Casting every Parent to Child merely to bypass a source restriction can fail at runtime and misrepresent which objects the operation accepts.
+
+</details>

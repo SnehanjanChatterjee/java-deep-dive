@@ -73,6 +73,19 @@ No. The source-selected member contract remains describe(Object); optimization m
 
 The <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>early operand-stack trace</a> remains the small concrete foundation for these mechanisms.
 
+## Trace an instance invocation and a thrown result
+
+For an ordinary virtual call, the caller evaluates the receiver and arguments, then the invocation uses the source-selected member descriptor. A callee frame provides its local-variable array and operand stack. The receiver is the first local for an instance method; the caller's reference and callee's receiver value can identify the same heap object without sharing a local-variable slot.
+
+If the callee returns an int, the caller can continue with that result on its own operand stack. If it throws instead, handler search and unwinding follow the abrupt-completion path; there is no normal result to assign. Exception-table entries associate covered instruction ranges with handler targets and catch types. A verifier checks valid stack/local relationships, but does not prove that the algorithm avoids exceptions for every input.
+
+<details>
+<summary>Does invoking an overridable method from a constructor bypass dynamic dispatch?</summary>
+
+No. An overridable instance call can reach a subclass implementation before the subclass's own initialization has completed. That implementation may observe default field values. The constructor invocation itself uses its special initialization rules, but an ordinary virtual call made by the constructor is a separate instruction/contract. Avoid exposing partially constructed state and trace the actual source call separately from the constructor call.
+
+</details>
+
 ## Bytecode-linkage references
 
 - [JVM specification: invocation instruction definitions](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html)

@@ -1,0 +1,69 @@
+---
+title: "Join, sleep and yield: who actually waits?"
+module: "concurrency"
+group: "Threads and tasks"
+summary: "Trace the calling thread, the target lifetime and the guarantees a scheduling hint cannot supply."
+order: 750
+version: "Java 8+"
+prerequisites: ["concurrency/thread-metadata"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Join waits in the caller
+
+When main executes `worker.join()`, **main** waits for worker to terminate. Worker does not pause because another thread joined it. Starting A then B makes both eligible independently. Starting A, joining A, then starting B deliberately prevents B's execution from overlapping A's lifetime.
+
+The method name does not mean moving a worker onto main's stack or merging two Thread objects. It is a completion wait. Main can join two already-started workers in either order without dictating which worker finished first.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant M as Main\n participant W as Worker\n M->>W: start\n W->>W: calculate result\n M->>M: join waits in Main\n W-->>M: termination detected by join\n M->>M: read completed result"} caption="The caller waits for the target. The target remains free to make progress while the caller is waiting." />
+
+## Joining before start does not reserve a future completion
+
+<JavaExample file="JoinSchedulingLesson.java" output={"after early join=NEW, answer=0\nafter started join=TERMINATED, answer=42"} />
+
+The first join returns because the target has not been started and is not alive. Its task has not written the array element, so the element is still its default zero. Join did not start the target or arrange to wait for some later start.
+
+Only after `start()` does this Thread have a running lifetime to await. The second join detects its termination, after which the ordinary result write can be observed. The array is a small result holder, not a signal main polls while worker is changing it. The later memory-model lesson derives why successful completion observation publishes the write.
+
+## A timeout ends a wait, not the target
+
+`worker.join(milliseconds)` may return because the target terminated **or** the waiting allowance expired. Inspect `worker.isAlive()` before interpreting a timed return as termination. A zero timeout means an unbounded join in this overload. Negative milliseconds are invalid.
+
+An interrupted joining caller receives InterruptedException and has its interrupt status cleared by that operation. The target is not automatically interrupted. An owner that decides to cancel worker must request that separately and then account for cleanup.
+
+Joining yourself without a timeout creates a dependency on your own future termination while preventing yourself from reaching that termination. Do not run such an experiment as an ordinary lesson program. Likewise, avoid joining a child while holding a lock the child must acquire to finish.
+
+## Sleep and yield act on the current execution
+
+| Expression | Affects | Useful interpretation |
+| --- | --- | --- |
+| `worker.join()` | Calling thread waits for worker | Completion dependency |
+| `Thread.sleep(delay)` | Current thread waits for a timer/interrupt | A delay subject to timer and scheduling behavior |
+| `Thread.yield()` | Current thread supplies a scheduling hint | Scheduler may ignore it |
+
+Sleep and yield are static methods. Writing `worker.sleep(10)` is legal Java syntax but still sleeps the **caller**; use the class-qualified spelling so the target is clear. Neither method starts or pauses an arbitrary receiver Thread.
+
+Sleep does not release intrinsic monitors already owned. Waking from a delay does not guarantee immediate processor access. Yield does not promise that a particular peer runs next, and priority does not turn that hint into a sequencing contract. Neither sleep nor yield supplies synchronization semantics for ordinary shared fields. A delay cannot make an unsafe `while (!done)` polling loop correct.
+
+## Exercise: predict a legal partial order
+
+Main starts A and B, joins A, prints `A complete`, joins B, then prints `both complete`. Both worker termination events precede the final print; only A's termination must precede the first print. B may have finished before A, between the two prints, or after the first print. The order of the two join calls does not select one worker completion order.
+
+To require B to start only after A finishes, move `B.start()` after a completed `A.join()`. To allow overlap but process finished answers promptly, keep both started; the later completion-service lesson provides a different result retrieval policy.
+
+## Interview questions
+
+**Does join-before-start throw?** The ordinary join in this example returns; it is not a substitute for start-then-join.
+
+**Does sleeping in main prove the worker finished?** No. A finite delay establishes neither completed work nor publication of an ordinary result.
+
+**Can yield repair starvation?** It is only a hint. Design an appropriate coordination and admission policy rather than depending on one scheduler decision.
+
+## Primary contracts
+
+- [Thread join, isAlive and sleep contracts](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.html)
+- [JLS 17.3: sleep and yield lack synchronization semantics](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.3)
+- [JLS 17.4.5: thread start and detected termination](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)

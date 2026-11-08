@@ -1,0 +1,57 @@
+---
+title: "Exchanger and paired buffer handoff"
+module: "concurrency"
+group: "Coordination utilities"
+summary: "Meet a partner at a rendezvous and give each participant the other's reference."
+order: 830
+version: "Java 8+"
+prerequisites: ["concurrency/synchronizers", "concurrency/interrupt-status"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Two participants each bring a value
+
+A producer fills one buffer while a consumer empties another. At an agreed boundary they can exchange references: the consumer gets the filled buffer and the producer gets the reusable empty buffer. Exchanger represents that paired rendezvous. An exchange does not return until a partner exchange can match it, unless interrupted or a timed wait expires.
+
+This differs from a latch's one-way signal, a barrier's multi-party generation and a semaphore's consumable permits. Exchanger pairs two participants per successful exchange; it is not a broadcast to all waiting workers.
+
+## Follow both received values
+
+<JavaExample file="ExchangeLesson.java" output={"owner received=worker-buffer\nworker received=owner-buffer"} />
+
+One `Exchanger<String>` is shared by main and one owned worker. Main offers owner-buffer and the worker offers worker-buffer. On successful pairing, each invocation returns the other participant's value. Either participant may arrive first. The first arrival waits rather than receiving its own offered string.
+
+The timed overload guards this finite demonstration against a missing partner. Five seconds is a diagnostic allowance, not an observed transfer time or a workload recommendation. The worker records its specific failure, main joins it before inspecting that record, and finally requests interruption and joins on the owner path as well.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant O as Owner\n participant X as Shared Exchanger\n participant W as Worker\n O->>X: offer owner-buffer, wait for partner\n W->>X: offer worker-buffer\n X-->>O: worker-buffer\n X-->>W: owner-buffer"} caption="A successful pair swaps two references. The participants can arrive in either order." />
+
+## Publication is paired; object ownership is an application rule
+
+Actions before a successful exchange happen-before actions after the corresponding return in the other participant. A filled mutable buffer can therefore be handed to its next user under a disciplined ownership protocol. Exchanger does not clone that buffer, erase aliases or stop a previous owner from incorrectly mutating it afterward.
+
+For alternating buffers, define a state such as filling → exchanged → consuming → returned for reuse. Do not reuse a buffer until the agreed handoff returns it. Merely calling exchange on two references does not supply that larger lifecycle automatically.
+
+If several workers share one Exchanger, the API pairs participants; it does not identify a predetermined logical partner for every round. A protocol requiring named A/B pairs or group-wide rounds needs an appropriate higher-level arrangement.
+
+## Timeout and interruption do not complete the larger operation
+
+When one participant leaves because of timeout or interruption, decide what happens to its peer and their buffers. The application must end or retry the protocol deliberately. Retrying with an already-processed mutable buffer could duplicate effects; an unsuccessful exchange is not proof of business processing.
+
+Exchanger is reusable for later pairs. It provides neither a built-in global close nor an executor that owns those tasks. Keep termination and failure observation explicit, just as for the earlier synchronizers.
+
+## Exercise and interview questions
+
+**Can a single caller exchange without a partner?** The ordinary call waits. A timed call can fail with TimeoutException; it does not manufacture a second buffer.
+
+**Does the first arrival always receive first?** No useful completion-order guarantee follows. Both returns belong to one successful pairing.
+
+**How does a buffer differ from the String example?** The reference-transfer mechanism is the same, but mutable buffer reuse needs exclusive application ownership after each transfer. Strings let this first example isolate the pairing itself.
+
+The complete exercise solution is ExchangeLesson. Change the two strings and predict both outputs before running it. For a buffer extension, write the ownership states first; then ensure only the participant currently responsible for a buffer mutates it.
+
+## Primary contract
+
+- [Exchanger pairing, interruption, timeout and memory effects](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Exchanger.html)

@@ -10,9 +10,9 @@ export default function ConceptPlayer({trace, Visual, codeLabel, headerExtra, mo
  const state=trace.steps[step];
  useEffect(()=>{
   if(!playing||last)return;
-  const timer=setTimeout(()=>setStep(value=>value+1),1600);
+  const timer=setTimeout(()=>setStep(value=>value+1),trace.playbackMs??1600);
   return()=>clearTimeout(timer);
- },[playing,step,last]);
+ },[playing,step,last,trace.playbackMs]);
  const move=next=>{setPlaying(false);setStep(next)};
  const isCurrentLine=index=>Array.isArray(state.line)?state.line.includes(index):state.line===index;
  return <section className="concept-animation" aria-label={trace.title} data-concept-animation={modelId||trace.kind}>

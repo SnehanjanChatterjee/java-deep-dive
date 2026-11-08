@@ -1,7 +1,7 @@
 ---
 title: "ReentrantLock and separate condition queues"
 module: "concurrency"
-group: "Guarded waiting"
+group: "Waiting and conditions"
 summary: "Translate the mailbox invariant from an intrinsic monitor to an explicit lock and two Conditions."
 order: 800
 version: "Java 8+"
@@ -54,6 +54,22 @@ try {
 The excerpt assumes lock is a ReentrantLock and notFull is its Condition. Acquisition is before try because an interrupted acquisition has no lock to release. Once acquired, every normal or exceptional body exit must unlock. Ordinary `lock()` does not provide the interruption behavior of `lockInterruptibly()`.
 
 Reentrancy means the owner can acquire the same lock again, increasing its hold count. Matching unlocks are still necessary. This is useful when a protected method calls another protected method; it does not make unknown callbacks safe.
+
+## Trace nested lock ownership
+
+<JavaExample file="ReentrantLockDepthLesson.java" output={"1\n2\n1\n0"} />
+
+The outer lock call creates hold count one. The same caller can acquire again, producing two rather than waiting for itself. The inner finally removes one hold; it does not make the lock available to another caller yet. Only the outer finally reduces the count to zero. Every successful acquisition needs its own matching release.
+
+| Acquisition form | Waiting/cancellation policy |
+| --- | --- |
+| synchronized | Automatic region release; intrinsic acquisition is not interruptible |
+| lock() | Wait for ownership; no InterruptedException acquisition protocol |
+| lockInterruptibly() | Acquire or report interruption |
+| tryLock() | Immediate success/failure; can barge even on a fair ReentrantLock |
+| timed tryLock | Wait within its documented time/interruption policy |
+
+These choices express acquisition needs rather than a universal speed ranking. A private ReentrantLock also differs from its object's intrinsic monitor: `synchronized (lock)` does not acquire the explicit lock. [Java 8 ReentrantLock contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantLock.html)
 
 ## Implement a timed condition mailbox
 

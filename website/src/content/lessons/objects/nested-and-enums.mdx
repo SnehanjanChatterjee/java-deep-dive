@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Name a fixed set of domain values
 
@@ -41,6 +42,14 @@ If Receipt needs only a copied destination String and no other delivery behavior
 Make it a static nested class with a constructor taking destination and a private final String field. Construct `new Receipt(destination)` rather than `delivery.new Receipt()`. The association becomes an explicit value rather than an implicit enclosing-instance reference. Because String is immutable, sharing that String does not expose delivery mutation. This is a design choice; an inner type is appropriate when its operations truly belong to one enclosing instance.
 
 </details>
+
+## Use enum names and operations deliberately
+
+`State.values()` returns the constants in declaration order in an array; callers can traverse that result without creating new enum constants. `State.valueOf("NEW")` performs an exact, case-sensitive name lookup. Unknown names fail, and null is not a hidden default state. `name()` supplies the declared name, while toString can be customized for display. Persist an explicit stable domain code when names may evolve; ordinal is a position, not a durable identifier.
+
+An enum constructor establishes fields for each constant and cannot be public/protected. Ordinary callers cannot create another constant with new. `state == State.NEW` is a suitable identity comparison and is false when state is null; `state.name()` would instead fail on null. A switch still needs an explicit absence policy—having a fixed family does not make a missing reference one of its constants.
+
+The nested-class distinction is structural: static Label does not retain an implicit outer receiver, while an inner View does. Local and anonymous implementations have their own names/scopes/capture rules, developed with a complete returned-object example in <a href={lessonUrl('learn/objects/local-and-anonymous-classes/')}>local and anonymous classes</a>. A nested class is not automatically a privately owned part; ownership depends on construction and exposed aliases.
 
 ## Nested-type references
 

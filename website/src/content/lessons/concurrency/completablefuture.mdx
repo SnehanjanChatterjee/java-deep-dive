@@ -1,9 +1,9 @@
 ---
 title: "CompletableFuture: values and completion graphs"
 module: "concurrency"
-group: "Completion and cancellation"
+group: "Completion and composition"
 summary: "Build transformations, dependent stages and independent combinations one graph edge at a time."
-order: 920
+order: 875
 version: "Java 8+; timeout helpers Java 9+"
 prerequisites: ["concurrency/future-cancellation"]
 advanced: true
@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 
 <span id="concepts"></span>
 <span id="worked-example"></span>
@@ -44,6 +45,16 @@ Now userId is obtained on the supplied executor. thenCompose starts dependent sc
 
 <Diagram client:visible definition={"flowchart LR\n U[User ID] --> S[Dependent score]\n S --> C[thenCombine]\n L[Independent label] --> C\n C --> R[Final result]\n X[Failed source] --> H[handle creates recovered branch]"} caption="Edges represent result dependencies. They do not by themselves identify a thread or impose a structured child lifetime." />
 
+## Watch independent results become usable together
+
+The complete program above gives the combination two inputs: a score of 43 and the label score. The score still depends on its userId stage, while the score and label can complete in either relative order. Select either order and follow their value copies into the same dependent action.
+
+<AdvancedThreadMotion client:visible model="completion" />
+
+One completed input is insufficient for this successful thenCombine operation. Once both are available, the function has the values it needs; it must execute and return before the result future is complete. The named result variable in the visual is an equivalent way to spell the complete program's combined expression.
+
+The arrows represent value dependencies, not ownership of dedicated threads. This non-async continuation may execute in a permitted completing or attaching caller; it is not guaranteed a fresh worker. Its input futures retain their values when copies flow to the dependent action. The [CompletableFuture execution policy](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/CompletableFuture.html) governs that thread choice independently of the dependency graph.
+
 ## Choose where a continuation runs
 
 A non-async action may run in a completing thread or immediately in the attaching caller if the source is complete. Do not hold an application lock while attaching arbitrary behavior that can synchronously reenter application code. Async methods use their supplied/default executor; an Async suffix does not create an isolated pool or cancellation owner.
@@ -74,6 +85,16 @@ CompletableFuture.cancel selects exceptional cancellation without interrupting t
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
+## Define empty aggregates and invalid composition
+
+<JavaExample file="CompletionEdgeLesson.java" output={"empty all done=true\nempty all value=null\nempty any done=false\nnull composition=NullPointerException"} />
+
+AllOf with no inputs has no unfinished obligation, so it is already successfully complete with null as its Void result. AnyOf with no inputs has no candidate completion to select, so it remains incomplete. The program inspects its state and deliberately does not join that empty anyOf.
+
+A thenCompose function must return a CompletionStage. Returning null does not mean an already completed stage containing a null value: it makes the dependent stage fail. In contrast, a suitable value-returning transformation can legitimately produce a null result where the application contract permits it. Keep the **stage reference** separate from the **value held by a stage**.
+
+**Failure exercise:** draw two dependents from one failed source, one recovering and one propagating. Recovery changes the new branch's result; it cannot rewrite what the other dependent observed from the shared source. The complete outcome example above and this edge example isolate those decisions without executor timing. [Java 8 aggregate and composition contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CompletableFuture.html)
+
 ## Exercise and complete solutions
 
 Use `CompletionStepsLesson` to compare thenApply and thenCompose by writing the resulting generic types before reading their outputs. Use `CompletionOutcomeLesson` to create a failed source, recovered branch, throwing observer and an aggregate with a pending sibling. Predict which nodes are complete at each step and explain why branch recovery cannot rewrite the shared source.

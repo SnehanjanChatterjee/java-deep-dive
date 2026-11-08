@@ -44,4 +44,12 @@ public final class CoreFramedTextTest {
         final char[] large = new char[1025]; Arrays.fill(large, 'a');
         assertThrows(IllegalArgumentException.class, () -> CoreFramedText.encode(new String(large)));
     }
+    @Test public void testUtf8ByteLimitDiffersFromCodeUnitLimit() throws CharacterCodingException {
+        final char[] ascii = new char[1024]; Arrays.fill(ascii, 'a');
+        assertEquals(Arrays.asList(new String(ascii)), CoreFramedText.finish(CoreFramedText.encode(new String(ascii))));
+        final char[] multibyte = new char[342]; Arrays.fill(multibyte, '\u20AC');
+        assertThrows(IllegalArgumentException.class, () -> CoreFramedText.encode(new String(multibyte)));
+        final String exact = new String(multibyte, 0, 341) + "a";
+        assertEquals(Arrays.asList(exact), CoreFramedText.finish(CoreFramedText.encode(exact)));
+    }
 }

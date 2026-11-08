@@ -90,9 +90,28 @@ Modern runtimes distinguish bootstrap, platform and application loaders. Class.g
 
 Predict the constant, explicit load, nonconstant active use and first/later failure outputs before running `CoreInitializationLab`. It is the complete reference solution. Explain why retrying new is not an ordinary method retry after class initialization failed. For a bytecode exercise, inspect the actual caller before and after changing the constant expression; recompiling the library alone cannot update a literal already in an old client.
 
-<span id="references"></span>
 <span id="loaders-symbolic-resolution-and-bytecode"></span>
+## Distinguish lookup failure, initialization failure and loader conflict
+
+| Symptom | Stage to inspect | Useful evidence |
+| --- | --- | --- |
+| ClassNotFoundException from explicit loading | Requested definition cannot be found by that loading operation | Requested binary name and the chosen loader's search inputs |
+| ExceptionInInitializerError | Static initialization ran and failed with a wrapped non-Error cause | Earliest causal exception and initializer code |
+| Later NoClassDefFoundError for an erroneous class | A required class could not be initialized successfully in that context | Earlier initialization failure, not just missing-file searches |
+| ClassCastException despite matching printed names | Two incompatible runtime types may have different defining loaders | Both Class objects and their defining loaders |
+
+Initialization also coordinates threads. One thread performs a class's initialization while another active user can wait for its completion. A static initializer that waits for work needing the same initialization can therefore create a liveness problem. This protocol does not make all later mutations of that class's static fields thread-safe. Initialization safety and subsequent shared-state coordination are separate contracts.
+
+<details>
+<summary>Why can reading Child.VALUE initialize Parent but not Child?</summary>
+
+If VALUE is a nonconstant static field declared by Parent, the relevant initialization follows its declaring class, even when source qualifies it with Child. A compile-time constant can require neither initializer for that read. Determine the declaring field and whether it is a constant variable before predicting output; the spelling of the qualifier alone is insufficient.
+
+</details>
+
+<span id="references"></span>
 <span id="constant-pool-and-symbolic-references"></span>
+
 ## Class-loading and bytecode references
 
 - [JLS class loading, linking and initialization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html)

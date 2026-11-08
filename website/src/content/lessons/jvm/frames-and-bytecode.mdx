@@ -97,6 +97,22 @@ Ordinary Java int multiplication uses the specified wrapping integer behavior. F
 
 Continue later with <a href={lessonUrl('learn/jvm/bytecode-linkage/')}>bytecode linkage and optimized execution</a> for invocation families, type verification, slot reuse and debugger reconstruction after optimization.
 
+## Preserve operand order for subtraction
+
+Multiplication is commutative, so reversing its operands can hide a tracing mistake. ExecutionFramesDemo also declares `difference(int left, int right)`, returning left minus right. Inspecting it with the same javap command yields loads of local zero and local one, followed by isub and ireturn.
+
+| Operation for difference(9, 4) | Locals | Operand stack, bottom → top |
+| --- | --- | --- |
+| Enter | left=9, right=4 | empty |
+| iload_0 | unchanged | 9 |
+| iload_1 | unchanged | 9, 4 |
+| isub | unchanged | 5 |
+| ireturn | invocation completes | caller receives 5 |
+
+Isub consumes the top right operand four and the earlier left operand nine, then computes nine minus four. It does not compute four minus nine merely because four is popped first. Reversing the arguments gives minus five in a different invocation. The matching tests cover both orders and ordinary int overflow; the main demonstration still prints six so the first trace remains unchanged. [JVMS isub](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.isub)
+
+An instance method also needs a receiver, conventionally in local slot zero, shifting its first explicit argument to later slots. A static method has no implicit receiver, as twice/difference here demonstrate. Long/double values occupy two local slots under the JVM model; a source variable name therefore is not a universal one-to-one physical slot map. Detailed slot reuse and optimized reconstruction follow in advanced bytecode linkage.
+
 ## References for execution semantics
 
 - [JVM specification: runtime areas, frames and operand stacks](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html)

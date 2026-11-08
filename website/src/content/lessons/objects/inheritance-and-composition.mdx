@@ -10,6 +10,7 @@ advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import {url as lessonUrl} from '../../../lib/paths';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
@@ -88,6 +89,15 @@ For `Parent p = new Child(); p.describe("text");`, can the runtime choose Child.
 No. Only Parent's visible describe(Object) signature participates at that call. The String argument widens to Object, then Child's override of describe(Object) runs. Reassigning p or changing its declared type is different from virtual dispatch. Return types alone cannot create another overload. A base-typed API is useful because it deliberately limits the contract visible to callers.
 
 </details>
+
+
+## Check substitution with a caller's ordinary expectation
+
+Suppose a base operation accepts every nonnegative amount and promises a nonnegative result. A subtype accepting only amounts over 100 strengthens the precondition; a caller using the base contract can now fail unexpectedly. Returning a negative result weakens the postcondition. These behavioral errors can compile because the Java type checker checks member signatures and access rules, not every domain promise.
+
+Use an abstract base when a shared invariant and implementation must be maintained across related subclasses. Use an interface when clients need a capability independent of representation. Use delegation when the owner should choose which operations to expose. None of these choices alone guarantees substitutability; document and test the common contract for every implementation.
+
+For a fully visible distinction between field selection, static hiding and instance overrides, continue with <a href={lessonUrl('learn/objects/member-selection/')}>member selection</a>. <a href={lessonUrl('learn/objects/initialization-order/')}>Initialization order</a> traces static and instance blocks before the construction hazard here, and <a href={lessonUrl('learn/objects/object-relationships/')}>object relationships</a> makes shared versus privately owned collaborators explicit.
 
 <span id="references" aria-hidden="true"></span>
 <span id="object-model-references" aria-hidden="true"></span>

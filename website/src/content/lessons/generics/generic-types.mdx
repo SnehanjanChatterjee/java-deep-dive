@@ -2,7 +2,7 @@
 title: "From Object storage to generic types"
 module: "generics"
 group: "Generic types and methods"
-summary: "Replace unsafe Object storage with a class that preserves the type of stored and returned values."
+summary: "Connect class and interface type parameters to stored/returned values, including independent key/value roles and bounded numeric capabilities."
 order: 320
 version: "Java 8+"
 prerequisites: ["objects/equality-and-immutability", "reliability/exception-contracts"]
@@ -32,6 +32,34 @@ Try `text.set(Integer.valueOf(7));`: compilation rejects it. Do not keep that re
 `GenericBox<String> text;` declares a reference variable and creates no object. `new GenericBox<String>("first")` constructs one. Diamond `new GenericBox<>("first")` lets the compiler infer the constructor's type argument from context; it does not create a dynamically typed box. Type arguments must be reference types, so use Integer rather than int. Autoboxing supplies Integer when a primitive value is passed.
 
 Multiple parameters can describe several relationships, such as `Pair<K,V>`. Conventional names include T for a general type, E for an element, and K/V for keys/values. They are names, not special keywords. A class's static state is shared across parameterizations; a static method cannot use the enclosing T without declaring its own independent parameter.
+
+## Follow two independent parameters and a generic interface
+
+<JavaExample file="GenericRelationships.java" output={"Ada:7\n4\n7.5"} />
+
+Entry&lt;String,Integer&gt; preserves two relationships: key returns String and value returns Integer. Supplying one argument does not determine the other. Entry is this example's ordinary nested class, not java.util.Map.Entry, and its final references do not automatically define value equality or copy mutable components.
+
+Converter&lt;F,T&gt; describes input and output types on an interface. Length implements Converter&lt;String,Integer&gt;; its convert method must accept String and return Integer under that contract. A caller uses the interface method without an Object cast. Implementing a generic interface with concrete arguments and declaring a generic method are different declarations; the next chapter develops method parameters.
+
+NumericValue&lt;N extends Number&gt; adds an upper bound to its class parameter. The implementation can call Number.doubleValue, while value() still returns N to a typed caller. NumericValue&lt;Double&gt; therefore retains a Double result. A String type argument is rejected because it does not meet the declared bound. The conversion to double can be approximate; the bound promises an operation, not exact arithmetic or ordering.
+
+## Separate parameter scope, object identity and null
+
+A type parameter is in scope for the instance fields/methods of its declaration; another nested declaration can have its own independent parameter. Reusing the letter T does not make two declarations share one variable. Descriptive names can be clearer when several roles coexist.
+
+A static field belongs to the class rather than to each parameterization. It cannot have the enclosing class's T type, and there is no separate static counter automatically created for GenericBox&lt;String&gt; and GenericBox&lt;Integer&gt;. A static generic method can declare its own parameter; that is a new scope.
+
+Generics constrain reference types, not object lifetimes or non-nullness. GenericBox&lt;String&gt; can contain null under its declared policy. Two GenericBox&lt;String&gt; variables can alias one mutable box and see each other's replacements. A final reference prevents reassignment of that variable; it does not freeze the box.
+
+| Declaration or operation | What it establishes | What it does not establish |
+| --- | --- | --- |
+| GenericBox&lt;String&gt; reference | A static String storage/result relationship | Construction of a box object |
+| new GenericBox&lt;&gt;("first") | One box with inferred argument | A new runtime class for String |
+| GenericBox&lt;Integer&gt; | Boxed Integer element contract | Primitive-specialized storage |
+| Entry&lt;K,V&gt; | Two independently related positions | Key/value equality or deep immutability |
+| NumericValue&lt;N extends Number&gt; | Number operations available inside the class | A comparable or exact numeric domain |
+
+The runtime-representation chapter explains why ordinary parameterizations share a runtime class and where casts remain.
 
 ## Practice: identify the rejected change
 

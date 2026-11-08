@@ -83,6 +83,28 @@ Validate and store both components; compare both in equals and hash both in hash
 
 </details>
 
+
+## Distinguish an override from a same-named overload
+
+Suppose Name declared `boolean equals(Name other)` but inherited Object.equals(Object). For `Name a` and `Name b`, `a.equals(b)` could select the new overload. For `Object other = b`, `a.equals(other)` would select Object's identity method instead. Merely changing the argument's declared type would appear to change equality. The correct override accepts Object, checks the admissible type and then compares meaningful state; @Override makes the mistaken narrower declaration fail compilation.
+
+Object's default equality is identity, not a shallow field traversal. A field-based equals is not automatically deep graph equality either: each selected field comparison follows its own contract. Identity hash codes also are not guaranteed unique IDs; distinct objects can have the same identity hash. An ordinary hash code is neither a memory address nor proof of equality. [Object identity and value contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html)
+
+<details>
+<summary>Does equals(null) returning false make candidate.equals(expected) safe when candidate is null?</summary>
+
+No. There is no receiver on which to invoke equals. Use a known non-null expected value as receiver, Objects.equals for a null-safe relation, or reject absent input explicitly. These policies decide how absence participates; they do not change the reflexive/symmetric/transitive obligations for actual values.
+
+</details>
+
+## Know the other basic Object operations
+
+Every class instance has Object behavior through inheritance. GetClass returns the Class object describing the receiver's actual runtime class; declaring a reference as Object does not change that class. ToString supplies a textual representation. Override it when a meaningful diagnostic value helps, while avoiding secrets or a representation accidentally treated as a stable storage format.
+
+Object's default toString combines a runtime type name with a hexadecimal hash-code representation. It is not a portable memory address or guaranteed unique identifier, and an overridden hashCode can affect that default representation. `System.out.println(object)` uses the object's text conversion; it does not inspect and format every private field automatically. Arrays also need deliberate content formatting, such as Arrays.toString, rather than expecting ordinary Object text to list their components.
+
+Clone is protected on Object and is not automatically a public copying API for every object. Its default field copy is shallow: reference fields still identify the same referents. Cloneable is a marker controlling that Object behavior, not an interface declaring a public clone method. The checked exception and working shallow-versus-independent-copy example follow in the failure-contract lesson after checked failures have been taught. Wait/notify are monitor coordination operations reserved for the concurrency lessons, not general-purpose polling methods.
+
 <span id="references" aria-hidden="true"></span>
 
 ## Value-contract references

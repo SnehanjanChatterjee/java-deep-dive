@@ -2,7 +2,7 @@
 title: "Authenticated encryption and nonce ownership"
 module: "platform"
 group: "Security APIs"
-summary: "Authenticated encryption and nonce ownership with focused examples, failure traces and solved practice."
+summary: "Trace an AES-GCM round trip, reject tampering and explain keys, nonce uniqueness and authenticated context."
 order: 1270
 version: "Java 8+"
 prerequisites: ["platform/security-apis", "reliability/exceptions-and-resources"]
@@ -39,6 +39,26 @@ A service persists its AES key but resets an incrementing nonce counter to zero 
 <summary>Answer</summary>
 
 The same key/nonce pairs can repeat across process lifetimes, violating GCM's uniqueness requirement even though encryption and decryption still round-trip. Preserve a safe allocation state or adopt an established protocol that guarantees uniqueness across the key's lifetime. Test tampering and malformed inputs as failure paths, and review key/nonce ownership separately from ordinary functional output. Prefer established protocols and reviewed libraries over adding a custom checksum or home-made cipher composition.
+
+</details>
+
+## Explain every boundary in the round trip
+
+The source's transform helper creates a fresh Cipher for one operation, selects encrypt or decrypt mode, supplies a GCMParameterSpec and calls doFinal. Creating a fresh Cipher avoids sharing its mutable operation state between these calls. It does not make reusing a key/nonce pair safe for repeated encryption. The example's key is freshly generated and used for one encrypted message.
+
+| Part | Secret? | Required relationship |
+| --- | --- | --- |
+| Key | Yes | The intended encryptor/decryptor uses the correct key |
+| Nonce | Need not be secret | Must satisfy the GCM uniqueness rule per encryption key |
+| AAD | May be public | Sender and receiver authenticate the same defined context bytes |
+| Ciphertext and tag | Can be transmitted | The receiver must reject authentication failure |
+
+Tampering with the tag, ciphertext or authenticated context must not yield a success-like result. Catching AEADBadTagException and returning an empty string would make a failed authentication resemble a valid empty message. Keep the failure distinguishable at the operation boundary; determine externally visible error detail through the surrounding protocol.
+
+<details>
+<summary>Does converting ciphertext to a UTF-8 String make a valid storage format?</summary>
+
+No. Arbitrary ciphertext bytes need not be valid text and a text decoding/encoding round trip can lose bytes. Use a specified binary format or a byte-preserving encoding such as Base64 when text transport is needed. That encoding supplies no additional confidentiality or authentication.
 
 </details>
 

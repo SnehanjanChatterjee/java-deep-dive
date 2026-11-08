@@ -128,6 +128,14 @@ No. The map assigns responsibilities and shows a selected semantic sequence. JVM
 
 Continue with <a href={lessonUrl('learn/jvm/stack-and-heap/')}>stack frames and heap references</a>, then <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>locals and operand-stack execution</a>. Later, <a href={lessonUrl('learn/jvm/loading-and-bytecode/')}>class loading</a> and <a href={lessonUrl('learn/jvm/garbage-collection/')}>garbage collection</a> develop the internal mechanisms behind this map.
 
+## Connect each frame to its declaring class's constants
+
+The runtime constant pool belongs to a loaded class/interface, not to one Box instance or one invocation. A frame has access to the runtime constant pool of the class whose method is executing, supporting the dynamic-linking work needed by that method's symbolic references. Two invocations can have different locals and operand values while using the same class-level structures.
+
+<Diagram client:visible definition={"flowchart LR\n M[main frame: its own locals and operands] --> A[JvmStackHeapLesson runtime constant pool]\n C[change frame: its own locals and operands] --> A\n B[Box constructor frame] --> P[Box runtime constant pool]\n A --> S[Shared class structures]\n P --> S"} caption="Frames carry invocation state and a connection to class-level runtime information. The per-class pool is neither a newly copied pool for each call nor the instance's mutable field storage." />
+
+The class-file constant_pool is part of the compiled binary definition. The runtime structure derived for a loaded type can contain constants and symbolic/resolved references under the VM rules. String interning is only one related topic; it does not explain every method/field reference in the pool. A class's loading and resolution lifetime can span many object constructions and calls. [JVMS frame dynamic linking](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.6.3)
+
 ## Additional architecture overviews
 
 - [GeeksforGeeks: JVM architecture](https://www.geeksforgeeks.org/java/how-jvm-works-jvm-architecture/)

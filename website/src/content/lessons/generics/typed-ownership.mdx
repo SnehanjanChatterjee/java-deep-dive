@@ -2,7 +2,7 @@
 title: "Typed containers and mutable element ownership"
 module: "generics"
 group: "Bounds and wildcards"
-summary: "Keep type safety separate from ownership when containers hold mutable objects or record components."
+summary: "Choose structural and element copies explicitly so typed containers and record components preserve their promised ownership and value equality."
 order: 350
 version: "Java 8+"
 prerequisites: ["generics/bounds-wildcards-erasure", "objects/immutable-design"]
@@ -21,6 +21,27 @@ CopyDates rejects a null list and null elements, allocates a new list and constr
 
 Each copy costs O(n) time and space. Returning immutable values such as Instant could simplify ownership by allowing a structural copy of immutable references. This example retains Date specifically to make element copying observable; it is not a recommendation to choose mutable legacy time values for a new domain.
 
+## Write the ownership promise separately from the element type
+
+| API result shape | Container membership | Mutable element state |
+| --- | --- | --- |
+| Original List&lt;Date&gt; | Shared | Shared |
+| unmodifiableList(original) | Live backing membership visible | Shared |
+| new ArrayList&lt;&gt;(original) | Independent membership | Shared Date objects |
+| Supplied copyDates result | Independent, unmodifiable structure | New Date for each copied timestamp |
+
+The schedule constructor and accessor use the last row. A caller can mutate a Date returned by dates(), but it is a detached object; the stored state is unchanged. Wrapping the original list alone would not protect against the caller's list edits or date edits. Returning the internal Date references would also reopen that state even if the returned container were unmodifiable.
+
+This is value copying under a known Date contract: read a timestamp and construct a Date. A generic &lt;T&gt; copy method cannot invent a correct deep-copy rule for arbitrary T. Some values are immutable and shareable, some own external resources, some graphs have cycles/shared identities, and some require domain validation during reconstruction. Specify a strategy rather than assuming Cloneable or a cast solves every case.
+
+## Nested containers add another ownership level
+
+A copied List&lt;List&lt;Integer&gt;> can retain the original mutable row objects. Per-row copying detaches those row structures. Integer elements are immutable, so no element clone is needed for that stated model. List&lt;List&lt;Date&gt;> would still share mutable Date values unless those are copied too.
+
+An unmodifiable outer container does not prevent a retained inner alias from changing a row. Conversely, making every row unmodifiable over the original backing rows can still expose changes through the raw original aliases. Copy and wrapper decisions must be applied at the level the API promises to own.
+
+The nested-collections chapter supplies complete independent-row and frozen-set examples after the collection operations are taught. This chapter's schedule keeps one container level and one mutable element level visible before adding those structures.
+
 ## Modern record components need the same policy
 
 <JavaExample file="modern/CoreRecordOwnership.java" output={"1\ntrue\nfound=2\nmissing=x\nabsent input"} />
@@ -28,6 +49,14 @@ Each copy costs O(n) time and space. Returning immutable values such as Instant 
 This optional example requires Java 21+ record patterns. Sample copies its array on input/output and explicitly defines content equality. Found uses List.copyOf (Java 10+) for an unmodifiable structural snapshot and rejects null list/elements. Because the elements here are immutable String, no Date-style element copy is needed. Mutable nested elements would require another explicit policy.
 
 Missing validates its key. Describe handles both alternatives and null explicitly; null input is not silently translated into a Missing domain outcome. Each constructor owns its invariant before a switch selects behavior. These generic ownership decisions are the same decisions made for the earlier primitive-array immutable class.
+
+## Equality and hashing need the same stable state
+
+ImmutableSchedule compares the stored date values, not the identity of its private list. Copies constructed independently at timestamp 1000 compare equal and hash the same state. Because callers cannot mutate the private Date values through constructor/accessor aliases, those equality inputs remain stable.
+
+A record's generated equality uses its component types' equality rules. List equality is element-based, but an array component normally compares by array identity unless the value model overrides it. A record containing a list or array is not automatically a deep snapshot. The modern example makes that difference explicit with defensive arrays and a List.copyOf boundary.
+
+An immutable-value result still needs appropriate publication if shared between threads. Type parameters, final component references and unmodifiable wrappers describe different parts of the contract; none substitutes for a missing cross-thread handoff protocol.
 
 ## Practice: replace Date with an immutable element
 

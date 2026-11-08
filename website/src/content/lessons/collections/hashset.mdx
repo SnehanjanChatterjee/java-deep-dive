@@ -2,7 +2,7 @@
 title: "HashSet"
 module: "collections"
 group: "Sets"
-summary: "Understand uniqueness, hash collisions, mutable elements and map-backed set implementation."
+summary: "Establish hash-based membership, compute set algebra without mutating inputs and implement a set over a handwritten map."
 order: 480
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/hashmap", "collections/iteration-and-views"]
@@ -28,6 +28,20 @@ The membership relation comes from equals/hashCode, not object identity. Two sep
 Aa and BB have the same String hash but are unequal, so the size is 2. Adding another equal Aa returns false. No assertion depends on HashSet iteration order. LinkedHashSet prints `[B, A, C]`, discarding the duplicate B while keeping first appearance. Removing then reinserting A produces `[B, C, A]`, because it is a new membership insertion.
 
 Re-adding an element that is still present does not normally move it in insertion order. Java 21 sequenced-set positioning operations are additional APIs and should not be confused with ordinary add behavior. Iteration order, membership equality and sorting are three different requirements.
+
+## Compute set algebra without destroying the inputs
+
+<JavaExample file="SetAlgebra.java" output={"union=[A, B, C, D]\nintersection=[B]\nleft-only=[A, C]\nexactly-one=[A, C, D]\ninputs=[A, B, C]/[B, D]"} />
+
+Union copies the left members then addAll(right). Intersection copies left then retainAll(right). Left difference copies left then removeAll(right). Symmetric difference keeps members present in exactly one input: build the union, then remove the intersection.
+
+For left [A,B,C] and right [B,D], results are union A,B,C,D; intersection B; left-only A,C; exactly-one A,C,D. LinkedHashSet is selected only to make these diagnostic orders explicit. Membership semantics do not depend on that display policy, and the original inputs remain unchanged.
+
+Set.add of an equal new object leaves the existing set unchanged and returns false; it is not an instruction to replace the retained object. A value type with two fields can be a perfectly valid member when it defines consistent equality/hashCode. The composite-key chapter implements such a pair directly rather than hiding fields in an ambiguous concatenated String.
+
+<JavaExample file="SetAlgebraTest.java" />
+
+The expected cost includes copying, other-set membership and equality/hash work. Hash-based expected linear set algebra assumes suitable hashing and bounded methods; a list used as the bulk-operation argument can introduce a different membership cost.
 
 <span id="mechanics-and-tradeoffs"></span>
 ## HashSet storage and membership
@@ -98,7 +112,7 @@ Do not assert HashSet iteration order, mutate membership fields, or override equ
 <details>
 <summary>Can equal objects occupy separate HashSet entries?</summary>
 
-With a correct equality/hash contract, a normal add replaces the same logical membership and returns false. Broken hashCode consistency or mutation can make lookup behavior violate application expectations.
+With a correct equality/hash contract, a normal add keeps the existing membership unchanged and returns false. Broken hashCode consistency or mutation can make lookup behavior violate application expectations.
 
 </details>
 

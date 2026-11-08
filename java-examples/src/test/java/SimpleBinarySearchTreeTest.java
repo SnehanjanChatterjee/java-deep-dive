@@ -49,6 +49,13 @@ public final class SimpleBinarySearchTreeTest {
         keys.clear();
         assertEquals(1, tree.size());
     }
+    @Test public void testSuccessorKeepsItsRightChild() {
+        final SimpleBinarySearchTree<Integer, String> tree = new SimpleBinarySearchTree<>();
+        for (final int key : new int[] {20, 10, 30, 25, 27, 40}) { tree.put(key, "v" + key); }
+        assertEquals("v20", tree.remove(20));
+        assertEquals(Arrays.asList(10, 25, 27, 30, 40), tree.keysInOrder());
+        assertEquals("v27", tree.get(27)); assertEquals(5, tree.size());
+    }
     @Test public void testDegenerateHeightAndNullKeys() {
         final SimpleBinarySearchTree<Integer, String> tree = new SimpleBinarySearchTree<>();
         for (final int key : new int[] {1, 2, 3, 4}) { tree.put(key, "v" + key); }

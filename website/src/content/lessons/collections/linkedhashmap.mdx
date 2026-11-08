@@ -2,7 +2,7 @@
 title: "LinkedHashMap"
 module: "collections"
 group: "Maps and search trees"
-summary: "Understand insertion order, access order, entry links and eviction hooks."
+summary: "Predict insertion/access order for individual and bulk operations, then connect the entry index to encounter links and eviction hooks."
 order: 450
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/hashmap", "collections/linkedlist"]
@@ -28,6 +28,26 @@ Like HashMap, it permits null keys/values and is not synchronized. Ordered trave
 Replacing A in the insertion-ordered map keeps the order `[A, B]`. In access-order mode, reading A moves it to the recent end, producing `[B, C, A]`. containsKey(B) does not generate an access, so the order remains `[B, C, A]`.
 
 The distinction matters when evaluating eviction. A map can contain a key without that membership test refreshing its recency. Not every read-like API has the same order effect; use the selected JDK's documented access-generating methods rather than guessing based on method names.
+
+## Trace access-generating operations precisely
+
+<JavaExample file="OrderedMapAccess.java" output={"containsKey=[A, B, C]\ngetOrDefault=[A, C, B]\nfailed replace=[A, C, B]\nsuccessful replace=[C, B, A]\nputAll=[B, A, C, D]\nentry setValue=[B, A, C, D]"} />
+
+In access order, containsKey(A) leaves A,B,C unchanged. getOrDefault(B,...) moves the found B to the recent end, yielding A,C,B. A failed conditional replacement of A changes nothing. A successful replacement moves A, yielding C,B,A.
+
+putAll performs accesses in the supplied map's entry encounter order. The source's update map visits C then D, producing B,A,C,D. Updating C through its live Map.Entry.setValue does not count as an access, so the same order remains.
+
+| Operation in access order | Access effect |
+| --- | --- |
+| get / getOrDefault | Found mapping counts, even if a permitted value is null |
+| put / putIfAbsent / compute-family / merge | Documented successful retained mapping can count as an access |
+| replace methods | Count only if a value is replaced |
+| putAll | One access per supplied mapping, in supplied entry order |
+| containsKey / collection-view iteration / entry setValue | Do not generate access solely from that observation/view operation |
+
+A method that reads values by iterating keySet and calling get can therefore change access order during its own traversal. Iterating entrySet and reading each entry value avoids that extra access. It is still a live view with the map's ordinary mutation/coordination requirements.
+
+Insertion-order construction uses no access-driven movement. Replacing an existing key preserves its position; deleting then reinserting is a different history. Ordered input is also required if a copy is expected to reproduce a meaningful encounter sequence.
 
 <span id="mechanics-and-tradeoffs"></span>
 ## Entry links, access hooks and eviction

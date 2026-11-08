@@ -92,7 +92,6 @@ The <a href={lessonUrl('learn/jvm/garbage-collection/')}>garbage-collection chap
 
 Compare repeated replacement of sixteen keys with adding a new range, then clear. `CoreRetentionLab` supplies the complete solution and optional inspection pause. State exactly which ownership edge changes and which tool could distinguish allocation from retention. A rising comparable post-collection live set motivates a retaining-path investigation; it does not itself identify the offending field.
 
-<span id="references"></span>
 <span id="process-memory-and-reachability"></span>
 <span id="trace-removal-of-a-retaining-reference"></span>
 <span id="map-process-memory-before-diagnosing-it"></span>
@@ -100,6 +99,21 @@ Compare repeated replacement of sixteen keys with adding a new range, then clear
 <span id="runtime-memory-beyond-heap"></span>
 <span id="memory-and-jit-reasoning-pitfalls"></span>
 <span id="memory-and-optimization-interview-practice"></span>
+## Classify a growing process before changing a limit
+
+| Observation across comparable phases | Next question | A misleading shortcut |
+| --- | --- | --- |
+| High allocation, similar post-collection live set | Is churn creating unacceptable GC/CPU cost? | Calling all allocations leaks |
+| Increasing comparable live set | Which owner/root path retains the growth? | Assuming the last allocation site is the owner |
+| Stable heap, rising process memory | Are native buffers, threads, metadata or mappings growing? | Raising Xmx without identifying the category |
+| StackOverflowError on deep recursion | Is recursion bounded and does each call progress? | Increasing heap to repair call depth |
+
+Object footprint also includes more than declared field payloads. Headers, alignment, reference representation and runtime options affect measured layouts; a long field's eight payload bytes do not establish the entire object's size. Compressed references are an implementation/configuration choice. Use a layout or heap tool appropriate to the actual VM instead of promising one fixed address/header layout for every Java process.
+
+`final`, `finally` and `finalize` answer unrelated questions. A final reference can still reach mutable data. Finally participates in source-level control flow. Finalization is a historical cleanup mechanism, deprecated for removal, with no prompt-execution guarantee. Use explicit close for deterministic external-resource ownership; neither finalization nor a requested GC establishes a deadline for releasing a handle.
+
+<span id="references"></span>
+
 ## Runtime-memory references
 
 - [JVM runtime areas and implementation freedom](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html)

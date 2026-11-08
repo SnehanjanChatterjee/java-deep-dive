@@ -1,8 +1,8 @@
 ---
 title: "Optional and explicit absence"
 module: "functional"
-group: "Composition and absence"
-summary: "Make “no result” part of an API"
+group: "Optional"
+summary: "Compose present/empty lookups, observe real fallback invocation counts and distinguish null callbacks, mapped nulls and invalid input."
 order: 570
 version: "Java 8+; optional alternatives/stream 9+"
 prerequisites: ["functional/method-references"]
@@ -53,6 +53,36 @@ This difference concerns work and failures, not just speed. If the eager fallbac
 Suppose findAccount returns Optional&lt;Account&gt;, and Account.findAddress returns Optional&lt;Address&gt;. map(Account::findAddress) produces Optional&lt;Optional&lt;Address&gt;&gt;. flatMap(Account::findAddress) keeps one presence dimension: either a present Address or empty. Returning null from the flatMap mapper violates its contract; map instead treats a null mapped value as absence.
 
 Optional.or on Java 9+ supplies a lazy Optional-returning alternative; orElseGet supplies a plain value. Optional.stream on Java 9+ exposes zero or one stream element for later flattening. Primitive OptionalInt/Long/Double use primitive result contracts and do not mechanically reproduce every Optional method.
+
+## Complete the nested-lookup example
+
+<JavaExample file="OptionalComposition.java" output={"true/true\nMain Street\nnone\nnone\nmap null becomes empty=true\nflatMap null rejected\nnull function rejected even for empty"} />
+
+find("known") returns a present Account whose address lookup is also present. map(Account::address) therefore produces `Optional<Optional<String>>`. flatMap keeps one result layer and returns Main Street directly. no-address is a present account with no address; missing is no account. Both yield an empty address result, while null keys are explicitly rejected by this fixture rather than called a normal absence.
+
+The program also separates a null mapped value from a null callback object. map's null result becomes empty; flatMap's null Optional result throws when invoked. A null map callback is rejected even for empty input. Skipping a body does not mean every API skips validation of the callback argument itself.
+
+## Choose retrieval and actions deliberately
+
+| API | Purpose | Version |
+| --- | --- | --- |
+| isPresent / get | Query presence / retrieve under a presence guarantee | 8 |
+| ifPresent | Invoke a Consumer only for a present value | 8 |
+| orElse / orElseGet | Eager-argument or lazy-supplier value fallback | 8 |
+| orElseThrow(supplier) | Require a value with an explicit failure policy | 8 |
+| ifPresentOrElse | Handle present and empty branches | 9 |
+| or | Lazy Optional-returning alternative | 9 |
+| stream | Zero/one element integration | 9 |
+| orElseThrow() | Require a value with the standard empty failure | 10 |
+| isEmpty | Direct absence query | 11 |
+
+<JavaExample file="modern/OptionalOperations.java" output={"secondary\nempty branch\nabsent=true\nstream sizes=1/0\nprimitive sum=7"} />
+
+The complete convenience example requires Java 11. or is not a general exception fallback: its supplier runs for absence, not because a previous lookup failed. ifPresentOrElse can perform distinct branch actions, but ordinary branching may be clearer when each branch owns resources or several effects.
+
+Optional equality compares contained values, or considers two empty values equal. It does not justify synchronizing on instance identity. An Optional&lt;Integer&gt; can also be converted back into a dangerous null by orElse(null), then fail during caller unboxing. The container's non-null-value rule cannot protect a later caller-chosen null fallback.
+
+Primitive optionals do not expose every Optional transformation method. Their stream methods require Java 9. Select them for a primitive-result API, then use their actual supported operations instead of assuming Optional&lt;T&gt; method parity.
 
 <span id="java-implementation" aria-hidden="true"></span>
 ## Complete exercise: missing versus invalid configuration

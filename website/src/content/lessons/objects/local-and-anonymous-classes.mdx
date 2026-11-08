@@ -1,0 +1,48 @@
+---
+title: "Local and anonymous classes"
+module: "objects"
+group: "Nested and domain types"
+summary: "Build small scoped implementations and explain captured values, enclosing receivers and object lifetime."
+order: 235
+version: "Java 8+"
+prerequisites: ["objects/nested-and-enums", "objects/interfaces"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## Keep an implementation near the operation that needs it
+
+A member class is declared in another type's body. A **local class** is declared in a block, such as a method body, and has a name usable within its scope. An **anonymous class** is declared by a class-instance creation expression without its own source name. Both are useful for small implementations that need nearby context. Learn their ordinary object behavior before replacing suitable implementations with lambdas.
+
+<JavaExample file="LocalAnonymousLesson.java" output={"Hello Ada\nHello Ada:inner"} />
+
+Message is an interface exposing text. The local method declares LocalMessage, creates one instance and returns it as Message. The caller can use text after local has returned: a captured value is not a pointer to a vanished method variable. The interface reference also hides the implementation's local name from the caller.
+
+## Read the anonymous class expression
+
+`new Message() { ... }` creates an instance of an unnamed class implementing Message. It does not construct the interface itself. The braces contain that class's fields and methods; the final semicolon ends the return statement. When the named type is a class instead, the anonymous class extends it and constructor arguments go in the parentheses. An anonymous class cannot declare an ordinary named constructor; an instance initializer can perform additional initialization.
+
+The anonymous object's `this.name` is inner. `LocalAnonymousLesson.this.name` belongs to the enclosing object and is Ada. Those are two receivers and two fields, not two names for one field. In a static method there is no enclosing instance to obtain with Outer.this. A static nested class is nested but is **not** an inner class: it has no automatically associated enclosing instance.
+
+## Capture values under an effectively final rule
+
+Prefix is a parameter read by both implementations. A captured local/parameter must be final or effectively final: it is not reassigned after initialization. Removing the written final alone is allowed if no assignment changes it. Adding `prefix = prefix.trim()` would make these captures illegal; compute a separate final cleaned variable first.
+
+This restriction protects the captured **variable's binding**, not every reachable object. A captured final array reference can still identify writable components. Such mutation creates ordinary aliasing and, if shared across threads, coordination obligations. It is not a pass-by-reference exception to Java's argument rules. Retaining an inner object can also retain its enclosing object, which matters when the inner implementation outlives a large owner. [JLS inner classes and capture](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.1.3), [JLS anonymous classes](https://docs.oracle.com/javase/specs/jls/se25/html/jls-15.html#jls-15.9.5)
+
+## Practice: choose a named member, local or anonymous type
+
+<details>
+<summary>The implementation grows several operations and needs reuse in three methods. Keep it anonymous?</summary>
+
+A named member or top-level class gives the implementation a discoverable name and one place to maintain its behavior. Use a local class when naming helps within one operation; use an anonymous class for a small one-off implementation. The choice changes organization, not whether the created instance is an ordinary object with identity and method calls.
+
+</details>
+
+<details>
+<summary>Can a returned Message keep reading prefix after the factory method returns?</summary>
+
+Yes. The example does exactly that. The captured value remains available to the object. This does not preserve the factory invocation's active frame or allow later reassignment of its local variable to redirect the captured binding.
+
+</details>

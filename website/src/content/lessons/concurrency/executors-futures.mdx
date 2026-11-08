@@ -1,9 +1,9 @@
 ---
 title: "Executors, Callable and a first Future"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Executors and futures"
 summary: "Submit one task, retrieve its result, and own the execution service through shutdown."
-order: 860
+order: 835
 version: "Java 8+"
 prerequisites: ["concurrency/first-thread", "concurrency/thread-lifecycle", "concurrency/countdown-latch"]
 advanced: false
@@ -51,6 +51,18 @@ Runnable describes work without a returned value. Callable describes work return
 The completed task's actions are published through successful Future.get. As with join, result retrieval supplies a completion boundary. Neither get nor join reconstructs an update lost by an incorrectly shared algorithm inside the task.
 
 <Diagram client:visible definition={"flowchart LR\n S[Submit Callable] --> Q[Accepted task]\n Q --> W[Worker invokes call]\n W --> F[Future selects value or failure]\n F --> G[Owner retrieves through get]"} caption="A task description, an execution service and a result handle have different responsibilities." />
+
+## Match submitted behavior to its result shape
+
+| Submission | Behavior contract | Successful Future result |
+| --- | --- | --- |
+| submit(Runnable) | `void run()` | null |
+| submit(Runnable, suppliedResult) | `void run()` | The supplied result after successful completion |
+| `submit(Callable<T>)` | `T call()` | The value returned by call |
+
+A Runnable can still mutate application state or fail; void only describes its method's return type. A Callable can declare checked exceptions and return a value. Neither interface schedules itself. Calling `call()` directly is legal and runs on the caller, just as calling run directly does. Passing behavior to submit is the separate scheduling step.
+
+The Future returned by submit is a result handle, not the worker Thread. Getting null from a successfully submitted Runnable does not mean the task never executed. Getting a supplied object does not mean the task created that object. Completion and the result type must be interpreted together. [ExecutorService submit overloads](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html)
 
 ## Know which outcome get reports
 

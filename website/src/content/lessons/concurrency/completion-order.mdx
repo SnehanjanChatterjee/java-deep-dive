@@ -1,0 +1,64 @@
+---
+title: "CompletionService and completion-order results"
+module: "concurrency"
+group: "Completion and composition"
+summary: "Start independent tasks together and retrieve whichever result has completed, while retaining cancellation ownership."
+order: 870
+version: "Java 8+"
+prerequisites: ["concurrency/future-cancellation", "concurrency/countdown-latch"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Submission order need not be result order
+
+An owner submits two independent calculations. The first waits for an external condition while the second finishes. Calling first.get before inspecting second can keep the owner waiting even though a useful answer is already available.
+
+ExecutorCompletionService combines task execution with a queue of completed Futures. Submit returns each task handle as usual. Take waits for a completed handle; poll can inspect or wait within a budget. Get on the retrieved handle then distinguishes success, failure or cancellation. A completed task can have failed; completion order is not success preference.
+
+## Establish the order without timing assumptions
+
+<JavaExample file="CompletionOrderLesson.java" output={"first completed=42\nthen completed=1"} />
+
+The first submission waits at releaseFirst and would return one. The second submission returns 42 independently. The owner retrieves the first completed handle before opening releaseFirst. Therefore that first retrieved result must be the independent 42: the held task cannot yet finish successfully.
+
+After reading 42, the owner opens the gate and retrieves the remaining one. The five-second poll guards report a broken demonstration; they do not measure which arithmetic operation is faster. The gate, rather than a sleep or a race, establishes the chosen causal order.
+
+<Diagram client:visible definition={"sequenceDiagram\n participant O as Owner\n participant A as First submission\n participant B as Second submission\n participant Q as Completed Future queue\n O->>A: submit, held at release gate\n O->>B: submit independent 42\n B->>Q: completed handle\n Q-->>O: retrieve 42\n O->>A: release gate\n A->>Q: completed handle containing 1\n Q-->>O: retrieve 1"} caption="The completion queue reports finished handles. The owner retains control of task cancellation and the executor lifetime." />
+
+## Explain the result and cleanup branches
+
+Completed.poll returns null on its bounded-wait expiry; null is not a successful Integer result. A non-null Future is complete, but get can still throw ExecutionException or CancellationException. This program propagates its checked task failure to the caller instead of silently skipping it.
+
+The owner keeps both submission handles. Finally releases the gate, requests cancellation of any remaining work, shuts down its owned executor and waits for termination. CompletionService does not automatically cancel peers when one result is retrieved or one task fails. Its queue is a reporting mechanism, not a parent/child lifetime rule.
+
+For an application needing the first acceptable success, keep taking completed handles until one satisfies the domain rule or every candidate has ended. Preserve failure information and cancel/observe the rest under an explicit policy. Merely taking the first completion can select a fast failure.
+
+## Compare retrieval choices
+
+| Requirement | Suitable shape |
+| --- | --- |
+| Need one specific task's answer | Its Future.get |
+| Process independent finished results promptly | CompletionService take/poll |
+| Wait for a submitted collection, retain input order | ExecutorService.invokeAll, with failure inspection of each Future |
+| Obtain one successful result under that aggregate contract | ExecutorService.invokeAny |
+| Express transformations and dependencies | CompletableFuture graph |
+
+InvokeAll's returned list follows input iteration order rather than a new promise about worker completion order. InvokeAny's selection, timeout and cancellation rules differ from writing your own domain-specific first acceptable result. The later structured-concurrency chapter adds another mechanism for related child lifetimes.
+
+## Exercise and interview questions
+
+**Why does a two-worker pool matter in this example?** With one worker, the first held task occupies the only worker while the independent second task is queued. The owner would time out waiting for a result whose worker cannot start until the gate opens.
+
+**Does taking a completed Future start the task?** No. It retrieves a handle already reported complete by the execution facility.
+
+**What changes if the independent task throws?** Its handle can still arrive first. Get reports ExecutionException; the owner's finally still releases and accounts for the held peer.
+
+The complete reference solution is CompletionOrderLesson. Reverse the two submission statements while retaining the gate and predict the same retrieved values. Then remove the gate only as a reasoning exercise: the program no longer establishes a deterministic order and must not assert one.
+
+## Primary contracts
+
+- [ExecutorCompletionService and completion queues](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorCompletionService.html)
+- [ExecutorService invokeAll and invokeAny](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ExecutorService.html)

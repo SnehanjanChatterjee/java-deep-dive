@@ -1,0 +1,59 @@
+---
+title: "ThreadGroup and unsafe legacy thread control"
+module: "concurrency"
+group: "Lifecycle and interruption"
+summary: "Understand older grouping APIs without mistaking a membership hierarchy for task ownership or safe cancellation."
+order: 765
+version: "Java 8+; legacy control availability varies"
+prerequisites: ["concurrency/interrupt-status"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+
+## A group organizes Threads; it does not execute them
+
+Older Java examples place platform Threads in a ThreadGroup. Groups form a parent/child hierarchy and expose membership-oriented operations. Constructing a group creates no running execution. A group is not main, a scheduler, an executor or a completion result.
+
+<JavaExample file="LegacyThreadGroupLesson.java" output={"lesson-group\nlesson-group"} />
+
+Both Threads are explicitly constructed in the same group. Their tasks record the group name while alive. Main starts each Thread and joins each exact handle before inspecting results. The equal group names describe membership; they do not establish worker order or make the tasks share one execution.
+
+The example retains the two handles because it owns two required lifetimes. It does not loop on `activeCount()` or assume an enumeration is a complete stable membership snapshot. Those APIs provide estimates/observations affected by concurrent thread creation and termination, rather than a result-collection protocol.
+
+## Cooperative control preserves invariants
+
+Suppose a worker owns a monitor and is halfway through changing two related fields. Forcibly stopping at that arbitrary point can expose an invalid half-update. Suspending while retaining a needed monitor can prevent the very thread responsible for resuming it from acquiring that monitor.
+
+| Historical API idea | Problem | Deliberate replacement |
+| --- | --- | --- |
+| stop a running thread arbitrarily | Inconsistent state can escape when monitors are released | Cooperative cancellation at safe boundaries |
+| suspend/resume an arbitrary thread | Suspended owner can retain locks needed for progress | Guarded waiting on an explicit predicate |
+| destroy a thread/group | No general safe forced-cleanup contract | Owned lifetime and explicit resource cleanup |
+| enumerate a group until it looks empty | Membership/counts can change; no task result | Retain exact handles and observe completion |
+
+The lesson does not invoke these unsafe methods. Their deprecation, unsupported behavior or removal differs by JDK release; old source using them is not a portable modern cancellation recipe. Read the target API when maintaining legacy code rather than copying an old method catalog into new code.
+
+## Group interruption is still only a request
+
+Group-level interruption can request interruption of member platform Threads under its documented scope. It does not join them, gather causes or guarantee they honor the request. Each task still needs the interruption protocol from the previous lesson, and an owner still needs completion accounting.
+
+An ExecutorService later supplies acceptance and task-result APIs over an owned service lifetime. Structured task scopes add different parent/child lifetime constraints. These facilities are not interchangeable simply because all concern multiple tasks.
+
+Modern virtual threads have special grouping/enumeration behavior; traditional group enumeration is not an inventory of all virtual task lifetimes. Keep that version-specific limitation beside diagnostic use, after understanding ordinary platform membership.
+
+## Exercise and interview questions
+
+**Does creating a ThreadGroup start a main thread for that group?** No. Only the subsequently started Thread objects create those executions.
+
+**Can activeCount establish that all requested work succeeded?** No. It is an estimate of active membership and contains no task outcomes. Join detects termination; it too requires an additional failure channel if worker success matters.
+
+**How should a program pause and later resume useful work?** Give the task a guarded state predicate and an explicit wakeup/cancellation policy. Do not externally freeze a thread at an arbitrary instruction.
+
+The complete reference program demonstrates membership plus exact joins. Replace its two name observations with two independent calculations while retaining the same owner/handle structure. Group membership still supplies neither result visibility nor atomic shared updates on its own.
+
+## Primary contracts
+
+- [Java 8 ThreadGroup hierarchy and estimated counts](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadGroup.html)
+- [Official explanation of unsafe thread primitives](https://docs.oracle.com/javase/8/docs/technotes/guides/concurrency/threadPrimitiveDeprecation.html)
+- [Modern ThreadGroup API notes](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/ThreadGroup.html)

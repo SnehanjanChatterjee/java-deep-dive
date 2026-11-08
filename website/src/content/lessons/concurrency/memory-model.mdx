@@ -1,9 +1,9 @@
 ---
 title: "The Java Memory Model and happens-before"
 module: "concurrency"
-group: "Shared state and synchronization"
+group: "Memory model and visibility"
 summary: "Derive publication guarantees from familiar start, join and monitor operations before studying stronger mechanisms."
-order: 760
+order: 780
 version: "Java 8+"
 prerequisites: ["concurrency/shared-state"]
 advanced: true
@@ -36,6 +36,21 @@ It is not a physical heap diagram or a claim that every thread owns a separate c
 The result field is ordinary, not volatile or atomic. There is one writer. Main does not read until join returns successfully. All worker actions happen-before the actions after that successful join, so the write of 42 is published to the subsequent read.
 
 Removing join changes two things: main might run before the write, and the program loses this termination-publication edge. Merely waiting a convenient number of milliseconds establishes neither requirement. Replacing the field with an atomic type alone would not wait for work to occur.
+
+## Publish input through start and output through join
+
+<JavaExample file="MemoryRoundTripLesson.java" output={"42"} />
+
+Main writes the ordinary input element before start. The worker reads that input and writes the ordinary result element. Main then completes a join before reading the result. Neither element needs volatile for **this access pattern**, because the program already has the required ordering edges.
+
+| Action | Why the next participant can rely on it |
+| --- | --- |
+| Main writes input 21, then starts worker | Pre-start actions happen-before the started thread's actions |
+| Worker reads input and writes result 42 | Worker program order connects its own actions |
+| Main detects worker termination through join | Worker actions happen-before that successful completion observation |
+| Main reads result | Main program order follows the completion observation |
+
+The proof composes these edges transitively. It does not depend on a guessed delay, main-memory flushing story or a lucky printed value. Removing join and immediately reading the result removes the completion edge; adding sleep does not restore it. Mutating the input again after start would also introduce a different sharing pattern requiring its own protocol. [JLS 17.4.5 happens-before](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html#jls-17.4.5)
 
 <span id="build-the-proof-around-the-complete-operation"></span>
 ## Construct a happens-before proof

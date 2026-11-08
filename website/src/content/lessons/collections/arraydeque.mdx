@@ -2,7 +2,7 @@
 title: "ArrayDeque"
 module: "collections"
 group: "Queues and priority"
-summary: "Trace circular storage, wraparound, growth and a complete two-ended deque."
+summary: "Choose explicit queue/stack endpoints and empty behavior, then implement ring growth and prove a sliding-window maximum algorithm."
 order: 510
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/iteration-and-views", "collections/dynamic-array"]
@@ -39,6 +39,14 @@ On an empty deque, remove/get throw NoSuchElementException while poll/peek retur
 Removing from the first end returns A. Adding C at the last preserves the logical sequence `[B, C]`. Push inserts top at the first end and pop removes that same value. Poll on the empty deque returns null. The implementation's null prohibition makes that empty sentinel unambiguous.
 
 The array need not store logical elements contiguously from slot zero. Iteration follows logical head-to-tail order even when the physical storage wraps. Printing this tiny sequence demonstrates the API, not a promise about array capacity or exact physical indexes.
+
+## Separate construction, endpoint operations and searches
+
+ArrayDeque(), ArrayDeque(expectedElements) and ArrayDeque(collection) create an empty default-sized deque, request storage sufficient for a count, or copy a source encounter sequence. An expected capacity is not a fixed admission limit and does not create elements. The physical array length is not a public get-by-index range.
+
+addFirst/offerFirst, addLast/offerLast, pollFirst/pollLast and peekFirst/peekLast make direction explicit. descendingIterator visits tail to head. removeFirstOccurrence/removeLastOccurrence locate an equal value and then close its interior gap; they are linear searches, not constant-time endpoint operations.
+
+As a stack, push and pop both use the first end. As a FIFO queue, offer uses the last and poll uses the first. Printing an ArrayDeque after push operations therefore visits top first, unlike legacy Stack's inherited bottom-to-top List sequence. The legacy chapter compares the five Stack operations and their empty behavior without recommending Vector inheritance for new stack designs.
 
 <span id="mechanics-and-tradeoffs"></span>
 ## ArrayDeque wrapping and growth

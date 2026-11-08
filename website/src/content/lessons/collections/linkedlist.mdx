@@ -2,7 +2,7 @@
 title: "LinkedList"
 module: "collections"
 group: "Lists and arrays"
-summary: "Trace node links, iterator positions, endpoint repair and a complete linked-list implementation."
+summary: "Trace endpoint operations, bidirectional iterator state and reciprocal link repair in a complete doubly linked list."
 order: 420
 version: "Java 8+ · internals OpenJDK 25"
 prerequisites: ["collections/arraylist", "collections/iteration-and-views"]
@@ -28,6 +28,25 @@ Its main distinction from ArrayList is locating versus relinking. Once a node po
 The cursor initially sits between A and C. Adding B inserts before the element that next would return, so the list becomes `[A, B, C]`. The next call returns C. Iterator remove deletes the last returned element, leaving `[A, B]`; it does not remove B just because B was recently inserted. Removing the last element after adding start returns B.
 
 A ListIterator is a cursor between elements, not an index permanently attached to one node. Its remove/set eligibility depends on previous next/previous operations. Calling remove twice without another traversal call is invalid. The iterator maintains the list's mutation protocol while ordinary external structural changes can invalidate it.
+
+## Keep cursor position separate from last-returned state
+
+<JavaExample file="LinkedListEnds.java" output={"next/previous indexes=2/1\nprevious=B\nnext=X\nafter iterator removal=[A, C]\nremoved A=true\npoll first=start, peek last=end\ndescending=[end, C]"} />
+
+Start between A and C. add(B) produces A,B,C and puts the cursor between B and C: nextIndex is two and previousIndex is one. previous returns B and moves before it. set(X) replaces that returned element without moving. next returns the same X while moving after it; remove now deletes X and repairs the cursor, leaving A,C.
+
+| Action | Cursor boundary | Last-returned element | Sequence |
+| --- | --- | --- | --- |
+| listIterator(1) | A &#124; C | None | A,C |
+| add(B) | B &#124; C | None | A,B,C |
+| previous() | A &#124; B | B | A,B,C |
+| set(X) | A &#124; X | X | A,X,C |
+| next() | X &#124; C | X | A,X,C |
+| remove() | A &#124; C | None | A,C |
+
+The complete program then exercises addFirst/addLast, removeLastOccurrence, pollFirst, peekLast and descendingIterator. Endpoint operations use first/last links; removeFirstOccurrence/removeLastOccurrence must locate an equal value. Descending traversal reverses the visit direction without sorting or copying nodes.
+
+LinkedList has both List and Deque APIs. A Deque reference deliberately omits indexed editing, while a List reference omits the endpoint-only queue contract. Both can refer to the same underlying object; the static interface determines which operations a caller can name.
 
 <span id="mechanics-and-tradeoffs"></span>
 ## Traversal and link repair

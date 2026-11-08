@@ -2,7 +2,7 @@
 title: "Annotations, retention and processing"
 module: "platform"
 group: "Annotations and reflection"
-summary: "Annotations, retention and processing with focused examples, failure traces and solved practice."
+summary: "Choose annotation retention and targets, inspect metadata and distinguish runtime reflection from compile-time processing."
 order: 1170
 version: "Java 8+"
 prerequisites: ["platform/reflection-basics", "objects/nested-and-enums"]
@@ -10,6 +10,7 @@ advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
 
 ## Attach metadata for a consumer to interpret
 
@@ -47,6 +48,23 @@ A Label is visible in a class-file inspection but getAnnotation returns null. Wh
 <summary>Answer</summary>
 
 Check retention first: CLASS metadata can exist without being returned by runtime annotation lookup. Then check the annotated declaration and lookup policy: type versus method, interface versus implementation, declared-only versus inherited-aware. Access suppression does not change retention or move an annotation onto a different member. Recompile after changing the annotation definition and apply the intended definition consistently across dependencies.
+
+</details>
+
+## Annotation elements, repetition and processing rounds
+
+An annotation element is a declaration of metadata, not a normal mutable instance field. Permitted element types include primitives, String, Class, enum types, annotation types and one-dimensional arrays of permitted types. An element cannot use null as its default. These restrictions allow metadata to be encoded and interpreted consistently, rather than holding arbitrary application objects.
+
+Java 8's `@Repeatable` associates an annotation with a containing annotation type. When a declaration can carry several instances, `getAnnotationsByType` is the relevant reflective query; assuming `getAnnotation` returns an arbitrary chosen instance loses the repeated structure. Retention and target constraints still matter for the repeatable annotation and its container. [Repeatable annotations](https://docs.oracle.com/javase/8/docs/api/java/lang/annotation/Repeatable.html)
+
+An annotation processor receives a compile-time element/type model, not already constructed application objects. It can generate a source file that becomes input in a later processing round. A useful exercise is a processor validating an annotated interface and generating an adapter; the generated file must still compile. Runtime scanning instead happens after deployment and needs retained metadata plus discovery/access policies. Neither mechanism follows merely from the annotation's name.
+
+<Diagram client:visible definition={"flowchart LR\n S[Annotated source] --> C[Compiler checks]\n C --> P[Processor inspects elements]\n P --> G[Generated source in later round]\n G --> B[Compiled classes]\n B --> R[Runtime query sees only retained metadata]"} caption="Compile-time generation and runtime reflection consume metadata at different phases." />
+
+<details>
+<summary>Is an annotation that declares String value() a functional interface?</summary>
+
+No. An annotation type has its own declaration and usage rules; the presence of one element declaration does not make it an ordinary lambda target. Similarly, @FunctionalInterface asks the compiler to validate a functional-interface contract; it does not make an otherwise invalid multiple-abstract-method interface functional. Distinguish the compiler-checked declaration from a runtime annotation consumer.
 
 </details>
 

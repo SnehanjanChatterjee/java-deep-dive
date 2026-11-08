@@ -1,0 +1,61 @@
+---
+title: "Abstract classes and shared algorithms"
+module: "objects"
+group: "Interfaces and inheritance"
+summary: "Combine inherited state and implemented behavior with an explicit abstract step supplied by concrete subclasses."
+order: 184
+version: "Java 8+"
+prerequisites: ["objects/inheritance-and-composition", "objects/constructors-and-access"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Share an invariant without pretending every base is complete
+
+An abstract class can represent a family whose common state and operations are meaningful, while some behavior depends on the concrete subtype. It cannot be directly instantiated. It can have fields, constructors, static members and implemented methods; an abstract method declares a required operation without a body.
+
+Here every Form has a non-null label and the same `label:content` formatting algorithm. TextForm stores text; CountForm stores a nonnegative number. The base owns the shared label and algorithm, while each concrete class supplies its content representation.
+
+<JavaExample file="AbstractTemplateLesson.java" output={"note:hello\nitems:3"} />
+
+## Follow construction before invoking the varying step
+
+New TextForm invokes its constructor, which calls super(label). Form's constructor checks and stores the label. Control then returns to TextForm's constructor to check/store text. No content call occurs during that construction. After the new expression completes, main stores the reference as Form and invokes format.
+
+Format is implemented once in Form. It reads the base's private label, invokes content on the current receiver and joins the results. For the TextForm receiver, virtual dispatch reaches TextForm.content; for CountForm it reaches CountForm.content. The inherited algorithm is the same even though the stored representation of content differs.
+
+<Diagram client:visible definition={"flowchart TD\n F[Form: private label and final format algorithm] --> H[Abstract content step]\n H --> T[TextForm: return stored text]\n H --> C[CountForm: render stored number]\n B[Construct common state] --> S[Construct concrete state]\n S --> R[Caller invokes completed object]"} caption="Construction establishes common and concrete state before the caller invokes the shared algorithm. Dynamic dispatch supplies the explicitly varying step." />
+
+The abstract method's contract must make the shared algorithm valid. This example's two implementations return non-null text. An unrelated subclass returning null would produce the literal text null during concatenation; the base declaration alone cannot prove every domain promise. Decide whether the base should enforce a result constraint or whether all implementations must satisfy it, and test that policy.
+
+## Read abstract, final and protected together
+
+Form is abstract because an ordinary Form has no completed content behavior. Content is abstract and protected, exposing the implementation obligation to subclasses without making it the caller's main operation. Format is final so subclasses cannot replace the shared formatting algorithm; they vary only its designated hook. Private label remains controlled by Form even when it is part of a subclass instance.
+
+An abstract class may have no abstract methods when its designer still wants to prohibit direct construction. Conversely, a class declaring an abstract method must be abstract. A concrete subclass must complete all inherited abstract obligations or itself remain abstract. Constructors are not abstract: their job is to initialize each actual subclass object, and they are not inherited methods to override.
+
+Making a class abstract does not protect a constructor from unsafe virtual calls. If Form's constructor called content, it could dispatch before TextForm.text or CountForm.count had been initialized by their constructors. The example deliberately calls the varying step only after construction is complete. [JLS abstract classes and methods](https://docs.oracle.com/javase/specs/jls/se25/html/jls-8.html#jls-8.1.1.1)
+
+## Choose an abstract base, interface or collaborator
+
+Use an abstract base when closely related implementations should share per-instance state and a common algorithm under one inheritance boundary. Use an interface when clients need a capability that can be implemented by unrelated classes without sharing that representation. A class can extend only one class, so choosing this base uses that inheritance slot.
+
+Composition can express the varying content as a supplied collaborator instead. That supports changing or testing the collaborator independently and avoids inheriting a base's unrelated operations. An abstract base is not a “partial percentage” of abstraction, and an interface is not a guarantee that implementation details never appear in default methods. Choose the contract and invariant that fit the client.
+
+## Practice: add a third concrete form
+
+<details>
+<summary>Add EmptyForm that renders no content. Which methods and constructor work are required?</summary>
+
+```java
+static final class EmptyForm extends Form {
+    EmptyForm(final String label) { super(label); }
+    @Override protected String content() { return ""; }
+}
+```
+
+It initializes the inherited required label and supplies the abstract content step. It inherits format, so `new EmptyForm("note").format()` gives `note:`. It must not override final format. No duplicate label field or string-joining algorithm is needed. Null label follows the common constructor rejection rather than inventing a subtype-specific fallback.
+
+</details>

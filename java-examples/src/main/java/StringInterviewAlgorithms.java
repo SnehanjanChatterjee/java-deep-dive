@@ -33,6 +33,18 @@ public final class StringInterviewAlgorithms {
         return OptionalInt.empty();
     }
 
+    /** Removes only trailing Character.isWhitespace code points; preserves leading text. */
+    public static String stripTrailingWhitespace(final String input) {
+        Objects.requireNonNull(input, "input");
+        int end = input.length();
+        while (end > 0) {
+            final int point = input.codePointBefore(end);
+            if (!Character.isWhitespace(point)) { break; }
+            end -= Character.charCount(point);
+        }
+        return input.substring(0, end);
+    }
+
     /** Demonstrates supplementary characters and first-unique semantics. */
     public static void main(final String[] args) {
         System.out.println(reverseCodePoints("A\uD83D\uDE00B").equals("B\uD83D\uDE00A"));

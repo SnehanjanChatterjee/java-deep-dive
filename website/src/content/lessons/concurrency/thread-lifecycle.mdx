@@ -1,16 +1,17 @@
 ---
 title: "Thread lifecycle and cooperative interruption"
 module: "concurrency"
-group: "Thread lifecycle and interruption"
+group: "Lifecycle and interruption"
 summary: "Follow an owned worker through cancellation and cleanup without assuming a particular intermediate state."
-order: 780
+order: 755
 version: "Java 8+"
-prerequisites: ["concurrency/first-thread", "concurrency/memory-model"]
+prerequisites: ["concurrency/joining-and-scheduling"]
 advanced: false
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -31,9 +32,15 @@ The first-thread lesson introduced create/start/join. Here we add one operation:
 
 The worker checks its current thread's interrupted status before each wait. `Thread.sleep` is interruptible. If the request arrives while sleeping, sleep throws InterruptedException and clears the status as part of that reporting path. The catch restores the signal and lets execution leave the body. Finally records cleanup on either path.
 
-Main can interrupt before the worker first sleeps, between the status check and sleep, or while sleep is waiting. Each is handled: the loop can observe the status, or sleep can report it. The program does not need to prove the worker was sleeping at the instant of the request. After join, main can read the ordinary cleanup field using the termination publication rule already studied.
+Main can interrupt before the worker first sleeps, between the status check and sleep, or while sleep is waiting. Each is handled: the loop can observe the status, or sleep can report it. The program does not need to prove the worker was sleeping at the instant of the request. After successful join, main can observe the worker's completed write to the ordinary cleanup field. The memory-model chapter later derives the formal termination-publication rule behind this familiar completion pattern.
 
 The one-second sleep represents an interruptible wait; it is not the cancellation latency guarantee. Scheduling can delay both the owner and worker. A task stuck in a different operation needs that operation's specific cancellation contract.
+
+## Separate lifecycle state from scheduler vocabulary
+
+Thread.State has six enum values. A diagram may informally separate ready-to-run from currently running, but both can fall under Java's RUNNABLE category; RUNNING is not an additional Thread.State constant. Likewise, a description such as not running is too broad to replace BLOCKED, WAITING and TIMED_WAITING, which describe different reasons for lack of execution.
+
+These are Java virtual-machine states, rather than a direct inventory of operating-system scheduler states. A drawing may choose one path through them, while an actual worker can pass through a state between diagnostic observations. The table below uses the API's actual enum vocabulary. [Thread.State definitions](https://docs.oracle.com/javase/8/docs/api/java/lang/Thread.State.html)
 
 ## Read states without guessing timing
 
@@ -45,6 +52,12 @@ The one-second sleep represents an interruptible wait; it is not the cancellatio
 | WAITING | An indefinite supported wait, join or park | Deadlock by itself |
 | TIMED_WAITING | A bounded supported wait or sleep | An exact return-to-execution deadline |
 | TERMINATED | Execution ended | Application success |
+
+### Watch one interruption path move through the states
+
+<BasicThreadMotion client:visible model="lifecycle" />
+
+The worker marker follows one legal path in which it reaches sleep before the owner interrupts. Main can itself enter WAITING while joining; that does not mean the worker is still in its timed sleep. BLOCKED is reserved here for intrinsic-monitor contention, demonstrated by the counter and mailbox models. A thread need not visit every state displayed on the board. [Java Thread.State definitions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.State.html)
 
 getState is a changing diagnostic snapshot. A ReentrantLock contender can park rather than appear BLOCKED. NEW before start and TERMINATED after a successful join are stable boundaries; sampling a state after an arbitrary sleep is not a coordination technique.
 
@@ -69,6 +82,14 @@ Sleep does not release monitors held by the caller. Wait releases its target mon
 ## Exercise and worked answer
 
 Replace sleeping with processing one bounded chunk, then checking cancellation. State where the last completed chunk commits its result, which resources finally releases, and which owner joins the worker. A correct answer returns when interrupted, keeps the last committed result valid, and does not silently report all requested chunks as complete.
+
+<JavaExample file="ChunkedCancellationLesson.java" output={"completed=3\nchecksum=15150\ncleanup=true"} />
+
+Each chunk computes 1+…+100 into an invocation-local subtotal, then commits that complete 5050 to checksum and advances completed. Status is checked before another chunk begins. There is no sleep, wait or checked exception causing a CPU loop to stop automatically.
+
+The demonstration raises a controlled request **inside the worker after its third commit**, giving a reproducible output. An external owner can call the same Thread's interrupt; the next checkpoint responds to that request, but which chunk it reaches depends on timing. The program does not claim an externally requested cancellation always stops after exactly three chunks.
+
+Five requested chunks and three completed chunks are separate facts. Finally records cleanup even for zero chunks or a request at entry. Main joins before reading the ordinary fields. The Worker constructor permits -1 to disable this controlled request; that variant completes all requested chunks unless another caller interrupts it. The next interruption lesson demonstrates the consuming and non-consuming flag APIs independently.
 
 `CooperativeStopLesson` supplies the complete cancellation/cleanup boundary. A later CountDownLatch lesson adds an explicit startup milestone and revisits the existing two-latch `ThreadLifecycleLab`; that more detailed experiment belongs after learning the signal's API.
 

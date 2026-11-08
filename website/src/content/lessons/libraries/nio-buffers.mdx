@@ -2,7 +2,7 @@
 title: "Buffers, channels and partial transfers"
 module: "libraries"
 group: "Buffers and channels"
-summary: "Put bytes into storage, then take them out"
+summary: "Trace position, limit and mark; compare shared buffer views and handle partial channel transfers."
 order: 700
 version: "Java 8+"
 prerequisites: ["libraries/text-encodings"]
@@ -61,6 +61,18 @@ Direct buffers can reduce some native I/O copying but have allocation/lifecycle 
 Suppose four bytes are readable and only two are consumed. Calling clear loses the state identifying the unread two; later writes can overwrite them. compact moves those two bytes to indexes zero/one and sets position two. Append the next bytes there, then flip again before consuming. No additional capacity is created by compact.
 
 Calling getInt immediately after putInt without flip reads from the current position, not from the bytes just written. The existing introductory FilesAndBuffers program demonstrates the simplest putInt/flip/getInt round-trip; the complete channel copy above applies the same state transition repeatedly.
+
+## Observe independent cursors over shared bytes
+
+<JavaExample file="BufferViewsLab.java" output={"absolute=20, position=0\nrelative=10, position=1\nreset position=1\nview orders=LITTLE_ENDIAN/BIG_ENDIAN\ncursors=1/2\nslice shared=99\nreadonly observes=88\nreadonly write rejected\nbig endian=16909060\nlittle endian=67305985"} />
+
+Absolute get(1) reads20 without moving the source's position. Relative get then reads10 and advances position to1. Mark records that position; reading again advances to2, and reset returns to the recorded1. Setting a new position/limit that invalidates a mark can make later reset throw InvalidMarkException; reset is not a general return-to-zero operation.
+
+Duplicate begins with its own copy of the cursor/limit state. Reading from it changes its position to2 while the source stays at1. Slice begins at the source's current position: its index0 identifies source index1. Writing99 through that slice changes the same byte seen through source.get(1). A read-only view rejects its own put, yet observes a later write through the source. Read-only access does not make shared storage immutable.
+
+ByteBuffer view byte order needs deliberate attention: duplicate and slice return ByteBuffer views with the specified initial BIG_ENDIAN order, even when the source was configured LITTLE_ENDIAN. The example prints that distinction. Set the desired order on the chosen view before multibyte operations; typed views such as asIntBuffer have their own documented creation-time order relationship.
+
+<Diagram client:visible definition={"flowchart TD\n S[Source:position1, limit4] --> B[Shared bytes:10,88,30,40]\n D[Duplicate:position2, limit4] --> B\n V[Slice:index0 maps to source index1] --> B\n R[Read-only view:own cursor, writes rejected] --> B"} caption="Views share storage; position, limit, access permission and byte order are separate properties." />
 
 ## References
 

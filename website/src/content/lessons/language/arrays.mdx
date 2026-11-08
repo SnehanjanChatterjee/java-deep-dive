@@ -66,6 +66,24 @@ The complete ArrayBasics source supplies the Objects import. For `{4,7,4}` and t
 
 </details>
 
+## Distinguish declaration, length and allocated elements
+
+`int[] values;` declares a variable without an array. `values = new int[0]` gives it a real empty array. A negative requested length fails with NegativeArraySizeException; zero is allowed. A brace initializer can be used in a declaration, but later assignment needs an array creation expression such as `values = new int[] {1, 2}`. Fixed length does not mean fixed contents.
+
+An array of references similarly allocates reference components, not every referenced object. After `String[] names = new String[2]`, both components are null. This distinction will matter when the object lessons construct arrays of mutable objects. An enhanced-for loop copies each visited component value into its loop variable; rebinding that local does not replace the array's stored reference.
+
+## Copy a range safely even when it overlaps
+
+<JavaExample file="ArrayCopyLesson.java" output={"[1, 1, 2, 3]\n[1, 1, 2, 3, 0, 0]\nfalse"} />
+
+System.arraycopy receives source array, source start, destination array, destination start and component count. Here it copies original indexes zero through two into indexes one through three of the **same** array. Its overlap contract preserves the original source values during the copy. A naive left-to-right assignment loop would overwrite source components before reading them and could produce all ones.
+
+Arrays.copyOf then allocates six int components, copies the four existing values and supplies zeros for the added components. The original length stays four and identity comparison is false. Copy length, offsets and bounds are independent inputs: do not confuse “copy three components” with “last copied index is three.” [System.arraycopy contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#arraycopy(java.lang.Object,int,java.lang.Object,int,int))
+
+## Process command-line arguments after learning arrays
+
+In main, args is an array supplied by the launcher. `java Example red blue` supplies two components, red and blue; the class name and launcher options are not application arguments. Test args.length before reading args[0]. An enhanced-for loop can print every supplied argument, including none, without indexing an empty array. Arguments arrive as text; numeric parsing and console input have explicit failure policies in the reliability module.
+
 ## Array references
 
 - [Dev.java: creating arrays](https://dev.java/learn/language/constructs/basics/arrays/)

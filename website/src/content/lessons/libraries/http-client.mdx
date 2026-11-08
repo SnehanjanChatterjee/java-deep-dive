@@ -113,6 +113,26 @@ The loopback server exposes a small accepted body, a ten-byte body exceeding the
 
 This completes byte-size and decoding policy, not a full streaming deadline. A delayed-body test needs explicit coordination for when headers/body progress occur and a concrete cancellation design. A timed future wait alone would only bound that wait; it cannot establish that body consumption and remote effects stopped. That advanced lifecycle requires the task/cancellation concepts in the concurrency module.
 
+## Build a POST request and inspect response headers
+
+<JavaExample file="modern/HttpPostLab.java" output={"200:POST:hello\nheader=echo\nGET=405\noversize=413"} />
+
+This additional Java 21+ lab creates an owned loopback endpoint, sends a five-byte UTF-8 body, reads a custom response header, and exercises method and request-size rejection. No external service or framework is needed. The complete request is an immutable HttpRequest built from a mutable builder; do not concurrently share an unfinished builder as if it were a request value.
+
+| Request choice | Java API | Behavior to explain |
+| --- | --- | --- |
+| Retrieval method | GET() | Select GET, which is also the usual builder default |
+| Text body | POST(BodyPublishers.ofString(text, charset)) | Encode the supplied text under the chosen charset |
+| Binary body | BodyPublishers.ofByteArray(bytes) | Publish the supplied byte representation |
+| Another method | method(name, publisher) | Supply both method and body policy explicitly |
+| Add header value | header(name, value) | Add a value; repeated calls can produce multiple values |
+| Replace header values | setHeader(name, value) | Replace the builder's values for that name |
+| Read response metadata | headers().firstValue(name) | Obtain an Optional for a possibly absent header |
+
+The server's echo helper validates the method, reads at most 129 bytes to enforce its 128-byte accepted limit, writes the POST prefix and known payload, then closes the exchange. The body limit is a byte budget, not an arbitrary time deadline. The two failure requests still produce normal HTTP responses:405 for GET at this endpoint and413 for the oversized body.
+
+Redirect handling belongs to the client's configuration. This lab explicitly uses NEVER. A redirect can change the destination and has method/body rules depending on status and client policy; it is not automatically the same application operation at another address. Keep credentials, replayability and retry semantics tied to the intended endpoint/protocol.
+
 ## References
 
 - [HttpClient lifetime and sending contracts](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.net.http/share/classes/java/net/http/HttpClient.java)

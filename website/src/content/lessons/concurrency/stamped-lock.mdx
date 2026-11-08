@@ -1,9 +1,9 @@
 ---
 title: "StampedLock and validated optimistic reads"
 module: "concurrency"
-group: "Advanced synchronization"
+group: "Atomics and advanced locks"
 summary: "Copy a tiny invariant, validate its observation interval and retry under a real read lock when needed."
-order: 1030
+order: 940
 version: "Java 8+"
 prerequisites: ["concurrency/read-write-locks", "concurrency/volatile-publication"]
 advanced: true
@@ -27,6 +27,16 @@ Move obtains an exclusive write stamp, updates both fields and unlocks that stam
 The sequential output demonstrates the arithmetic and API paths without claiming it forced a racing validation failure. For the concurrency argument, consider a writer between the two tentative reads: validation must reject that interrupted interval and the fallback rereads a consistent pair. A successfully validated observation supplies the documented consistency relationship for that interval.
 
 <Diagram client:visible definition={"flowchart TD\n O[Obtain optimistic stamp] --> C[Copy x and y into locals]\n C --> V{Validate stamp}\n V -->|valid| R[Use copied pair]\n V -->|invalid| L[Acquire read lock]\n L --> N[Reread both fields]\n N --> U[Unlock read stamp]\n U --> R"} caption="An invalid tentative observation is discarded. Validation is a decision point before the data is trusted." />
+
+## Force the validation-failure branch
+
+<JavaExample file="StampedValidationLesson.java" output={"tentative=0\nvalid=false\nselected=42"} />
+
+The caller obtains an optimistic stamp and copies zero. It then deliberately acquires write mode, changes the protected element to 42 and releases write mode before validating the old stamp. Validation must reject that interval. The fallback obtains genuine read ownership and rereads 42, which becomes the selected result.
+
+This single-thread experiment isolates the version/validation rule. It does not claim to have forced two threads to race or measured contention. In a real optimistic reader, an intervening writer can create the same invalidation, and tentative fields must remain unused until the observation is validated or replaced by a protected reread.
+
+Validation does not retain ownership afterward. A writer may acquire immediately after successful validation, so the reader should calculate from the validated local copies rather than return to unprotected fields and assume the stamp reserved them. A valid past interval and a lock held over future accesses are different guarantees. [StampedLock validation contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/StampedLock.html#validate-long-)
 
 ## A stamp is not reentrant thread ownership
 

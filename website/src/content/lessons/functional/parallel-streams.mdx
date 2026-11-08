@@ -2,7 +2,7 @@
 title: "Parallel streams and partitioned reduction"
 module: "functional"
 group: "Parallel streams"
-summary: "Split work without changing the result meaning"
+summary: "Preserve reduction meaning across partitions, distinguish concurrent collectors from isolated state and interpret result/action order precisely."
 order: 620
 version: "Java 8+"
 prerequisites: ["functional/collectors"]
@@ -34,6 +34,18 @@ An ordered source can be processed out of callback order while retaining its req
 
 Stateful operations such as sorted/distinct and ordered limit can require buffering or coordination. Spliterator splitting quality and properties constrain useful partitioning. A cheap operation over a small source can cost more to split, schedule and merge than to run sequentially.
 
+## Use a concurrent collector only for the matching result contract
+
+<JavaExample file="ConcurrentCollectors.java" output={"concurrent map={java=2, jvm=1}\nconcurrent groups={3=1, 4=2}\ngroup cardinalities=1/2"} />
+
+toConcurrentMap combines repeated words with a lawful count merge. groupingByConcurrent with downstream counting produces counts by length. Both are unordered concurrent reductions; a TreeMap copy is used only to display deterministic diagnostic keys after completion.
+
+A concurrent outer map does not promise that its grouped List values are generally thread-safe for arbitrary caller mutation. The final line checks only group cardinalities after terminal completion, not incidental order within those lists. If encounter order is a value requirement, choose an ordered reduction or explicitly construct/sort the required sequence.
+
+An ordinary nonconcurrent collector can be parallel-safe through separate partial containers. A concurrent collector can permit shared accumulation under its applicable characteristics and stream ordering conditions. Neither description implies that every arbitrary user accumulator is safe, or that changing characteristics repairs an incorrect combiner.
+
+sequential()/parallel() configure pipeline evaluation mode, and isParallel reports that mode without consuming elements. The StreamSources program changes mode before its one terminal operation. unordered relaxes result order constraints; it neither randomizes elements nor forces another thread count. These are pipeline contracts, not a manual worker-allocation API.
+
 ## Understand execution resources
 
 Parallel streams commonly use ForkJoin machinery; pool sharing, contention and blocking matter. Blocking I/O can occupy workers needed elsewhere. Nested parallelism is not an automatic optimization. The concurrency module later develops task pools and work stealing. Here the essential model is independent partial work plus combination, rather than a universal faster mode.
@@ -47,6 +59,12 @@ A timed wait does not establish cancellation of remote effects or complete resou
 **reduce(1, Integer::sum) is wrong.** One is not addition's identity. An explicit split [1,2] and [3,4] gives partial sums 4 and 8, then 12; sequential evaluation gives 11. Zero gives 10 in either case. Do not turn one observed framework partition count into an API promise.
 
 **Sequential success, parallel failure.** Inspect supplier independence, combiner identity/associativity, finisher type and characteristics. A false IDENTITY_FINISH or incorrect merge cannot be repaired by adding synchronized.
+
+## Explain what order is and is not preserved
+
+For an ordered list, collecting to a list preserves the required result sequence even if independent callbacks run out of order. forEachOrdered orders its terminal actions, with the documented happens-before relationship between successive actions, but upstream map/filter evaluation can still be concurrent.
+
+findAny may return any eligible value. findFirst must honor an encounter-first result when order exists and can need more coordination. Stateful sorted/distinct and prefix slicing add their own barriers/state. Callback side effects and thread-local assumptions can therefore make an apparently simple parallel switch change observable behavior or ownership.
 
 ## Decide whether parallelism helps
 

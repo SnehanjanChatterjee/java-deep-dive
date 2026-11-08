@@ -2,7 +2,7 @@
 title: "Parse length-prefixed UTF-8 messages"
 module: "libraries"
 group: "Buffers and channels"
-summary: "Separate transport reads from application messages"
+summary: "Preserve split headers and payloads, validate UTF-8 and lengths, and distinguish incomplete input from EOF truncation."
 order: 710
 version: "Java 8+"
 prerequisites: ["libraries/nio-buffers"]
@@ -60,6 +60,24 @@ Nonblocking zero progress also needs readiness/backpressure coordination. This p
 <JavaExample file="CoreFramedTextTest.java" />
 
 Tests cover split headers/bodies, multiple frames, empty payloads, malformed text, lengths, byte order, nulls, strict encoding, exact byte length and EOF truncation. Encoding a euro sign then finish-decoding it checks the complete output path. Distinguish several frames in one read from one frame across several reads; both segmentations must preserve the same message meaning.
+
+## Track exact cursor values through the split euro sign
+
+| Phase in the 32-byte demonstration | Position | Limit | Relevant bytes/state |
+| --- | --- | --- | --- |
+| After header 3 and first payload byte are put | 5 | 32 | Four-byte header followed by E2 |
+| After flip | 0 | 5 | Five readable bytes |
+| extract reads the header | 4 | 5 | Only one of three body bytes available |
+| extract resets to its mark | 0 | 5 | Entire incomplete frame remains readable |
+| compact | 5 | 32 | The same five bytes retained; append starts at5 |
+| Append 82 AC, then flip | 0 | 7 | Complete header and three-byte payload |
+| Successful extraction | 7 | 7 | One String emitted; no readable suffix |
+
+A complete empty frame consumes its four-byte header and emits an empty String. That is different from having no complete frame to emit. When multiple frames arrive together, repeat extraction from the new position. If a later frame is incomplete, reset only to that later frame's header; earlier successful frames stay consumed.
+
+The encoder first rejects text whose UTF-16-unit count already exceeds the byte budget, limiting temporary encoding work. Passing that preliminary guard is insufficient:342 euro signs contain only342 units but require1,026 UTF-8 bytes, so the exact encoded-byte check still rejects them. A 341-euro-sign string plus one ASCII unit occupies exactly1,024 bytes. Malformed surrogate input is rejected by strict encoding independently of size.
+
+At EOF, a partial header and a partial payload are truncation failures. While input remains open, they are ordinary incomplete states. Neither compact nor a later retry repairs a negative length or malformed complete payload. This separation makes the parser independent of how a socket/channel groups its reads.
 
 ## References
 

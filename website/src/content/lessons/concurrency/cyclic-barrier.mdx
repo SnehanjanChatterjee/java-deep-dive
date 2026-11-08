@@ -3,7 +3,7 @@ title: "CyclicBarrier: reusable calculation phases"
 module: "concurrency"
 group: "Coordination utilities"
 summary: "Reuse one fixed participant boundary and explain the barrier action and broken generations."
-order: 830
+order: 815
 version: "Java 8+"
 prerequisites: ["concurrency/countdown-latch"]
 advanced: true
@@ -27,6 +27,16 @@ In round one, the two slots become one and two. Either worker may arrive first, 
 The barrier action is part of the correctness of this program: it reads the slots before released workers may begin overwriting them. Moving that sum into one worker after await would let the other worker start the next round first. A reusable rendezvous is not a guarantee that all statements after a barrier happen together.
 
 <Diagram client:visible definition={"sequenceDiagram\n participant A as Worker A\n participant B as Worker B\n participant G as Barrier action\n A->>G: write slot 0, await round 1\n B->>G: write slot 1, last arrival\n G->>G: combine 1 and 2\n G-->>A: release round 1\n G-->>B: release round 1\n Note over A,B: Both can begin round 2"} caption="Arrival order is unconstrained. The barrier action completes before either participant continues into its next round." />
+
+## Observe a broken generation
+
+<JavaExample file="BarrierFailureLesson.java" output={"interrupted status=false\nbroken=true\npeer saw broken generation"} />
+
+The first worker interrupts itself before await. Await detects that pending request, clears its status while throwing InterruptedException, and breaks this generation. Main joins the first worker before arriving as the second participant, so it deterministically observes the broken generation through BrokenBarrierException. This experiment needs no delay intended to make one participant arrive first.
+
+The distinction matters: the interrupted participant has an interruption outcome; a peer's broken-generation exception does not mean that peer was itself interrupted. A timed-out participant similarly invalidates that generation rather than quietly leaving everyone else waiting for a missing arrival.
+
+If the barrier action itself fails, the last arriver executing it sees that failure and the generation breaks for peers. Reset starts a fresh generation, but does not repair their application state or establish which old participants should retry. Decide recovery as a group before reusing the synchronization point. [CyclicBarrier breakage and action contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CyclicBarrier.html)
 
 ## Failure breaks the current generation
 

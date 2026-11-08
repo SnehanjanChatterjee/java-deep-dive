@@ -3,7 +3,7 @@ title: "Choosing a coordination utility"
 module: "concurrency"
 group: "Coordination utilities"
 summary: "Distinguish completion signals, reusable phases and scarce-resource permits before studying their implementations."
-order: 810
+order: 805
 version: "Java 8+"
 prerequisites: ["concurrency/locks-interruption"]
 advanced: false
@@ -40,6 +40,14 @@ The following chapters teach each through a complete program. A comparison table
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
+## Classify the state, not just the waiting method
+
+A latch with count two remembers two one-way completion signals even if its owner has not called await yet. A two-party barrier instead requires participants to meet in the same generation. A semaphore with two permits can repeatedly lend and recover two admissions. A phaser adds registered arrivals and generation changes; deregistration changes future participation. An Exchanger pairs two callers and returns each caller's peer value.
+
+This distinction predicts behavior. Calling countDown twice can permanently open one latch. Calling release twice can add semaphore permits, even from a different caller, so erroneous extra releases can destroy a capacity invariant. Repeated barrier arrivals belong to separate generations rather than two stored credits for any future waiter.
+
+**Selection exercise:** two producers finish forever and the owner needs both completion signals: latch. The same two workers must finish every repeated round before advancing: barrier. Variable child tasks join and leave phases: phaser. Only two database operations may hold resource slots at once: semaphore. Two participants swap buffers at a boundary: Exchanger. The focused chapters run each contract independently before combining them. [Java 8 coordination package](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/package-summary.html)
+
 ## Trace a combined operation before combining APIs
 
 A worker first acquires a connection permit, writes its own result slot, releases the permit, then reports completion. Main waits for all completion signals and checks failures before combining results.

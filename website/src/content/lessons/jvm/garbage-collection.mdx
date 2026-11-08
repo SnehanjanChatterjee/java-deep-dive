@@ -102,9 +102,27 @@ Explain why the static buffer window stays at sixteen entries while allocating r
 For retention, run CoreRetentionLab with hold and locate its static map's root path. Allocation profiles identify where new arrays are made; heap graphs identify who keeps them. Weak/soft references and cleaners are specialized contracts, not generic repairs for unclear ownership or a replacement for deterministic external-resource close.
 
 <span id="reference-strengths-and-external-resources"></span>
+## Compare collector strategies before tuning them
+
+| Strategy | Primary mechanism to explain | Tradeoff to investigate |
+| --- | --- | --- |
+| Serial collection | Collector work on one thread in relevant phases | Simplicity/footprint versus pauses on larger workloads |
+| Parallel collection | Multiple collector workers in stop-the-world work | Throughput versus pause objectives and CPU competition |
+| G1 | Regions, remembered references, marking and evacuation | Pause goals, bookkeeping and evacuation headroom |
+| ZGC | Concurrent marking/relocation with its barrier protocol | Low pauses versus concurrent CPU and memory headroom |
+
+This comparison describes mechanisms, not a speed ranking. Parallel describes multiple collector workers; concurrent describes overlap with application work. A collector can have both properties in different phases. A short pause does not prove that application throughput is unaffected, and a low allocation rate does not prove that the retained graph is small. [Available collector mechanisms](https://docs.oracle.com/en/java/javase/25/gctuning/available-collectors.html)
+
+<details>
+<summary>How can an old object keep a young object alive during a young collection?</summary>
+
+An old object can hold a reference to the young object. The young-collection algorithm must account for that incoming path, using the collector's remembered-reference/barrier mechanism rather than assuming all roots are young. A generational hypothesis is a workload observation used for optimization, not a rule forbidding old-to-young references.
+
+</details>
+
 ## References
 
 - [G1 architecture and phases](https://dev.java/learn/jvm/tool/garbage-collection/g1gc-overview/)
-- [JDK 25 G1 tuning guide](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-first-garbage-collector.html)
+- [JDK 25 G1 architecture and phases](https://docs.oracle.com/en/java/javase/25/gctuning/garbage-first-g1-garbage-collector1.html)
 - [JDK 25 ZGC](https://docs.oracle.com/en/java/javase/25/gctuning/z-garbage-collector.html)
 - [Removal of non-generational ZGC](https://openjdk.org/jeps/490)

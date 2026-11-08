@@ -1,11 +1,24 @@
 import java.util.Arrays;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 
 /** A single-file binary min-heap without a built-in queue. @author Snehanjan Chatterjee */
 public final class IntMinHeap {
     private static final int MAX_CAPACITY = 1 << 20;
     private int[] values = new int[4];
     private int size;
+
+    /** Starts with empty growable storage. */
+    public IntMinHeap() { }
+
+    /** Copies arbitrary input and builds its heap bottom-up without mutating the input. */
+    public IntMinHeap(final int[] input) {
+        Objects.requireNonNull(input, "input");
+        if (input.length > MAX_CAPACITY) { throw new IllegalArgumentException("exercise capacity exceeded"); }
+        values = Arrays.copyOf(input, Math.max(4, input.length));
+        size = input.length;
+        for (int parent = size / 2 - 1; parent >= 0; parent--) { siftDown(parent, values[parent]); }
+    }
 
     /** Reports the number of stored values. */
     public int size() { return size; }
@@ -37,7 +50,13 @@ public final class IntMinHeap {
         final int minimum = peek();
         final int replacement = values[--size];
         if (size == 0) { return minimum; }
-        int hole = 0;
+        siftDown(0, replacement);
+        return minimum;
+    }
+
+    /** Places a replacement below already valid child heaps. */
+    private void siftDown(final int start, final int replacement) {
+        int hole = start;
         while (hole < size / 2) {
             int child = hole * 2 + 1;
             if (child + 1 < size && values[child + 1] < values[child]) { child++; }
@@ -46,7 +65,6 @@ public final class IntMinHeap {
             hole = child;
         }
         values[hole] = replacement;
-        return minimum;
     }
 
     /** Demonstrates sorted removal from a partially ordered heap. */

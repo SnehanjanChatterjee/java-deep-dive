@@ -2,7 +2,7 @@
 title: "Resolve dependency versions, scopes and BOMs"
 module: "engineering"
 group: "Dependency management"
-summary: "Explain which library actually reaches the application"
+summary: "Trace direct and transitive dependencies, compare scopes and use a BOM to control versions without adding dependencies."
 order: 1290
 version: "Java 8+; Maven 3.9+"
 prerequisites: ["engineering/first-project-and-tests"]
@@ -147,6 +147,24 @@ Pin relevant plugin/dependency versions and record the JDK target. A Maven wrapp
 ## Worked diagnosis: a dependency upgrade fails at runtime
 
 First identify the compiled caller and actual loaded library, then inspect the selected tree and classpath. A NoSuchMethodError can mean the caller references a descriptor absent from the chosen runtime JAR. Adding an import to already compiled source does not repair that linkage. The next chapter provides a separately compiled client that demonstrates the failure directly.
+
+## Review the effective graph and the packaged graph separately
+
+Dependency mediation chooses versions for a particular Maven invocation. A launcher can still receive a different classpath, and a shaded package can merge or omit resources. Therefore inspect three artifacts: the effective POM for intended configuration, dependency:tree for resolved dependencies, and the produced JAR/image for what is actually distributed.
+
+| Decision | Input to inspect | Example consequence |
+| --- | --- | --- |
+| Version mediation | Dependency paths and management | A direct API declaration selects 2.0 |
+| Scope | Current project's compile/test/runtime needs | Test-only JUnit is absent from production runtime |
+| Resource packaging | JAR entries and merge policy | A service descriptor survives shading |
+| Runtime launch | Actual classpath/module path | The selected JAR is really the one loaded |
+
+<details>
+<summary>Does excluding a library on the adapter dependency guarantee it is gone?</summary>
+
+No. Exclusions affect the specified dependency path. Another direct or transitive path can still introduce the artifact. Reinspect the resolved tree, then check whether the resulting API/runtime requirements are satisfied. Deleting a JAR until compilation succeeds is not a replacement for understanding its consumers.
+
+</details>
 
 ## References
 

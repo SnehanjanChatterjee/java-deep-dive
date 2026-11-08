@@ -1,9 +1,9 @@
 ---
 title: "Scheduled executors and periodic task lifetimes"
 module: "concurrency"
-group: "Tasks and executors"
+group: "Thread pools and scheduling"
 summary: "Begin with one delayed result, then trace fixed-rate, fixed-delay and terminal outcomes."
-order: 910
+order: 865
 version: "Java 8+"
 prerequisites: ["concurrency/future-cancellation", "concurrency/thread-pool-internals"]
 advanced: true
@@ -49,6 +49,14 @@ The second method throws on its first invocation. The periodic Future becomes ex
 
 <span id="scheduledthreadpoolexecutor-storage-and-cancellation"></span>
 <span id="state-sharing-between-executions"></span>
+## Dry-run late periodic executions
+
+Assume an illustrative initial eligibility at time zero, period 10 units and each invocation taking 15 units, with no other delays. Fixed-rate nominal eligibility is 0, 10, 20, …; actual nonoverlapping starts can be 0, 15, 30, … . The second invocation is late, rather than a second copy running at time ten alongside the first.
+
+For a fixed delay of ten, completion of the first at 15 makes the next eligible at 25; completion at 40 makes the next eligible at 50. The delay is measured after completion. These are policy calculations under declared assumptions, not observed runtime timestamps or a real-time guarantee.
+
+If an invocation throws, that periodic sequence becomes exceptional and later invocations are suppressed. A separate scheduled job can still run; the whole scheduler is not automatically shut down by one sequence's failure. A healthy periodic Future normally stays incomplete between ticks, so calling get to obtain each successful tick is the wrong result model. [ScheduledExecutorService periodic contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ScheduledExecutorService.html)
+
 ## Storage, cancellation and shared state
 
 ScheduledThreadPoolExecutor uses delayed work ordering and capacity controlled mainly by corePoolSize. Its delayed queue is unbounded; maximumPoolSize does not supply ordinary bounded admission. Many distinct delayed jobs can retain substantial state.

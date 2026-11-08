@@ -2,7 +2,7 @@
 title: "Dynamic proxies and interception contracts"
 module: "platform"
 group: "Dynamic invocation"
-summary: "Dynamic proxies and interception contracts with focused examples, failure traces and solved practice."
+summary: "Build an interface proxy, follow receiver identity and preserve equality, return values and checked failures."
 order: 1180
 version: "Java 8+"
 prerequisites: ["platform/reflection-basics", "platform/annotations", "functional/lambdas-and-optional"]
@@ -10,6 +10,7 @@ advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
 <span id="metadata-and-dynamic-invocation" aria-hidden="true"></span>
@@ -85,6 +86,22 @@ Why can `return "proxy=" + proxy;` in the toString handler fail? How should a ta
 <summary>Answer</summary>
 
 Concatenation asks for proxy.toString, re-entering the same handler and repeating the call. Use nonrecursive diagnostic data, such as a fixed label or target.getClass().getName. For IOException, preserve the original cause from InvocationTargetException so a caller compiled against Greeting sees its declared failure contract. Handle Object methods before ordinary delegation, and test reflexivity, null/target/other-proxy inequality, stable hashing and target failure identity.
+
+</details>
+
+
+## Trace the receiver across interception
+
+<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant P as Proxy\n participant H as Handler\n participant T as Target\n C->>P: greet(name)\n P->>H: invoke(proxy, method, args)\n H->>T: invoke target\n T-->>H: result or target exception\n H-->>C: result or preserved cause"} caption="Delegation goes to the target receiver. Reflectively invoking the same method on the proxy would enter the handler again." />
+
+For the successful call, the argument array contains Mira and the target is the original Greeting lambda. The result is returned through the handler. For an empty name, the target throws IOException; reflective invocation wraps it; the handler unwraps it so the caller sees the declared failure. A handler that returns a default string in that branch has changed the service contract, not just its logging.
+
+If a target method calls another method on `this`, that receiver is still the target. It does not cross the proxy boundary again. Conversely, passing the proxy to external code allows later calls to re-enter interception. Draw the receiver references before assuming every nested call is intercepted.
+
+<details>
+<summary>Does wrapping an unsynchronized target make it thread-safe?</summary>
+
+No. The handler and target can be invoked concurrently unless their contract establishes coordination. A handler's mutable counter can introduce a race even around an immutable target. Choose state ownership and synchronization separately from interception. Test the proxy's return/failure/equality contracts as well as any genuinely intended cross-call coordination.
 
 </details>
 

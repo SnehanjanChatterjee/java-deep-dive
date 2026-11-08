@@ -78,6 +78,23 @@ No. Reassignment would require removing final from the parameter declaration, th
 
 Continue with <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>local slots and the operand stack</a>, which traces a familiar arithmetic method through a few compiled instructions.
 
+## Follow a reference stored in another object
+
+References do not live only in invocation locals. Instance fields, static fields and reference-array components can hold reference values too. The object-relationships example contains this complete helper:
+
+```java
+public static String throughRetainedOwner() {
+    Book local = new Book("Retained");
+    final ReadingGroup owner = new ReadingGroup(local);
+    local = null;
+    return owner.title();
+}
+```
+
+Clearing local removes one path. Owner is still a local reference to a ReadingGroup, whose book field still identifies the Book, so title returns Retained. The field is part of a heap object's state; the reference value stored there does not move the Book into the frame. This explains why setting one variable to null is not synonymous with freeing an object.
+
+Distinguish the variable's scope, the invocation's lifetime and the object's remaining reachability paths. A debugger diagram is a conceptual snapshot; optimization can shorten physical lifetimes while preserving program behavior. Neither this helper nor its output measures when collection runs. The later reachability/GC lessons add root categories and collector mechanisms after these ordinary reference paths are clear.
+
 ## Runtime-state references
 
 - [JVM specification: stacks, heap and frames](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5)
