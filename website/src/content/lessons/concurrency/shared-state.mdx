@@ -16,7 +16,11 @@ import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 
 ## Two increments can produce one update
 
-Two workers receive the same counter object. Each intends to increment it once. A source expression such as `count++` looks like one action, but it reads a value, computes a new value, then stores that value. The complete read–modify–write must be protected if the workers can overlap.
+**Shared state** is data that more than one thread can access. Here two workers hold references to one Counter object, so both can change its one count field. Their intended rule is simple: each completed increment must add one to the final total. Such a rule about valid state is an **invariant**.
+
+A source expression such as `count++` reads the old value, calculates old plus one, then stores the result. Those steps can overlap with another caller's steps. **Atomicity** means treating the complete intended operation as one indivisible change relative to its competitors. Individual reads and writes alone do not give the whole increment that property.
+
+To see why the distinction matters, start count at zero and let each worker request one increment. The intended completed total is two. Follow the copied values in this legal losing schedule:
 
 For initial count zero, choose this schedule:
 
@@ -28,6 +32,8 @@ For initial count zero, choose this schedule:
 | 4 | | Compute from its earlier zero and store one | 1 |
 
 B's write overwrites A's update. Neither worker added to the other worker's local value. This is an atomicity problem, even if each individual read and write is visible. The intended result depends on an uncontrolled relative timing: a race condition.
+
+Java can protect a **critical section**, the group of statements that must run together, with synchronized. It uses an object's **monitor**, a built-in lock with at most one owning thread. If both increments acquire the same Counter monitor, one finishes its read/add/write before the other enters. The visual compares that repaired protocol with the losing schedule.
 
 <BasicThreadMotion client:visible model="counter" />
 
@@ -73,7 +79,7 @@ Joining both workers observes the resulting final value but cannot repair either
 
 ## Completion and exclusion solve separate problems
 
-The owner starts both workers before joining them. The monitor prevents lost updates; the joins ensure the final read occurs after all requested work finished. A correct counter read performed too early can still see an intermediate count. The next chapter derives the corresponding visibility guarantees rather than relying on how fast a worker usually runs.
+The owner starts both workers before joining them. The monitor prevents lost updates; the joins ensure the final read occurs after all requested work finished. A correct counter read performed too early can still see an intermediate count. The memory-model chapter derives the corresponding visibility guarantees rather than relying on how fast a worker usually runs.
 
 The input check rejects negative work and rejects an expected result that cannot fit in int before starting workers. Zero work is valid and gives zero. The loop index belongs to each invocation; only the counter is shared. The finite example propagates an interrupted owner join, while its workers finish their bounded loops independently. It does not claim that join interruption stops them.
 

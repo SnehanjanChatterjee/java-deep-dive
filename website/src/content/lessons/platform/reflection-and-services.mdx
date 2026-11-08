@@ -25,6 +25,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="additional-interview-questions" aria-hidden="true"></span>
 <span id="coding-exercise" aria-hidden="true"></span>
 
+## A proxy stands between a caller and an implementation
+
+A **proxy** is an object through which a caller accesses another capability. A Java dynamic proxy implements selected interfaces and routes calls to an **invocation handler**: code that decides how each intercepted call is handled. The underlying implementation receiving delegated work is the **target**.
+
+For example, a greeting interface can be wrapped so a handler observes a call and then delegates it. The caller still sees the interface. We will follow that one call before considering equality, exceptions and nested calls. Those details matter because a wrapper must preserve the operation’s promised behavior, not merely return a value on the happy path.
+
 ## Intercept calls through an interface boundary
 
 A dynamic proxy is a runtime object implementing selected interfaces. Calls on that object are routed to an InvocationHandler receiving the proxy, a Method describing the call and its arguments. It can add behavior and delegate to an existing target. It is not a transparent subclass of any arbitrary concrete class.

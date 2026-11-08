@@ -27,6 +27,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="additional-interview-questions" aria-hidden="true"></span>
 <span id="coding-exercise" aria-hidden="true"></span>
 
+## A Java module groups packages behind a declared boundary
+
+A **Java module** is a named unit of packages and resources with declared dependencies and access boundaries. The Java Platform Module System (**JPMS**) was introduced in Java 9. A module descriptor, module-info.java, names the module and describes relationships such as required modules and exposed packages.
+
+Packages still organize classes and ordinary member access. Modules add a larger boundary: a client must read the supplying module, and the supplying package must be available for the intended kind of access. We will compile a two-module greeting program before distinguishing ordinary API access from deep reflection and service discovery.
+
 ## Add a boundary above packages
 
 A package organizes type names and access. A named module additionally declares dependencies and which packages it exposes. Requires establishes readability; exports permits ordinary access to public API in a package; opens enables deep reflection under its scope. Finding a public class file on disk does not establish all three relationships.

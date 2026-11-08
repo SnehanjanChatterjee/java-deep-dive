@@ -16,6 +16,17 @@ import Diagram from '../../../components/Diagram.jsx';
 
 A reduction combines values, such as adding invoice amounts or finding a maximum. Begin with the sequential loop: initialize a result to zero, then add every number. A stream reduction separates that initial identity from the operation that combines the current result with one more value.
 
+For [1,2,3,4], start with total = 0, then visit the values:
+
+```java
+int total = 0;
+for (final int value : values) { total += value; }
+// totals: 0 -> 1 -> 3 -> 6 -> 10
+final int reduced = values.stream().reduce(0, Integer::sum);
+```
+
+The initial 0 is the **identity**, an input that leaves an addition result unchanged. The combining function takes the running result and the next element. A maximum has no universal integer identity; the overload without an identity returns Optional and leaves empty input empty.
+
 <JavaExample file="StreamReductionLab.java" output={"10\n4\nfalse\n10"} />
 
 For reduce(0, Integer::sum), the intermediate totals are 0,1,3,6,10. Zero is an identity: adding it changes nothing. The no-identity overload reduce(Integer::max) returns Optional because an empty stream has no maximum value to return. Using zero as a guessed maximum would be wrong for all-negative inputs.

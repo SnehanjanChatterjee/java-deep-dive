@@ -2,7 +2,7 @@
 title: "Stack frames, heap objects and reference values"
 module: "runtime-foundations"
 group: "Stack and heap"
-summary: "Trace method-local values, shared object references and objects that outlive their creating calls."
+summary: "Separate a call's local values from the objects it refers to and explain why an object can outlive a call."
 order: 260
 version: "Java 8+"
 prerequisites: ["objects/constructors-and-access", "language/methods-and-references"]
@@ -15,9 +15,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## A call and an object need different kinds of state
 
-A method call needs its parameters, local variables and the place to resume its caller. The JVM describes an invocation's execution state as a frame. Frames form a stack: a called method becomes the current invocation, and returning resumes the caller. Each thread, meaning one execution of instructions, has its own JVM stack.
+When a method creates a Box and returns, the call finishes—but the caller can still use the Box. Explaining that behavior requires two different kinds of state. The **Java Virtual Machine (JVM)** keeps working state for method invocations and storage for objects. A call's working state and an object's lifetime are not the same thing.
 
-Objects have a different lifetime. A Box created inside a method can remain reachable after that method returns. The JVM's heap is the runtime area for class instances and arrays. A reference value identifies an object; copying that value does not copy the object's fields. These rules connect the earlier aliasing examples to the runtime model.
+A **frame** holds one invocation's parameters, local values and information needed to resume its caller. A thread, one path of execution, has a JVM **stack** of these active frames. The most recently entered call is current; when it completes, the previous caller resumes. This last-entered, first-completed structure gives the stack its name.
+
+The **heap** is the runtime area for class instances and arrays. A Box in the heap can remain **reachable**, meaning a still-needed reference path can identify it, after its creating invocation has ended. A reference is a value connecting a variable or field to an object; copying it does not copy the object's fields. Follow the program by asking separately where each value is held, which object it identifies and which invocation is active.
 
 <JavaExample file="JvmStackHeapLesson.java" output={"7\n8\n4\ntrue"} />
 
@@ -61,23 +63,6 @@ CreateBox(4) has another invocation with its own parameter value. It creates a d
 
 The final identity comparison is true because original and alias still refer to A. Creating B has not redirected either reference. The example never explicitly destroys an object when a method returns. Heap storage becomes eligible for automatic reclamation when the relevant reachability rules no longer require it; there is no promise that collection happens immediately at a closing brace.
 
-## Use the model without inventing a physical layout
-
-Frames, local values and heap objects describe the execution contract. The diagram does not claim particular byte sizes, addresses or one fixed arrangement inside every JVM. It also does not measure garbage collection. The later JVM-internals module examines metadata, optimization and collection mechanisms after the corresponding APIs are familiar.
-
-## Practice: replace the copied reference
-
-Inside change, suppose the parameter were reassigned to a new Box instead of writing argument.value. Would main's original and alias move to that new object? Which state disappears when change returns?
-
-<details>
-<summary>Worked answer</summary>
-
-No. Reassignment would require removing final from the parameter declaration, then would redirect only that invocation's copied reference. Main's variables would still identify A. The change invocation and its parameter variables stop being active when it returns; any object it created could survive if a caller or another reachable object retained a reference. Returning a replacement and assigning it in main would explicitly change a caller variable.
-
-</details>
-
-Continue with <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>local slots and the operand stack</a>, which traces a familiar arithmetic method through a few compiled instructions.
-
 ## Follow a reference stored in another object
 
 References do not live only in invocation locals. Instance fields, static fields and reference-array components can hold reference values too. The object-relationships example contains this complete helper:
@@ -94,6 +79,23 @@ public static String throughRetainedOwner() {
 Clearing local removes one path. Owner is still a local reference to a ReadingGroup, whose book field still identifies the Book, so title returns Retained. The field is part of a heap object's state; the reference value stored there does not move the Book into the frame. This explains why setting one variable to null is not synonymous with freeing an object.
 
 Distinguish the variable's scope, the invocation's lifetime and the object's remaining reachability paths. A debugger diagram is a conceptual snapshot; optimization can shorten physical lifetimes while preserving program behavior. Neither this helper nor its output measures when collection runs. The later reachability/GC lessons add root categories and collector mechanisms after these ordinary reference paths are clear.
+
+## Use the model without inventing a physical layout
+
+Frames, local values and heap objects describe the execution contract. The diagram does not claim particular byte sizes, addresses or one fixed arrangement inside every JVM. It also does not measure garbage collection. The later JVM-internals module examines metadata, optimization and collection mechanisms after the corresponding APIs are familiar.
+
+## Practice: replace the copied reference
+
+Inside change, suppose the parameter were reassigned to a new Box instead of writing argument.value. Would main's original and alias move to that new object? Which state disappears when change returns?
+
+<details>
+<summary>Worked answer</summary>
+
+No. Reassignment would require removing final from the parameter declaration, then would redirect only that invocation's copied reference. Main's variables would still identify A. The change invocation and its parameter variables stop being active when it returns; any object it created could survive if a caller or another reachable object retained a reference. Returning a replacement and assigning it in main would explicitly change a caller variable.
+
+</details>
+
+Continue with <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>local slots and the operand stack</a>, which traces a familiar arithmetic method through a few compiled instructions.
 
 ## Runtime-state references
 

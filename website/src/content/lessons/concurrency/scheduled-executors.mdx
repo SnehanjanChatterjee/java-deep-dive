@@ -15,7 +15,11 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="a-scheduled-time-makes-work-eligible"></span>
 ## A delay makes a task eligible
 
-A maintenance action must run later. ScheduledExecutorService adds relative delays and periodic sequences to the familiar submit/result model. A delay does not promise an exact start time: occupied workers, process scheduling, GC or a slow earlier job can postpone actual execution.
+A **scheduled executor** is an execution service that makes work available after a requested relative delay. ScheduledExecutorService can run a task once or establish a **periodic sequence**, repeated executions governed by one schedule. It retains the familiar task-result handle and service-ownership model.
+
+The key distinction is **eligibility**: the point when a task is allowed to start, rather than a promise that a worker starts it immediately. Occupied workers, process scheduling, garbage collection (automatic memory reclamation) or a slow earlier job can postpone actual execution. A delay describes waiting policy, not a real-time appointment.
+
+Begin with one Callable and its ScheduledFuture, the result handle for scheduled work. The first program uses zero delay so the result/ownership path is visible without a timing assertion. A positive delay adds an eligibility wait; the later sections then explain how repeated schedules calculate their next eligibility.
 
 ## Schedule one result before repeating work
 
@@ -27,6 +31,8 @@ A repeating schedule is different: its successful ticks do not each complete its
 
 <span id="interview-questions-and-solutions"></span>
 ## Fixed rate and fixed delay answer different questions
+
+For a repeated job, a **period** is the spacing of nominal eligibility times measured from the initial schedule. A **fixed delay** is a gap measured after the previous invocation finishes. Both methods keep successive executions of that one sequence from overlapping, but they choose different starting points for the next wait.
 
 | Method | Next eligibility derives from | Slow task behavior |
 | --- | --- | --- |

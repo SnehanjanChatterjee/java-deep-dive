@@ -2,7 +2,7 @@
 title: "Variables, expressions and blocks"
 module: "language"
 group: "Variables and expressions"
-summary: "Declare values, evaluate expressions and track assignments and scope inside blocks."
+summary: "Store and change values, calculate results and determine where a variable can be used."
 order: 40
 version: "Java 8+"
 prerequisites: ["execution/compile-and-run"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Store a value, then compute another
 
-A variable has a name and a declared type. `int quantity = 3;` declares an integer variable and initializes it. `quantity = 4;` assigns another value to that existing variable. Assignment uses `=`; testing equality uses `==`. A String stores text, and a boolean is either true or false.
+A greeting uses fixed text. A calculation needs values that can be named, read and changed. A **variable** is a named place for a value; its **type** determines what kinds of values it can hold and which operations are legal. For a small whole-number quantity, use int. For text use String, and for a true/false answer use boolean.
+
+In `int quantity = 3;`, int is the type, quantity is the name and 3 is the initial value. This is a **declaration with initialization**: it introduces the variable and gives it its first value. Later, `quantity = 4;` is an **assignment** to that existing variable. The equals sign performs assignment; `==` asks an equality question. A number or quoted text written directly in source is a **literal**.
+
+An **expression** computes a value from literals, variables and operations. `quantity * unitPrice` multiplies two numbers; `nextTotal <= 20` asks whether one number is at most another and produces a boolean. Evaluating an expression happens at a particular point in execution. Storing its result does not create a permanently linked formula.
 
 <JavaExample file="ExpressionBasics.java" output={"15\n20\ntrue"} />
 
@@ -33,6 +37,16 @@ Comparisons `<`, `<=`, `>`, `>=`, `==` and `!=` produce booleans. Combine condit
 
 Java's primitives are byte, short, int, long, char, float, double and boolean. Choose int for these small counts. Long literals can use `L`; decimal floating-point literals normally have type double. A char literal uses single quotes, such as `'A'`; String literals use double quotes. Reference types such as String can also hold null, meaning no object. Numeric boundaries and conversions have a later dedicated chapter.
 
+## Observe skipped operands and text concatenation
+
+`++checks` adds one before yielding its value. This makes evaluation visible without a helper method:
+
+<JavaExample file="ExpressionOrderLesson.java" output={"false\n0\nfalse\n1\nsum=12\nsum=3"} />
+
+The first false left operand stops && before the increment, so checks stays zero. Boolean & evaluates the right operand even though its left operand already makes the answer false; checks becomes one. Both boolean results are false, but the side effects differ. Prefer simple conditions without mutation when that makes the code easier to read.
+
+The + operator groups left to right. `"sum=" + 1` first creates text sum=1, then concatenates two, producing sum=12. Parentheses make `1 + 2` a numeric calculation before concatenation, producing sum=3. Precedence decides grouping; short-circuit rules decide whether a grouped operand is evaluated at all. A semicolon immediately after an if/loop condition would be an empty statement, not punctuation to insert between a condition and its intended body.
+
 ## Practice: distinguish a saved result from a formula
 
 Predict `int x = 2; int y = x + 3; x = 10;` and then print y. Is it 5 or 13?
@@ -43,16 +57,6 @@ Predict `int x = 2; int y = x + 3; x = 10;` and then print y. Is it 5 or 13?
 It is 5. `x + 3` was evaluated when y was initialized. To recompute, execute `y = x + 3;` after assigning 10. If y were final, that second assignment would be rejected. A later statement cannot use a local declared only inside a completed inner block.
 
 </details>
-
-## Observe skipped operands and text concatenation
-
-`++checks` adds one before yielding its value. This makes evaluation visible without a helper method:
-
-<JavaExample file="ExpressionOrderLesson.java" output={"false\n0\nfalse\n1\nsum=12\nsum=3"} />
-
-The first false left operand stops && before the increment, so checks stays zero. Boolean & evaluates the right operand even though its left operand already makes the answer false; checks becomes one. Both boolean results are false, but the side effects differ. Prefer simple conditions without mutation when that makes the code easier to read.
-
-The + operator groups left to right. `"sum=" + 1` first creates text sum=1, then concatenates two, producing sum=12. Parentheses make `1 + 2` a numeric calculation before concatenation, producing sum=3. Precedence decides grouping; short-circuit rules decide whether a grouped operand is evaluated at all. A semicolon immediately after an if/loop condition would be an empty statement, not punctuation to insert between a condition and its intended body.
 
 ## Language references
 

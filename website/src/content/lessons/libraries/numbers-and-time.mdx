@@ -15,12 +15,25 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="concepts" aria-hidden="true"></span>
 ## Calculate an invoice from decimal inputs
 
-Three items cost 19.95 each and tax is 8.25 percent. The intended quantities are decimal: subtotal 59.85, tax 4.937625 before rounding, tax 4.94 at the invoice boundary, total 64.79. BigDecimal lets the program express those quantities and choose its rounding policy explicitly.
+Three items cost 19.95 each and tax is 8.25 percent. The intended quantities are decimal: subtotal 59.85, tax 4.937625 before rounding, tax 4.94 at the invoice boundary, total 64.79. BigDecimal, from java.math, represents decimal numbers and supplies arithmetic methods. It lets the program express those quantities and choose its rounding policy explicitly rather than relying on approximate binary floating-point intermediates.
 
 BigDecimal is immutable. add, subtract, multiply and divide return results; they do not change an operand. Ignoring amount.add(fee) leaves amount unchanged. A final reference alone would not supply this property; it comes from the value type.
 
 <span id="worked-example" aria-hidden="true"></span>
 ## Work from inputs to a rounded result
+
+Build the calculation before opening the complete helper:
+
+```java
+final BigDecimal price = new BigDecimal("19.95");
+final BigDecimal quantity = BigDecimal.valueOf(3);
+final BigDecimal subtotal = price.multiply(quantity); // 59.85
+final BigDecimal rawTax = subtotal.multiply(new BigDecimal("0.0825"));
+final BigDecimal tax = rawTax.setScale(2, RoundingMode.HALF_EVEN); // 4.94
+final BigDecimal total = subtotal.add(tax); // 64.79
+```
+
+String input states the intended decimal digits. multiply returns a new value, setScale chooses two fractional places, and add combines the subtotal with rounded tax. HALF_EVEN rounds to the nearest result and resolves an exact tie toward an even retained digit. The helper below also validates that the supplied price already fits the declared minor-unit scale; UNNECESSARY rejects a price that would need rounding.
 
 <JavaExample file="DecimalCalculation.java" output={"59.85\n64.79"} />
 
@@ -43,6 +56,21 @@ A fixed-minor-unit long can be simpler when every amount has the same declared s
 
 Per-item tax rounding and per-invoice rounding can produce different totals. The method's named boundary makes that choice reviewable. Adding amounts in different currencies requires another value model, not merely a wider numeric type.
 
+## Work out two different rounding boundaries
+
+For three items priced 19.95 at the example rate, the boundary changes the result even with the same RoundingMode:
+
+| Calculation | Per item, then sum | Sum first, then invoice tax |
+| --- | --- | --- |
+| Exact price × rate | 1.645875 each | 4.937625 on subtotal 59.85 |
+| Rounded tax | 1.65 each | 4.94 once |
+| Combined tax | 4.95 | 4.94 |
+| Total including subtotal | 64.80 | 64.79 |
+
+Both are internally consistent policies. The supplied total method implements the second one; moving setScale inside a per-item loop changes that promise. In the complete arithmetic program in the next lesson, item tax and invoice tax are printed separately so the difference can be reproduced.
+
+For discounts or allocations, ask whether every component must be rounded independently and how any remainder is assigned. Formatting two decimal places afterward cannot repair a total computed under another rounding rule. Keep intermediate arithmetic, domain rounding and display formatting as explicit separate stages.
+
 <span id="java-implementation" aria-hidden="true"></span>
 ## Test the arithmetic policy
 
@@ -61,21 +89,6 @@ Formatting a value with two printed places does not establish the intermediate c
 Call total(new BigDecimal("19.95"), 3, BigDecimal.ZERO): the subtotal is 59.85 and tax is 0.00, so the result is 59.85. Call it with "1.001": UNNECESSARY rejects the unit price rather than quietly rounding it. A different application can choose to round input prices, but that would be a different public promise.
 
 <Diagram client:visible definition={"flowchart LR\n I[Validated decimal price and quantity] --> S[Exact subtotal]\n S --> T[Exact tax product]\n T --> R[Round tax at invoice boundary]\n S --> F[Add final total]\n R --> F"} caption="The rounding boundary is explicit; display formatting is a later concern." />
-
-## Work out two different rounding boundaries
-
-For three items priced 19.95 at the example rate, the boundary changes the result even with the same RoundingMode:
-
-| Calculation | Per item, then sum | Sum first, then invoice tax |
-| --- | --- | --- |
-| Exact price × rate | 1.645875 each | 4.937625 on subtotal 59.85 |
-| Rounded tax | 1.65 each | 4.94 once |
-| Combined tax | 4.95 | 4.94 |
-| Total including subtotal | 64.80 | 64.79 |
-
-Both are internally consistent policies. The supplied total method implements the second one; moving setScale inside a per-item loop changes that promise. In the complete arithmetic program in the next lesson, item tax and invoice tax are printed separately so the difference can be reproduced.
-
-For discounts or allocations, ask whether every component must be rounded independently and how any remainder is assigned. Formatting two decimal places afterward cannot repair a total computed under another rounding rule. Keep intermediate arithmetic, domain rounding and display formatting as explicit separate stages.
 
 ## References
 

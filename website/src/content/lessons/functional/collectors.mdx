@@ -14,11 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## What a collector controls
 
-A collector describes how to build a result from stream elements using mutable intermediate state. Its type parameters have different roles: T is the input element, A the accumulation state and R the published result. A and R can be the same type, but do not need to be. Separating them allows efficient local mutation followed by an immutable result boundary.
+We want a purchase report giving each customer's count, total cents and largest purchase. For A:100,B:300,A:200, A's summary progresses from empty to count1/total100/max100, then to count2/total300/max200. B has count1/total300/max300. The final report should expose completed values, not a mutable work object.
+
+A **collector** describes how to build a result from stream elements using mutable intermediate state. Its type parameters have different roles: T is the input element, A the accumulation state and R the published result. A and R can be the same type, but do not need to be. Separating them allows efficient local mutation followed by an immutable result boundary.
 
 A supplier creates a fresh accumulator. An accumulator function adds one input. A combiner joins independently accumulated partial results. A finisher produces the public result. Characteristics declare additional promises the stream implementation may rely on. They are not performance decorations to add until a benchmark becomes faster.
 
-A useful first question is the invariant: what must remain true after every accepted input and after every combination? Only then choose fields and functions. This lesson aggregates purchase count and total minor units, with explicit nonnegative input and overflow behavior.
+A useful first question is the invariant: what must remain true after every accepted input and after every combination? Only then choose fields and functions. This lesson aggregates purchase count, total minor units and maximum purchase, with explicit nonnegative input and overflow behavior.
 
 ## Trace sequential and partitioned accumulation
 
@@ -29,10 +31,6 @@ Sequential reduction can use one accumulator per group. Parallel reduction can f
 <Diagram client:visible definition={"flowchart TD\n I[Purchases partitioned by traversal] --> A[Fresh accumulator A]\n I --> B[Fresh accumulator B]\n A --> C[Merge count and total]\n B --> C\n C --> F[Finish into immutable Stats]\n F --> R[Published result per customer]"} caption="Each partition owns its mutable state. The combiner preserves aggregate meaning before the finisher publishes the result." />
 
 ## Complete collector implementation
-
-<JavaExample file="CorePurchaseCollector.java" output={"{A=2:300, B=1:300}\n{A=2:300, B=1:300}"} />
-
-The program is one source file with nested input, accumulator and result types. The nested classes keep the example complete without making every helper method a separate file. The map is a library result container; this is a collector implementation, not a new Map implementation.
 
 ### Input and result ownership
 
@@ -58,9 +56,11 @@ The finisher creates Stats, so A and R differ. IDENTITY_FINISH would be false: t
 
 Parallel safety instead comes from separate state and lawful combination. A nonconcurrent collector can run correctly in a parallel stream without locks on every field. UNORDERED concerns whether encounter order changes the result meaning; it is not a promise to return random output.
 
-## Complete the maximum extension inside the same collector
+<span id="complete-the-maximum-extension-inside-the-same-collector" aria-hidden="true"></span>
 
-Stats now also publishes OptionalLong maximum. Empty state has count zero and no maximum; a real zero-cent purchase has count one and maximum zero. The accumulator keeps a primitive maximum beside count/total, using count to distinguish initialization instead of pretending zero always means absence.
+## Preserve a maximum without confusing zero and absence
+
+Stats publishes OptionalLong maximum alongside count and total. Empty state has count zero and no maximum; a real zero-cent purchase has count one and maximum zero. The accumulator keeps a primitive maximum beside count/total, using count to distinguish initialization instead of pretending zero always means absence.
 
 add computes exact next count/total first, then the appropriate maximum, before assigning fields. merge distinguishes empty sides: an empty other contributes no maximum; an empty current takes the other's maximum; two nonempty states take their larger value. finish copies all three completed primitive aggregates into immutable Stats.
 
@@ -73,11 +73,15 @@ For A:100,B:300,A:200, A has maximum 200 and B 300. The diagnostic map's compact
 | Count 1, maximum 100 | Empty | 100 |
 | Count 2, maximum 200 | Count 1, maximum 300 | 300 |
 
-This completes the extension rather than leaving a field-list exercise without code. It also shows why combining averages alone loses information while combining count/total/maximum retains the required aggregate meaning.
+These states show why combining averages alone loses information while combining count/total/maximum retains the required aggregate meaning.
+
+<JavaExample file="CorePurchaseCollector.java" output={"{A=2:300, B=1:300}\n{A=2:300, B=1:300}"} />
+
+The program is one source file with nested input, accumulator and result types. The nested classes keep the example complete without making every helper method a separate file. The map is a library result container; this is a collector implementation, not a new Map implementation.
 
 ## Verify the collector laws through its public functions
 
-A lawful nonconcurrent collector supplies distinct mutable containers. The added tests obtain two states through supplier, accumulate explicit partitions, combine and finish. They compare aggregate fields with unsplit reduction and include an empty state on each side.
+A lawful nonconcurrent collector supplies distinct mutable containers. The partition tests obtain two states through supplier, accumulate explicit partitions, combine and finish. They compare aggregate fields with unsplit reduction and include an empty state on each side.
 
 The tests also finish a snapshot, add another item to the private accumulation state and verify the old Stats remains unchanged. This exercises the real finisher ownership boundary, not only sequential/parallel printed similarity. Framework scheduling still need not use the illustrative split shown in the diagram.
 

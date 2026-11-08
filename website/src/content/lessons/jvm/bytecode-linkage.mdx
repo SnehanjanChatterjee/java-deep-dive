@@ -12,6 +12,12 @@ advanced: true
 import JavaExample from '../../../components/JavaExample.astro';
 import {url as lessonUrl} from '../../../lib/paths';
 
+## How an invocation instruction identifies its target
+
+**Bytecode** is the JVM instruction format stored in class files. A method call in Java source becomes instructions plus a reference identifying the required member. That reference includes a name and a descriptor: the parameter and return types expected at the call site.
+
+**Linkage** connects symbolic references in compiled code with runtime types and members. **Verification** checks that the class file obeys the VM’s structural and type rules. Neither term means executing the method body. Start by predicting an ordinary Java call; then inspect the corresponding invocation instruction and follow its argument, receiver and result.
+
 ## A compiled call preserves a chosen member contract
 
 The early frame lesson followed one int argument through iload, multiplication and return. After learning inheritance and class loading, we can ask a different question: how does a compiled call identify its member, and how does the runtime select the implementation? Class-file references and invocation instructions preserve more information than a method name alone.
@@ -39,6 +45,30 @@ javap -classpath out -c -p CoreDispatchLab
 A new instruction allocates an uninitialized instance; the constructor call uses the instance-initialization protocol rather than ordinary overriding. Private calls and compiler-generated access arrangements depend on the applicable class-file rules; do not infer every source construct's instruction from a slogan.
 
 Invokedynamic is not an instruction to choose Java overloads dynamically. A compiler can use a bootstrap-linked call site for language implementation strategies such as lambdas or particular string-concatenation translations. The bootstrap establishes a call-site target compatible with the specified invocation type. That mechanism does not guarantee a new lambda object on every evaluation or one universal translation for every compiler/target release.
+
+## Follow one actual virtual call and its operands
+
+This excerpt comes from the supplied program compiled for Java 8 and inspected with javap. Instruction offsets and constant-pool numbers can change with the compiler; the requested member descriptor and dispatch distinction are the important evidence.
+
+```text
+12: getstatic     #8   // System.out:Ljava/io/PrintStream;
+15: aload_1
+16: aload_2
+17: invokevirtual #9   // CoreDispatchLab$Parent.describe:(Ljava/lang/Object;)Ljava/lang/String;
+20: invokevirtual #10  // PrintStream.println:(Ljava/lang/String;)V
+```
+
+A **descriptor** encodes the parameter types inside parentheses and the return type afterward. `Ljava/lang/Object;` is the reference type Object, and `Ljava/lang/String;` is String. Thus the first invocation requests describe(Object) returning String. It does not request describe(String), even though argument currently reaches a String object.
+
+| Instruction | Caller operand stack afterward, bottom to top |
+| --- | --- |
+| getstatic System.out | [output stream] |
+| aload_1 | [output stream, receiver reference to Child] |
+| aload_2 | [output stream, receiver reference, argument reference to text] |
+| invokevirtual describe(Object) | [output stream, result reference to child-object] |
+| invokevirtual println(String) | [] |
+
+The describe invocation consumes its receiver and argument, selects Child's override of the already chosen Object signature, and places its returned String on the caller's operand stack. The later println consumes that result and its own PrintStream receiver. Source typing selected the member signature; virtual dispatch selected the override. Replacing that explanation with “runtime chooses the best overload” would predict the wrong child-string result.
 
 ## Verification checks valid execution shapes
 

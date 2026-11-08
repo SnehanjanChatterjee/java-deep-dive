@@ -17,15 +17,23 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 A word counter often reads a count, selects a default and writes an incremented count. A grouping operation first finds or creates a list, then appends an element. Map's Java 8 callback methods express those update policies while supplying the relevant key/value arguments. They are ordinary single-threaded operations on HashMap; their names do not supply concurrent coordination.
 
-Before tracing them, distinguish **no mapping**, **a mapping to null**, and **a mapping to a non-null value**. HashMap can represent all three. A callback's null result can mean “do not install” or “remove,” depending on the operation.
+First count the tokens java,jvm,java. An ordinary branch stores 1 for a new word; otherwise it stores oldCount + 1. merge expresses that same choice:
+
+```java
+counts.merge(word, 1, (oldCount, incoming) -> oldCount + incoming);
+```
+
+For the first java, no non-null old count exists, so merge installs 1 without invoking the lambda. For the second java, it supplies oldCount=1 and incoming=1, then stores the returned 2. Integer::sum is the same addition implementation in method-reference form. The map chooses the callback arguments and invocation condition.
+
+Before tracing the broader lab, distinguish **no mapping**, **a mapping to null**, and **a mapping to a non-null value**. HashMap can represent all three. A callback's null result can mean “do not install” or “remove,” depending on the operation.
 
 ## Observe the callbacks that actually run
-
-<JavaExample file="MapCallbacks.java" output={"A=4, calls=[absent, present]\ncompute removed=true\nmerged A=7, calls=[absent, present, merge]\nmerge removed=true\nnull mapping retained=true\nreplaceAll total=4"} />
 
 The calls list records callback invocations independently of map iteration order. A starts mapped to null. The first computeIfPresent skips its callback. computeIfAbsent then calls the factory and installs 3. Calling it again skips the factory because 3 is already present. The later computeIfPresent receives 3 and installs 4. The first result is therefore A=4 with calls `[absent, present]`.
 
 compute returns null for A and removes its mapping. The first merge installs supplied 5 directly, because A is absent. The second merge receives old 5 and incoming 2, invokes its remapper and installs 7. Its callback adds one merge entry to calls. Returning null from the next merge removes A again. Each operation expresses one mapping update; the implementation determines its search strategy.
+
+<JavaExample file="MapCallbacks.java" output={"A=4, calls=[absent, present]\ncompute removed=true\nmerged A=7, calls=[absent, present, merge]\nmerge removed=true\nnull mapping retained=true\nreplaceAll total=4"} />
 
 ## Read each callback's argument and null policy
 

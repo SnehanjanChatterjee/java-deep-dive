@@ -24,6 +24,12 @@ import {url as lessonUrl} from '../../../lib/paths';
 <span id="what-distinguishes-high-allocation-pressure-from-a-memory-leak"></span>
 <span id="additional-interview-questions"></span>
 <span id="solved-interview-and-debugging-practice"></span>
+## Allocation creates storage; retention keeps objects reachable
+
+**Allocation** obtains storage for a new object or array. **Retention** describes continued reachability through an owner, such as a collection or static field. A program can allocate many temporary objects while keeping a small live set, or allocate slowly while retaining an ever-growing history.
+
+These patterns call for different investigations. Temporary allocation can create collection work; unwanted retained objects can become a memory leak even though the garbage collector works correctly. The next example compares replacing values under existing keys with adding new keys. After tracing that owner, we will distinguish Java heap storage from the rest of a process’s memory budget.
+
 ## A small live set can create a large allocation workload
 
 A request repeatedly replaces temporary buffers. Another component stores every historical request in a map. Both allocate, but their memory problems are different. The first may generate high churn with bounded retained state; the second can slowly accumulate an unwanted live graph.
@@ -36,11 +42,23 @@ Allocation rate measures storage demanded over time. Retained/live size concerns
 
 <JavaExample file="CoreRetentionLab.java" output={"16\n16\n32\n0"} />
 
-Load(0,16) stores sixteen byte arrays under sixteen keys. Loading that same range again allocates replacements but keeps cardinality sixteen; the map drops its old value references. Loading keys sixteen through thirty-one instead adds sixteen mappings and grows retained ownership to thirty-two. Clear removes the map's mapping references.
+`load(0,16)` stores sixteen byte arrays under sixteen keys. Loading that same range again allocates replacements but keeps cardinality sixteen; the map drops its old value references. Loading keys sixteen through thirty-one instead adds sixteen mappings and grows retained ownership to thirty-two. Clear removes the map's mapping references.
 
 The output reports this owner's logical mappings, not exact heap bytes or immediate collection. A former value can remain reachable through another alias. The source's 64 KiB buffers make a retaining path easy to recognize without making count a complete heap-size measurement.
 
 <Diagram client:visible definition={"flowchart TD\n S[Live class/static owner] --> M[RETAINED map]\n M --> E[Entry per stored key]\n E --> A[Byte-array value]\n R[Replace existing value] --> D[Drop this old value path]\n N[Add a new key] --> G[Grow the owned graph]"} caption="Replacing a mapping and adding a mapping allocate work differently from how they change retained ownership." />
+
+## Understand shallow, reachable and retained size
+
+An object's **shallow size** is storage occupied by that object itself. Its **reachable graph** includes objects accessible through its outgoing references. Its **retained size** concerns storage that would become unreachable if that object were removed from the root-reachable graph. Shared ownership makes these different quantities.
+
+An object A **dominates** an object X when every path from the roots to X passes through A. Consider two independently rooted owners, A and B. Both reference Shared, while only A references Exclusive:
+
+<Diagram client:visible definition={"flowchart TD\n R[Runtime roots] --> A[Owner A: 16 units]\n R --> B[Owner B: 16 units]\n A --> S[Shared: 32 units]\n B --> S\n A --> E[Exclusive: 8 units]"} caption="A dominates Exclusive, but not Shared because the separate B path bypasses A. Sizes are arbitrary teaching weights, not measured JVM layouts." />
+
+Using those model weights, A's shallow size is 16 units. Its outgoing reachable graph including A totals 56 units: 16+32+8. Its retained size is 24: removing A's root path can make A and Exclusive unreachable, but Shared remains reachable through B. The assumptions are that the diagram shows all relevant paths and no other roots reach A or Exclusive.
+
+A dominator tree summarizes this every-path relationship; it is not simply the original object-reference tree. A heap analyzer's “largest retained owner” and an allocation profiler's “largest allocation site” therefore answer different questions. Locate the real root paths and compare equivalent workload phases before changing an owner.
 
 ## Inspect a retaining path without inventing collection timing
 

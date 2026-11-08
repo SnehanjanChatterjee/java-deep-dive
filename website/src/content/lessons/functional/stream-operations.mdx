@@ -15,9 +15,9 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Describe what each stage receives and emits
 
-An intermediate operation returns a stream stage. That does not mean it stores a complete intermediate collection or executes immediately. Classify its element type, output count, order and state needs before combining it with other stages.
+Suppose a score feed includes duplicates, invalid negative values and missing nulls. We want the second and third largest distinct positive scores. This determines the stage order: reject missing values, keep positives, remove equality duplicates, sort descending, skip one, then take two.
 
-<JavaExample file="StreamOperations.java" output={"[3, 2]\nmap=[1, 4, 2]\nflatMap=[A, B, C]\nmap null=[null]\nnull inner stream count=0\nmapToInt sum=7\nflatMapToInt sum=6\nflatMapToLong sum=30000000000\nflatMapToDouble sum=6.5\nlimit/distinct=[3]/[3, 2]\nstable ties=[c, bb, aa]\nindependent source=[A, B, C]"} />
+An **intermediate operation** returns another stream stage rather than the final result. It can change element type, count, encounter order or retained state. The ranked trace below follows that one task first; the rest of the program compares individual mapping and flattening operations.
 
 ranked receives [3,−1,3,1,4,null,2]. It rejects null before dereferencing/unboxing, keeps positive values, removes duplicate membership, sorts descending, skips the largest and takes the next two. The result is [3,2].
 
@@ -31,6 +31,8 @@ ranked receives [3,−1,3,1,4,null,2]. It rejects null before dereferencing/unbo
 | limit(2) | 3,2 |
 
 This table describes result meaning. The implementation may fuse/evaluate operations without materializing each row.
+
+<JavaExample file="StreamOperations.java" output={"[3, 2]\nmap=[1, 4, 2]\nflatMap=[A, B, C]\nmap null=[null]\nnull inner stream count=0\nmapToInt sum=7\nflatMapToInt sum=6\nflatMapToLong sum=30000000000\nflatMapToDouble sum=6.5\nlimit/distinct=[3]/[3, 2]\nstable ties=[c, bb, aa]\nindependent source=[A, B, C]"} />
 
 ## Map one value, flatten several, or use primitive results
 

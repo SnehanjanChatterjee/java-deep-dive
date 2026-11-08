@@ -34,9 +34,13 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="continue-with-focused-task-chapters"></span>
 ## Keep the task while changing how it executes
 
-Creating a Thread for every activity couples the task description to execution management. An Executor accepts work through a common interface. Its implementation decides whether to use an existing worker, a new execution, or even the calling thread. ExecutorService adds result-bearing submission and lifecycle management.
+An **executor** is an object to which a caller gives work for execution. Its purpose is to separate the task description from managing Thread lifetimes. Instead of constructing and starting a Thread for every activity, the caller submits a task through the execution facility's contract.
 
-Runnable describes work without a returned value. Callable describes work returning a value and may throw a checked exception. A Future is a handle through which the caller later observes that computation's result or failure. Receiving the handle does not establish that the task has started.
+The Executor interface accepts Runnable work. **ExecutorService** adds result-bearing submission and service-lifetime operations, including shutdown. A service can use reusable **workers**, threads that execute accepted tasks; the particular implementation determines that execution policy. The broader Executor contract even permits invoking work on the caller itself.
+
+To return a value, describe work as a **Callable**: its call method produces a result and can declare checked exceptions. The service's submit method returns a **Future**, a handle representing the task's eventual outcome. That outcome may still be pending, may become a value, or may fail or be cancelled. The handle is available before the answer necessarily is.
+
+Follow three separate objects in the first program: a Callable multiplying 21 by two, the one-worker service that invokes it, and the Future through which main obtains 42. Calling get on that Future waits if necessary. Submission lets the caller continue independently; result retrieval is the explicit point where this main chooses to wait.
 
 ## A first submitted result
 

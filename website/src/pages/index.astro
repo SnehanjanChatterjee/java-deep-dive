@@ -7,7 +7,7 @@ import { url } from '../lib/paths';
 import { getModuleGroups } from '../lib/course';
 const lessons = (await getCollection('lessons')).sort((a, b) => a.data.order - b.data.order);
 ---
-<SiteLayout title="Java course" summary="Learn the language, understand the internals, and practise for interviews. Choose a module, then open a topic." catalog>
+<SiteLayout title="Java course" summary="Start with programs and language basics, then build through objects, collections and concurrency. JVM architecture introduces execution early; advanced JVM lessons later develop class loading, memory management and optimization." catalog>
   <div class="course-catalog" data-course-catalog>
     {modules.map((module, index) => {
       const topics = lessons.filter(lesson => lesson.data.module === module.id);

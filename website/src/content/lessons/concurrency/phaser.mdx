@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## The participant set can change
 
-A barrier works well when every round has the same known participants. A parent operation can instead discover work dynamically: it creates children, waits for their current phase, and continues while some children have left. Phaser represents registered parties and the parties that have not yet arrived in the current phase.
+A **Phaser** coordinates repeated rounds of work while allowing the expected participant count to change. Each round has a **phase number**. A **registered party** is one logical participant promising an arrival in the current phase; it is not a Thread object automatically tracked by the library.
 
-Registration is a promise to arrive. Missing that arrival can stall a phase. Deregistration reports arrival for the current phase and removes future participation. These are logical participants, not an automatically maintained list of Thread objects.
+Think of a progress board with two counts: how many parties are registered, and how many of those have not arrived yet. Registration adds a promised arrival. Arrival records that a party finished this phase. Arrival-and-deregistration also removes that party from future phases. When the required arrivals are accounted for, the phase can advance under the phaser's policy.
+
+This is useful when a parent discovers child tasks dynamically. It can register each child before starting it, wait for their current work, then continue after completed children leave. A fixed-party barrier would require the same participants to keep returning, while this board explicitly records changes.
+
+The first program uses one parent and two children for one phase. Follow its registration, result writes and departures before studying separate arrival/wait operations or custom phase policies. An unfulfilled registration remains a missing arrival and can keep everyone else waiting.
 
 ## Register before a child can complete
 
@@ -30,7 +34,7 @@ The parent reads the completed slots, observes one remaining registered party, t
 
 ## Dry-run registration and a disappearing participant
 
-Begin phase zero with the parent registered: registered=1, unarrived=1. Register two children before starting them: registered=3, unarrived=3. Each child's arriveAndDeregister records its phase-zero arrival **and** removes its future registration. After both children, only the parent's arrival remains. The parent's arrival completes phase zero and permits advancement under the phaser's policy.
+For one legal schedule, let the children arrive before the parent. Begin phase zero with the parent registered: registered=1, unarrived=1. Register two children before starting them: registered=3, unarrived=3. Each child's arriveAndDeregister records its phase-zero arrival **and** removes its future registration. After both children, only the parent's arrival remains. The parent's arrival completes phase zero and permits advancement under the phaser's policy. The complete program does not require that arrival order.
 
 Arrival does not inherently wait. `arrive()` returns the arrival phase; a participant that must wait can subsequently await advancement from that phase. `arriveAndAwaitAdvance()` combines those responsibilities. Calling arrive twice for one conceptual contribution violates the application protocol; registration is an accounting contract, not a scheduler that prevents mistaken calls.
 
@@ -55,7 +59,7 @@ The simple arriveAndAwaitAdvance wait is not an InterruptedException-producing A
 
 ForceTermination releases relevant phase waits with terminal state. It does not interrupt application threads, release their permits or roll back partial results. A failed child still needs a failure channel. As with a latch, finally signaling participation prevents a hang but does not convert failure into a valid result.
 
-OnAdvance can customize phase termination/action policy; keep that policy short and consistent with registered arrivals. Tiered phasers can reduce contention for large participant sets, but this optimization follows a correct registration/arrival protocol.
+OnAdvance is the hook run when the last required party arrives; it can customize phase action/termination policy. Keep that policy short and consistent with registered arrivals. **Tiered phasers** arrange child phasers under a parent, allowing groups to coordinate through a tree. That can reduce contention for large participant sets, but the optimization follows a correct registration/arrival protocol.
 
 ## Exercise and complete solution
 

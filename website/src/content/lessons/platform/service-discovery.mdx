@@ -13,6 +13,12 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 import { url as lessonUrl } from '../../../lib/paths';
 
+## Service discovery separates a contract from available implementations
+
+A **service** here is a Java interface or class describing a capability. A **provider** implements that capability. **Service discovery** locates providers supplied by the runtime’s packaging and loading environment. It does not imply a remote server or network request.
+
+Java’s ServiceLoader allows a consumer to depend on a formatting interface while separately packaged providers offer uppercase or lowercase formatting. Three questions remain: which providers are visible, which one should be selected, and who owns its lifetime? The complete example first establishes the interface and implementations, then connects them through provider metadata.
+
 ## Discover providers without importing their classes
 
 An interface decouples a caller from one implementation, but someone still needs to choose and construct that implementation. ServiceLoader uses provider metadata to discover available implementations. The consumer depends on the service contract; packaging supplies the providers. Discovery is different from proxy interception or ordinary constructor injection.
@@ -48,7 +54,7 @@ The output is JAVA. Compiling classes alone is insufficient: javac does not auto
 
 ## Select by contract rather than discovery order
 
-Select scans providers for the advertised upper capability. It rejects no match and more than one match; reversing descriptor lines does not change its chosen behavior. Iteration instantiates providers lazily, so discovery/configuration/construction failures can occur while traversing. Do not catch ServiceConfigurationError and pretend the list was empty. The selection scans all providers to detect duplicates, so even a later invalid provider remains an explicit configuration failure.
+`select` scans providers for the advertised upper capability. It rejects no match and more than one match; reversing descriptor lines does not change its chosen behavior. Iteration instantiates providers lazily, so discovery/configuration/construction failures can occur while traversing. Do not catch ServiceConfigurationError and pretend the list was empty. The selection scans all providers to detect duplicates, so even a later invalid provider remains an explicit configuration failure.
 
 The chosen loader/context determines visible provider classes and resources. These providers have no closeable resources; a resource-owning extension needs an additional lifecycle contract. ServiceLoader itself is not a complete plugin isolation or resource-ownership system.
 

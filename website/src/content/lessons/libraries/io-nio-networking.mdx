@@ -15,12 +15,28 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="concepts" aria-hidden="true"></span>
 ## Open a file through a path
 
-A Path describes a location in a filesystem provider. Files performs operations at that location. Merely constructing or resolving a Path does not create a file, open it or establish that it exists. Relative paths are resolved against the process's working directory when used; do not assume that directory is the source-code folder.
+A Path describes a location interpreted by a **filesystem provider**, an implementation such as the default local filesystem. Files performs operations at that location. Merely constructing or resolving a Path does not create a file, open it or establish that it exists. Relative paths are resolved against the process's working directory when used; do not assume that directory is the source-code folder.
+
+For example, Paths.get("notes") names a relative directory and base.resolve("names.txt") names a file within it. Neither call touches disk. The same Path value can be passed later to Files.newBufferedWriter, Files.copy or another explicit operation.
 
 Use resolve to combine a parent and child, rather than concatenating platform separators. getFileName returns the last component; getParent returns the containing path when one exists. toAbsolutePath anchors a relative path, while normalize removes redundant lexical components such as dot/dot-dot without examining symbolic links.
 
 <span id="worked-example" aria-hidden="true"></span>
 ## Create, write, read, copy and move
+
+Start with one writing step and one reading step inside a method that handles IOException:
+
+```java
+try (final BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8)) {
+    writer.write("Mira");
+    writer.newLine();
+}
+try (final BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
+    final String first = reader.readLine(); // "Mira"
+}
+```
+
+Opening the writer creates/truncates under this method's defaults, writing puts text through the chosen charset, and leaving the block closes it before the reader opens. readLine removes the line terminator; null means end of file (EOF), while "" is a real empty line. The full lab uses a new temporary directory, adds copy/move/list operations, then cleans every owned path.
 
 <JavaExample file="FilePathLab.java" output={"Mira\nNoor\n2"} />
 
@@ -50,6 +66,21 @@ try (final Stream<String> lines = Files.lines(path, StandardCharsets.UTF_8)) {
 
 This fragment needs imports for Files, StandardCharsets and Stream, and a containing method that handles IOException. It counts under a declared trim-based blank policy; it does not modify the file or retain all lines. Directory walk depth and symbolic-link policy should likewise be explicit.
 
+## Resolve names and choose open options
+
+On one filesystem, resolving a relative child appends it to the base. Resolving an absolute child returns that child rather than forcing it inside the base. Relativize describes a route between compatible paths; it does not move a file. Different providers/root kinds may make the operation invalid. Neither resolve nor normalize proves filesystem authorization or existence.
+
+| Option/operation | Effect to choose deliberately |
+| --- | --- |
+| CREATE | Create a missing file; not exclusive creation |
+| CREATE_NEW | Fail if the target already exists under the operation's contract |
+| TRUNCATE_EXISTING | Discard existing content when opening for appropriate writing |
+| APPEND | Write at the end; do not assume cross-process record atomicity |
+| REPLACE_EXISTING | Permit replacement in the specified copy/move operation |
+| ATOMIC_MOVE | Request an atomic move; unsupported cases can fail |
+
+The default options of a particular Files convenience method matter. Do not open an existing file under a truncating default while intending to append. Copy/move failures can also leave states requiring investigation; an existence precheck does not make the later operation transactional.
+
 ## Let the operation report its actual failure
 
 A prior Files.exists check cannot guarantee a later open succeeds; the file can change between them. Prefer the actual operation and handle the relevant documented exception. Copy/move may reject an existing destination unless the requested options say otherwise. An atomic move is a separate option/capability, not a property of every rename across filesystems.
@@ -76,21 +107,6 @@ Returning a Stream from inside a try-with-resources block that has already close
 **Does a charset change bytes automatically in Files.copy?** No. Copy transfers file contents; text decoding/encoding is a different operation.
 
 **Does clear on a future ByteBuffer erase data?** No. That name concerns buffer state, not file deletion or secure erasure. The buffer chapter shows the distinction.
-
-## Resolve names and choose open options
-
-On one filesystem, resolving a relative child appends it to the base. Resolving an absolute child returns that child rather than forcing it inside the base. Relativize describes a route between compatible paths; it does not move a file. Different providers/root kinds may make the operation invalid. Neither resolve nor normalize proves filesystem authorization or existence.
-
-| Option/operation | Effect to choose deliberately |
-| --- | --- |
-| CREATE | Create a missing file; not exclusive creation |
-| CREATE_NEW | Fail if the target already exists under the operation's contract |
-| TRUNCATE_EXISTING | Discard existing content when opening for appropriate writing |
-| APPEND | Write at the end; do not assume cross-process record atomicity |
-| REPLACE_EXISTING | Permit replacement in the specified copy/move operation |
-| ATOMIC_MOVE | Request an atomic move; unsupported cases can fail |
-
-The default options of a particular Files convenience method matter. Do not open an existing file under a truncating default while intending to append. Copy/move failures can also leave states requiring investigation; an existence precheck does not make the later operation transactional.
 
 ## Process bounded text without retaining an entire line
 

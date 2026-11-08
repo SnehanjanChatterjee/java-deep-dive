@@ -26,6 +26,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="runtime-investigation-pitfalls"></span>
 <span id="why-collect-multiple-thread-dumps-for-a-latency-incident"></span>
 <span id="solved-interview-and-debugging-practice"></span>
+## Runtime diagnostics collect evidence about an executing program
+
+**Runtime diagnostics** are tools and observations used to understand a running program. A **thread dump** records thread stacks and states at an observation point. A **heap dump** records a heap-object graph. **Java Flight Recorder (JFR)** records configured runtime events over an interval. These artifacts answer different questions.
+
+For a slow operation, we need to distinguish time spent computing from time waiting for a lock, I/O or another task. For memory growth, we need to distinguish allocation from retention. We will begin with a program whose wait has a known cause, collect evidence during that phase, and connect the observed waiter to the resource owner.
+
 ## Start with one symptom and one question
 
 A request is slow. Is it calculating, waiting for a lock, waiting for I/O, queued without a worker, or stopped for runtime coordination? Each hypothesis needs different evidence. A thread dump captures stacks/states at a point in time. A heap dump captures object relationships. JFR records configured events over an interval. None is a universal explanation for every symptom.
@@ -47,6 +53,8 @@ The source uses ordinary platform-thread construction, ProcessHandle for its PID
 
 <span id="from-evidence-to-a-discriminating-experiment"></span>
 ## Capture evidence while the relevant phase exists
+
+The **process ID (PID)** identifies this running Java process. The `jcmd` tool sends a supported diagnostic command to that selected JVM. A **recording** is a named collection of JFR events; its settings choose which events and thresholds are enabled. The `jfr` tool reads the saved recording file. Keep the terminal running the lab open and issue diagnostic commands from a second terminal.
 
 Compile and start a recording before contention begins:
 
@@ -132,6 +140,8 @@ An empty event list is not proof no contention occurred. Events may be disabled,
 <span id="heap-evidence-does-not-contain-every-historical-allocation"></span>
 <span id="additional-interview-questions"></span>
 ## Choose heap and native evidence for memory questions
+
+An object **dominates** another when every root path to the second object passes through the first. Retained size uses that relationship; reachable size alone can include objects also reached through other owners. If owners A and B both reach Shared, removing A does not free Shared while B remains. The allocation/retention chapter develops the full weighted graph before this analyzer exercise.
 
 A histogram groups object counts/shallow bytes by class. It cannot identify the owner keeping arrays alive. A supported `jcmd <pid> GC.heap_dump study.hprof` captures a local heap graph; inspect dominators and paths to roots in a heap analyzer to locate static RETAINED → list storage → arrays. Shared paths complicate retained-size interpretation. The dump can pause the target/request collection and can contain application data.
 

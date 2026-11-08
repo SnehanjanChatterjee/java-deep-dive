@@ -14,9 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Workers must finish this round before the next one
 
-Two workers compute separate partial values. Main does not need one final notification only: every round must combine the current partials before either worker overwrites its slot for the next round. A CountDownLatch remains at zero after its first completion. A CyclicBarrier creates reusable generations for a fixed party count.
+A **CyclicBarrier** is a reusable meeting point for a fixed number of participants, called **parties**. Each party calls await when it reaches the end of its current round. The early arrivals wait until the last required arrival, after which the barrier can be used for another round. One use of the meeting point is a **generation**.
 
-A worker calls await after producing its partial. It waits until every party arrives. The last arrival executes an optional barrier action before that generation releases the participants.
+This fits a calculation where two workers repeatedly produce separate partial values. Each round's partials must be combined before either worker overwrites its slot for the next round. A one-use latch would remain open after round one; the barrier keeps those repeated rounds separate.
+
+A **barrier action** is an optional Runnable executed by the last arriving party before releasing that generation's waiters. Here it combines the two result slots. The ordinary sequence is therefore produce partial, arrive and wait, combine when both are ready, then proceed to the next round. First trace two successful rounds; the later example shows what happens when a required arrival fails.
 
 ## Run two complete generations
 
@@ -29,6 +31,8 @@ The barrier action is part of the correctness of this program: it reads the slot
 <Diagram client:visible definition={"sequenceDiagram\n participant A as Worker A\n participant B as Worker B\n participant G as Barrier action\n A->>G: write slot 0, await round 1\n B->>G: write slot 1, last arrival\n G->>G: combine 1 and 2\n G-->>A: release round 1\n G-->>B: release round 1\n Note over A,B: Both can begin round 2"} caption="Arrival order is unconstrained. The barrier action completes before either participant continues into its next round." />
 
 ## Observe a broken generation
+
+A generation is **broken** when its normal all-parties-arrived completion can no longer be trusted, such as after interruption of a waiting participant. Peers leave abnormally rather than treating partial work as a completed round. This experiment creates that failure deliberately and distinguishes the interrupted participant from its peer.
 
 <JavaExample file="BarrierFailureLesson.java" output={"interrupted status=false\nbroken=true\npeer saw broken generation"} />
 

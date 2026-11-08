@@ -2,7 +2,7 @@
 title: "Resource ownership and try-with-resources"
 module: "reliability"
 group: "Resource ownership"
-summary: "Close owned resources deterministically and trace primary, cause and suppressed failures."
+summary: "Acquire and close owned resources, then preserve useful diagnostics when work or cleanup fails."
 order: 310
 version: "Java 8+"
 prerequisites: ["reliability/exception-contracts", "objects/interfaces"]
@@ -28,9 +28,19 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Own a lifetime as well as an object
 
-A file, socket or reader can hold an external resource that must close promptly. Making its wrapper unreachable is not a deterministic closing policy. Garbage collection manages memory reachability, not the timely release of every operating-system resource.
+A **resource** is a facility with a lifetime that needs explicit management, such as a file or network connection used for input/output (I/O). A Java object can wrap that facility, but reclaiming the wrapper's memory is not the same operation as closing the file or connection. **Ownership** names the code responsible for ending that lifetime. A helper merely borrowing a caller's resource should not silently close it.
 
-AutoCloseable declares close. A try-with-resources declaration gives the language responsibility for closing successfully initialized resources when the body exits normally or exceptionally. A method opening a resource normally closes it unless it explicitly transfers ownership. A method merely borrowing a caller's stream should not close it without an agreed transfer.
+**AutoCloseable** is an interface declaring close. **Try-with-resources** is a try statement with resource declarations in parentheses. After a resource is successfully initialized, the language calls close when leaving the body, whether it completes normally or exceptionally. Scope makes the intended lifetime visible: acquire, use, close, then continue after the construct.
+
+Begin with the normal closing path. Then add a body failure, a closing failure and partial initialization one at a time. This separates the basic lifetime rule from the rule selecting a primary failure when several operations fail.
+
+## Observe a normal resource lifetime
+
+<JavaExample file="ResourceScopeLesson.java" output={"opened\nused\nclosed\nafter scope"} />
+
+TraceResource implements the closing contract and prints a label in each phase. Construction completes before the body starts; use runs in the body; close runs before the statement after the try. There is no explicit close call in main because the resource declaration owns that obligation.
+
+This in-memory teaching resource holds no operating-system facility: its close method only records the invocation. A real file/socket type defines what close releases and which later operations it rejects. The language guarantees the structured call to close; the resource type supplies that call's actual behavior. The settings-loader example below applies the same lifetime structure to a Reader.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="trace-a-body-failure-and-cleanup-failure" aria-hidden="true"></span>
@@ -43,7 +53,7 @@ AutoCloseable declares close. A try-with-resources declaration gives the languag
 
 <JavaExample file="ResourceFailures.java" output={"body\n1"} />
 
-The resource initializes successfully. Its body throws an IllegalStateException named body. Before the catch runs, the language closes the resource; close also throws. The body exception stays primary and getSuppressed contains one close failure. GetCause instead describes a causal relationship between abstraction layers. Those are distinct questions.
+The resource initializes successfully. Its body throws an IllegalStateException named body. Before the catch runs, the language closes the resource; close also throws. The body exception stays **primary**, the failure propagated to the catch. GetSuppressed contains the additional close failure, retained without replacing that primary failure. GetCause instead describes why one failure was produced from another at an abstraction boundary. Cause and suppression answer distinct questions.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 <span id="checked-exceptions-causes-and-suppression" aria-hidden="true"></span>
@@ -60,11 +70,25 @@ Run(true) initializes A then B. The body fails, B closes, then A closes. It prin
 
 A hand-written finally that throws during close can mask the original failure. Try-with-resources encodes the selection and suppression rules rather than relying on every caller to reproduce them. A null resource value is not closed, although an API can reject null before constructing a wrapper.
 
+## Run the failure during resource initialization
+
+<JavaExample file="ResourceInitializationLesson.java" output={"open A\nopen B\nclose A\nprimary=open B\nsuppressed=close A"} />
+
+First is successfully initialized before second begins. B records its opening attempt and throws before its declaration acquires a completed Resource. The body is never entered. A is closed during unwinding; B has no automatic close invocation from that failed declaration. When A's cleanup also fails, the opening failure stays primary and the close failure is suppressed on it. Trace(false) in the same source exercises the successful cleanup variant.
+
+A constructor acquiring several external resources must account for partial acquisition itself when it can fail before returning a wrapper. Try-with-resources closes successfully established resource variables, not every external thing a failed constructor touched internally. This is an ownership boundary, not merely a reversed loop over names.
+
+## Read the closing interface's actual promise
+
+An **idempotent** close has the same effect when repeated after the resource is already closed. AutoCloseable.close may declare Exception and is not universally required to be idempotent. Closeable narrows its checked failure to IOException and specifies that closing an already closed stream has no effect. A concrete type may promise more than its broad interface; read that type's contract before retrying close or sharing a resource between owners. In Java 9+, an existing final or effectively final local can appear as a resource (`try (reader)`); the Java 8 declarations above remain valid on later releases. [AutoCloseable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html), [Closeable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Closeable.html)
+
 <span id="failure-paths-as-part-of-the-api" aria-hidden="true"></span>
 
 <span id="translate-errors-without-destroying-the-cause" aria-hidden="true"></span>
 
 ## Solved loader: open, read, validate and translate
+
+This loader reads a network port number from text, accepting one through 65535. A **Reader** is the standard character-input abstraction; **BufferedReader** adds buffering and readLine. ReaderFactory is this example's interface for obtaining a fresh input, allowing the caller to supply a file or a controlled in-memory reader without changing the loading policy.
 
 <JavaExample file="CheckedSettingsLoader.java" output={"8080\nCannot load port\nnot available"} />
 
@@ -78,7 +102,7 @@ If body and close fail, suppression attaches to the body exception **before** th
 
 ## Transfer lazy resource ownership explicitly
 
-Files.lines and Files.walk return resource-backed streams requiring closure after consumption. Returning one from inside an already closed try-with-resources scope gives the caller a closed value. Ordinary collection streams do not imply the same ownership requirement. Document who closes resource-backed results, and remember that wrappers commonly close their underlying resource.
+The later functional lessons introduce **Stream**, a lazily processed sequence API, and the I/O lessons use it for files. Keep one ownership rule in mind for that later use: Files.lines and Files.walk return resource-backed streams requiring closure after consumption. Returning one from inside an already closed try-with-resources scope gives the caller a closed value. Ordinary collection streams do not imply the same ownership requirement. Document who closes resource-backed results, and remember that wrappers commonly close their underlying resource.
 
 <span id="common-mistakes" aria-hidden="true"></span>
 <span id="exception-handling-and-ownership-pitfalls" aria-hidden="true"></span>
@@ -96,19 +120,6 @@ A opens, B's initialization throws X and A.close throws Z. Which exception is ca
 X is primary, with Z suppressed on X. B never completed initialization, so that resource declaration does not close B. This differs from B opening successfully and failing in the body. Preserve both primary and suppressed diagnostics, and do not claim an operation succeeded merely because a catch returned a default. A custom diagnostic graph formatter must also avoid cycles if it traverses arbitrary cause/suppressed relationships.
 
 </details>
-
-
-## Run the failure during resource initialization
-
-<JavaExample file="ResourceInitializationLesson.java" output={"open A\nopen B\nclose A\nprimary=open B\nsuppressed=close A"} />
-
-First is successfully initialized before second begins. B records its opening attempt and throws before its declaration acquires a completed Resource. The body is never entered. A is closed during unwinding; B has no automatic close invocation from that failed declaration. When A's cleanup also fails, the opening failure stays primary and the close failure is suppressed on it. Trace(false) in the same source exercises the successful cleanup variant.
-
-A constructor acquiring several external resources must account for partial acquisition itself when it can fail before returning a wrapper. Try-with-resources closes successfully established resource variables, not every external thing a failed constructor touched internally. This is an ownership boundary, not merely a reversed loop over names.
-
-## Read the closing interface's actual promise
-
-AutoCloseable.close may declare Exception and is not universally required to be idempotent. Closeable narrows its checked failure to IOException and specifies that closing an already closed stream has no effect. A concrete type may promise more than its broad interface; read that type's contract before retrying close or sharing a resource between owners. In Java 9+, an existing final or effectively final local can appear as a resource (`try (reader)`); the Java 8 declarations above remain valid on later releases. [AutoCloseable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html), [Closeable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Closeable.html)
 
 Continue with <a href={lessonUrl('learn/reliability/console-input/')}>console input and borrowed streams</a> for a full Reader/Scanner example, including why an input helper should not silently close process-wide System.in. Closing a resource is separate from rejecting malformed text, and both policies need to remain visible to the caller.
 

@@ -11,25 +11,31 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 
+## A method handle is a typed executable reference
+
+A **method handle** represents an operation that can be invoked with specified input and result types. It can refer to an eligible method, constructor, field access or composed operation. Its **method type** describes that invocation shape; a **lookup** supplies the access context used to obtain the handle.
+
+Unlike a reflective Method, which primarily describes a declaration, a handle is an invocation object that can be adapted and combined. Begin with one method that doubles an int. We will obtain its handle, write down its type and invoke it. Exact invocation and adaptation become easier to understand once the receiver, arguments and result are visible.
+
 ## Obtain an executable operation with an explicit type
 
-A Method represents reflective member metadata. A MethodHandle is a typed executable reference, which can also be adapted or composed. Its MethodType specifies the return type and parameter types. Lookup performs access checks when creating the handle; passing the resulting handle can transfer the capability to invoke its target.
+Use a target named twice that accepts one int and returns one int. Write its type as `(int)int`: inputs in parentheses, result afterward. The first call will supply 3 and request an int, producing 6. The next step changes the handle’s accepted/result types through an adapter; the final call deliberately supplies a long to the unchanged exact int signature. These are invocation-type questions before they are performance questions.
 
 <JavaExample file="MethodHandleLesson.java" output={"6\n8\nwrong signature"} />
 
-FindStatic requests twice on this class with signature `(int)int`. This lookup can access its own private method. The first call supplies an int argument and explicitly requests an int return, matching the handle exactly and returning six. Main declares Throwable because the invocation APIs can propagate the target's failures; a production boundary should handle its intended contract deliberately.
+`findStatic` requests twice on this class with signature `(int)int`. This lookup can access its own private method. The first call supplies an int argument and explicitly requests an int return, matching the handle exactly and returning six. Main declares Throwable because the invocation APIs can propagate the target's failures; a production boundary should handle its intended contract deliberately.
 
 ## The call site's return type matters
 
-InvokeExact matches argument **and result** types, rather than asking whether a runtime value could fit some wider type. The `(int)` cast on its call contributes to that descriptor. An uncast call used as an Object expression requests Object, which does not exactly match int. This is signature-polymorphic invocation, not ordinary overload selection among Java methods named twice.
+`invokeExact` matches argument **and result** types, rather than asking whether a runtime value could fit some wider type. The `(int)` cast on its call contributes to that descriptor. An uncast call used as an Object expression requests Object, which does not exactly match int. This is signature-polymorphic invocation, not ordinary overload selection among Java methods named twice.
 
 The attempted exact call with 4L has a long argument, so WrongMethodTypeException occurs before twice can perform its multiplication. A target's own ArithmeticException would be a different failure after successful invocation shape checking.
 
 ## Adapt intentionally instead of relying on hidden conversions
 
-AsType constructs an adapted handle accepting short and returning long. Its invocation widens short 4 to the target's int input, then widens the int result 8 to long. The new handle still requires its own exact `(short)long` shape at invokeExact. Adaptable invoke can apply permitted conversions, but is not a universal way to accept arbitrary objects.
+`asType` constructs an adapted handle accepting short and returning long. Its invocation widens short 4 to the target's int input, then widens the int result 8 to long. The new handle still requires its own exact `(short)long` shape at invokeExact. Adaptable invoke can apply permitted conversions, but is not a universal way to accept arbitrary objects.
 
-FindVirtual differs from findStatic: the requested method type describes the member's parameters/result, while the obtained handle also needs the receiver as an invocation argument. BindTo can bind an appropriate receiver and remove that parameter. Keep receiver, arguments and result visible when writing down the invocation type.
+`findVirtual` differs from `findStatic`: the requested method type describes the member's parameters/result, while the obtained handle also needs the receiver as an invocation argument. `bindTo` can bind an appropriate receiver and remove that parameter. Keep receiver, arguments and result visible when writing down the invocation type.
 
 ## Keep access and performance claims precise
 
@@ -58,7 +64,22 @@ No. The first fails the invocation type relationship with WrongMethodTypeExcepti
 
 The shown adaptation performs short-to-int widening before the target and int-to-long widening afterward. Every short value doubled fits int, so this particular `(short)long` adapter cannot overflow twice's multiplication. The original `(int)int` target, or an `(int)long` adapter, can still receive an int whose doubling overflows before any return widening. Adapting a result type cannot recover a mathematical result that the target never represented.
 
-Handles can be composed as well as converted. `filterArguments` places a conversion/filter in an input position; `filterReturnValue` applies a compatible operation to a result; `guardWithTest` selects between compatible targets. Derive the full input/result shapes before composing them. These operations build invocation objects, not a promise that a new thread or dynamic Java overload search will run. [Handle combinators](https://docs.oracle.com/javase/8/docs/api/java/lang/invoke/MethodHandles.html)
+### Compose arithmetic with a return-value filter
+
+Composition connects operations rather than merely converting an invocation's types. Let twice have type `(int)int`, and let String.valueOf(int) have type `(int)String`. The arithmetic result fits the second operation's input exactly. `filterReturnValue` connects them, retaining the original int input and replacing the final result type with String.
+
+<JavaExample file="MethodHandleComposition.java" output={"type=(int)String\nvalue=6"} />
+
+| Stage for input 3 | Required type | Result |
+| --- | --- | --- |
+| Invoke the composite | `(int)String` | Start with int 3 |
+| Arithmetic target | `(int)int` | Compute int 6 |
+| Return-value filter | `(int)String` | Convert 6 to the String value |
+| Composite return | String | Caller receives the text value |
+
+The String cast at invokeExact supplies the composite call site's required return type. The intermediate int is passed between handles; the caller does not manually invoke both stages. An incompatible filter input fails composition instead of becoming an arbitrary runtime conversion.
+
+`filterArguments` similarly places a compatible filter before a chosen input, while `guardWithTest` selects between compatible targets. These are invocation compositions, not thread-creation mechanisms or dynamic overload searches. [Handle combinators](https://docs.oracle.com/javase/8/docs/api/java/lang/invoke/MethodHandles.html)
 
 <details>
 <summary>What changes when a virtual handle is bound to one receiver?</summary>

@@ -15,7 +15,15 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Choose the element source and its bounds
 
-<JavaExample file="StreamSources.java" output={"array slice=[B, C]\nprimitive sum=6\none array element=1\nrange=[1, 2, 3]\nrangeClosed=[1, 2, 3, 4]\niterate=[1, 2, 4, 8]\ngenerate=[x, x, x]\nbuilder=[left, right]\nconcat=[A, B, C]\nmap values sum=5\nentries=[A2, B3]\nparallel then sequential=true/false\nconfigured count=2"} />
+A stream needs a source before any operation can run. For an array [A,B,C,D], Arrays.stream(words,1,3) visits B and C: start is inclusive, end is exclusive. It reads existing array components rather than cloning them. For the integers one through three, IntStream.range(1,4) supplies those primitive values directly.
+
+```java
+final List<String> slice = Arrays.stream(words, 1, 3)
+        .collect(Collectors.toList()); // [B, C]
+final int total = IntStream.range(1, 4).sum(); // 6
+```
+
+These finite sources have obvious bounds. A generator or repeated iteration needs a separate termination rule before a complete materialization is safe.
 
 Arrays.stream(words,1,3) uses a half-open array range and emits B,C. Arrays.stream(int[]) produces IntStream whose sum is six. Stream.of(intArray) instead has one int[] reference element, so count is one. Generic type inference does not individually box a primitive array.
 
@@ -34,9 +42,11 @@ The source constrains encounter order. A TreeMap entry view has key comparison o
 
 IntStream/LongStream offer range and rangeClosed for unit-step numeric ranges. range excludes its end; rangeClosed includes it. DoubleStream does not supply those integer range methods. Primitive streams additionally provide sum, average, summaryStatistics, boxed and conversion APIs. Empty average is OptionalDouble, while empty sum is zero; they are different result contracts.
 
+<JavaExample file="StreamSources.java" output={"array slice=[B, C]\nprimitive sum=6\none array element=1\nrange=[1, 2, 3]\nrangeClosed=[1, 2, 3, 4]\niterate=[1, 2, 4, 8]\ngenerate=[x, x, x]\nbuilder=[left, right]\nconcat=[A, B, C]\nmap values sum=5\nentries=[A2, B3]\nparallel then sequential=true/false\nconfigured count=2"} />
+
 ## Ask independent questions using fresh pipelines
 
-<JavaExample file="StreamTerminals.java" output={"count=3\nmin/max=1/3\nfirst=3\nany present=true\nempty any/all/none=false/true/true\ntyped array=[A, B]\nordered actions=[3, 1, 2]\niterator total=3\nspliterator=[4, 5]\nterminal=2, closed=false\nafter close=true\nempty maximum=false"} />
+For input [3,1,2], count asks how many values remain and returns 3; min with natural comparison returns Optional containing 1; findFirst returns Optional containing 3 because encounter order differs from sorted order. Use a new values.stream() for each independent question. Running one terminal consumes that pipeline, even though the original list remains available.
 
 count returns long cardinality. min/max use the supplied comparator and return Optional because empty input has no extremum. findFirst uses encounter order when one exists; findAny permits any eligible result and is not a promise of randomness or “the last parallel worker.” The source asserts only presence for findAny.
 
@@ -55,6 +65,8 @@ count returns long cardinality. min/max use the supplied comparator and return O
 allMatch and noneMatch on empty are true because no counterexample exists. The predicate is not invoked in any empty matching case. A caller needing “nonempty and all valid” must separately express nonemptiness; allMatch alone does not establish it.
 
 Each source expression in the complete program is fresh. Saving a pipeline and running count then max on it is invalid reuse, even when the original collection still exists unchanged.
+
+<JavaExample file="StreamTerminals.java" output={"count=3\nmin/max=1/3\nfirst=3\nany present=true\nempty any/all/none=false/true/true\ntyped array=[A, B]\nordered actions=[3, 1, 2]\niterator total=3\nspliterator=[4, 5]\nterminal=2, closed=false\nafter close=true\nempty maximum=false"} />
 
 ## Match the array component and null contract
 

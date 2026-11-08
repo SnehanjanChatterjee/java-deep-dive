@@ -14,17 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Three workers share two resource slots
 
-A program can start many threads while a remote service permits only two simultaneous calls. The thread count and the service's capacity are separate. A Semaphore initialized to two represents two available resource permits. A successful acquire consumes one; release returns one.
+A **Semaphore** maintains a count of available **permits**, units of permission to enter some operation. Acquire takes a permit when available; release returns one under the application's protocol. With no permit available, an ordinary acquire waits interruptibly until permission becomes available.
 
-When no permit is available, acquire waits interruptibly. A worker can wait without being inside an application's critical section. The permit must cover actual resource use, not unrelated work before or after it.
+The purpose is **admission control**: decide how many callers may use a limited resource at once. A program might have many threads while a remote service permits only two simultaneous calls. One shared Semaphore initialized to two can represent those two slots, provided every caller follows the acquire/use/release protocol.
 
-## Run a coordinated admission experiment
+The mental model is a resource with two available places, rather than two special worker threads. Any worker can acquire a place, perform the actual service operation and return the permit. A waiting worker owns no place yet. Keep the permit around resource use, allowing unrelated work to happen outside that region.
 
-<JavaExample file="PermitLesson.java" output={"maximum=2\npermits=2"} />
-
-There are three workers and two permits. The first two admitted workers count down entered, then wait on release while retaining their permits. The third cannot pass acquire yet. Main waits for both entered signals, establishing occupancy two without guessing elapsed time. It then opens release, allowing all workers eventually to finish.
-
-Occupancy's synchronized enter/leave methods record active users; they do not control admission. Semaphore is the mechanism enforcing the bound. The maximum is two because main establishes two admitted users and the two-permit budget prevents a third concurrent user. After joining every worker, availablePermits is two again.
+First read the ordinary acquired-region pattern. The complete three-worker experiment then adds familiar latches solely to make the maximum simultaneous use observable without timing guesses.
 
 ## Put finally around the acquired region
 
@@ -37,9 +33,17 @@ try {
 }
 ```
 
-Acquisition is before the try whose finally releases. If acquire throws InterruptedException, no permit was acquired. Entering an unconditional release finally before successful acquisition would increase capacity incorrectly. The full source applies this rule and also cleans up its latch-controlled workers on an exceptional owner path.
+Acquisition is before the try whose finally releases. If acquire throws InterruptedException, no permit was acquired. Entering an unconditional release finally before successful acquisition would increase capacity incorrectly. The full program below applies this rule and also cleans up its latch-controlled workers on an exceptional owner path.
 
-A Semaphore does not track permit ownership like a ReentrantLock. A different thread can legitimately release for a handoff protocol, but accidental extra releases are not automatically rejected. A one-permit semaphore is not a reentrant mutex: the same thread acquiring again can wait for its own retained permit.
+## Run a coordinated admission experiment
+
+<JavaExample file="PermitLesson.java" output={"maximum=2\npermits=2"} />
+
+There are three workers and two permits. The first two admitted workers count down entered, then wait on release while retaining their permits. The third cannot pass acquire yet. Main waits for both entered signals, establishing occupancy two without guessing elapsed time. It then opens release, allowing all workers eventually to finish.
+
+Occupancy's synchronized enter/leave methods record active users; they do not control admission. Semaphore is the mechanism enforcing the bound. The maximum is two because main establishes two admitted users and the two-permit budget prevents a third concurrent user. After joining every worker, availablePermits is two again.
+
+A Semaphore does not track permit ownership like a ReentrantLock. A different thread can legitimately release for a handoff protocol, but accidental extra releases are not automatically rejected. A one-permit semaphore is not a reentrant mutex (a mutual-exclusion lock): the same thread acquiring again can wait for its own retained permit.
 
 ## A permit can publish data without being an ownership lock
 
@@ -53,7 +57,7 @@ For this resource-lending example, only a caller whose acquire succeeded enters 
 
 A plain count limits simultaneous admission. It does not enforce calls per second: a fast task can acquire/release many times within a time interval. Rate limiting requires a time/replenishment policy as well.
 
-Fair construction influences documented acquisition order under contention, while untimed tryAcquire can barge. It does not guarantee equal CPU service or equal response latency. Timed tryAcquire bounds the waiting policy; the parent operation should decide whether its deadline includes admission, resource work and cleanup.
+Fair construction influences documented acquisition order under contention. Untimed tryAcquire can **barge**, meaning it takes an available permit ahead of already waiting callers. Fairness does not guarantee equal CPU service or equal response latency. Timed tryAcquire bounds the waiting policy; the parent operation should decide whether its deadline includes admission, resource work and cleanup.
 
 A worker retaining the only permit while waiting for a child that needs it can prevent progress. Permits cannot manufacture downstream capacity. Virtual threads later change the cost of waiting; they do not change this resource invariant.
 

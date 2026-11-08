@@ -2,7 +2,7 @@
 title: "Access boundaries and declaration modifiers"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Apply package and protected access correctly and distinguish final, abstract, static and other declaration policies."
+summary: "Choose which code can access a declaration and understand what its other modifiers restrict."
 order: 188
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "objects/constructors-and-access", "execution/packages-and-tools"]
@@ -13,11 +13,15 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Ask where the declaration may be used
 
-Access controls which code may name/use a declaration; scope controls where a name is available without qualification. A source import changes neither access nor runtime authorization. A type must itself be accessible before a public member inside it is useful to a caller. Public types in named modules also participate in module readability/exports, developed later.
+A **modifier** is a keyword on a declaration that controls how that declaration can be used. Access modifiers answer who may use it; modifiers such as final, static and abstract answer different questions about assignment, ownership or implementation. For example, public final on a method combines public access with a prohibition on overriding—it does not make the method's result immutable.
+
+**Access** controls which source code may use a declaration. **Scope** is the region where a name is available, often without a qualifier. An import can shorten an accessible name, but does not grant access. A type must itself be accessible before a public member inside it is useful to the caller. These source boundaries also differ from an application's decision about which user may perform an operation.
+
+Start with classes in packages, where the following rules are visible. Named modules add readability/exports later; they refine the public boundary rather than replacing private, package and protected rules.
 
 | Access | Ordinary class-member boundary |
 | --- | --- |
-| private | Declaring top-level nest, including its related nested classes |
+| private | The declaring outermost class and classes nested within it |
 | no modifier | Same package; often called package-private |
 | protected | Same package, plus restricted subclass access from outside the package |
 | public | Where the declaring type and module boundary allow it |

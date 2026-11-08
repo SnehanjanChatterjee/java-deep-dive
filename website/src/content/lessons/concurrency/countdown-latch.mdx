@@ -14,15 +14,19 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Wait for two results without guessing when they finish
 
-Main starts two finite computations. Each worker owns a different array element. Reading the array immediately after start could occur before either computation. Sleeping would guess a duration. A CountDownLatch initialized to two represents the actual condition: two completion signals must happen before main continues.
+A **CountDownLatch** is a one-use gate controlled by a count. Construct it with the number of signals required before the gate opens. Each countDown call reduces a positive count by one; an await caller waits until the count reaches zero. Once open, the latch stays open for current and later callers.
 
-`countDown` decreases a positive count and returns immediately. `await` waits until zero; once zero, current and future awaits can pass. Extra countDown calls do not make the count negative. The count cannot be reset for another batch.
+Use it when an operation needs several independently produced pieces before continuing. Main will start two finite computations, each writing its own array element, and combine their values only after both have signalled. A count of two expresses that condition directly; elapsed time cannot tell main whether either result exists.
+
+Picture two unchecked boxes. Either worker may finish first and check one box, but main still waits. The second signal checks the remaining box and opens the gate. Signals remain represented by the count even if they occur before main calls await. The program below makes the result write before its completion signal, so successful waiting also establishes the required result observation.
+
+CountDown returns immediately rather than waiting for peers. Extra calls leave zero unchanged. Repeated batches need a new latch or a different reusable coordination mechanism; this count has no reset operation.
 
 ## Run the independent-result program
 
 <JavaExample file="LatchLesson.java" output={"total=42\nremaining=0"} />
 
-The first worker writes slot zero, the second writes slot one. These are distinct variables; neither worker modifies the other's slot. Each finally reports termination. Main's successful await orders actions before the corresponding countdowns before its later result reads. The array elements do not need to become atomic merely to be read after this completion boundary.
+The first worker writes slot zero, the second writes slot one. These are distinct variables; neither worker modifies the other's slot. Each finally reports that its result-producing body has exited. Main's successful await orders actions before the corresponding countdowns before its later result reads. The array elements do not need to become atomic merely to be read after this completion boundary.
 
 | Event | Count | Main may combine results? |
 | --- | --- | --- |
@@ -43,7 +47,7 @@ Put that operation's completion decrement in finally when both success and failu
 
 ## Completion does not carry a failure value
 
-Finally ensures a failing worker does not leave the latch stuck. That does not mean a failed result slot is valid. In this first arithmetic program the assignments are finite and cannot fail under their fixed inputs. A general operation needs separate failure observation through a Future or an explicit holder/result type. Combining a default zero after a task failed could silently manufacture a successful report.
+Finally ensures a failing worker does not leave the latch stuck. That does not mean a failed result slot is valid. In this first arithmetic program the assignments are finite and cannot fail under their fixed inputs. A general operation needs a separate failure value or result holder. The executors chapter later introduces Future, a handle carrying a task's outcome. Combining a default zero after a task failed could silently manufacture a successful report.
 
 A bounded await returns false if the waiting budget expires. That is not permission to combine unfinished slots. An interrupted await throws InterruptedException and clears status when reporting it; propagate the request or apply the owner's cancellation policy.
 

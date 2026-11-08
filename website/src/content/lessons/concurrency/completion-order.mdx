@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Submission order need not be result order
 
-An owner submits two independent calculations. The first waits for an external condition while the second finishes. Calling first.get before inspecting second can keep the owner waiting even though a useful answer is already available.
+A **completion service** lets a caller submit tasks and retrieve their handles as completed results become available. It is useful when independent calculations can finish in a different order from their submissions. Waiting on the first submitted Future can otherwise delay processing an answer already available from another task.
 
-ExecutorCompletionService combines task execution with a queue of completed Futures. Submit returns each task handle as usual. Take waits for a completed handle; poll can inspect or wait within a budget. Get on the retrieved handle then distinguishes success, failure or cancellation. A completed task can have failed; completion order is not success preference.
+ExecutorCompletionService combines an executor with a **completion queue**, a queue containing finished task handles. Submit still returns each Future for ownership and cancellation. Take waits for an available completed handle; a timed poll waits within an allowance and returns null if none arrives. Get on that handle then obtains its value or reports its failure/cancellation.
+
+Think of submission handles as the owner's list of work requested, and the completion queue as the tray where finished answers arrive. A failed task can reach that tray too: completed means an outcome is available, not that the outcome succeeded. Retrieving from the tray also does not cancel or own every other task automatically.
+
+The first program holds one submission at a latch while a second returns 42. Read queue retrieval and result retrieval as two steps. The gate establishes the chosen order; the example makes no claim that one arithmetic expression is inherently faster.
 
 ## Establish the order without timing assumptions
 

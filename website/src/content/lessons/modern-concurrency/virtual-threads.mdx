@@ -3,7 +3,7 @@ title: "Virtual threads and blocking task execution"
 module: "modern-concurrency"
 group: "Virtual threads"
 summary: "Start with a familiar Thread, explain carrier reuse during blocking, then bound the real scarce resource."
-order: 1050
+order: 1040
 version: "Java 21+"
 prerequisites: ["concurrency/future-cancellation", "concurrency/semaphore", "concurrency/countdown-latch"]
 advanced: true
@@ -19,9 +19,13 @@ import {url as lessonUrl} from '../../../lib/paths';
 <span id="additional-interview-questions"></span>
 ## Many tasks are waiting rather than calculating
 
-A request calls another service and waits for its response. With a dedicated platform thread, that request retains an operating-system-thread resource while blocked. A large number of mostly waiting requests can need many more concurrent task lifetimes than the machine has processors.
+A **platform thread** is a Java Thread normally associated with an operating-system thread. The earlier new Thread examples created this kind. A **virtual thread** is also a Java Thread, but its execution is scheduled by the JVM onto platform threads rather than each virtual lifetime requiring its own operating-system thread.
 
-Virtual threads make a thread-per-task programming style economical for suitable blocking work. They preserve familiar sequential calls, exceptions, interruption and stack traces. They do not make a CPU calculation faster just because more task threads exist. Understand the task's blocking behavior before changing its execution mechanism.
+This matters for blocking workloads. A request may spend much of its lifetime waiting for a service response rather than calculating. Many such overlapping requests can need more live task lifetimes than there are processors. During supported waits, the runtime can suspend a virtual task's execution state and reuse the platform execution resource for other ready work.
+
+The resulting **thread-per-task** style creates a fresh virtual Thread for each task while retaining ordinary sequential calls, exceptions, interruption and stack traces. It changes the cost of maintaining waiting task lifetimes. It does not create extra processors or make a CPU calculation faster merely by giving it more task threads.
+
+Begin with one familiar start/join program. Then learn the carrier model, run controlled waiting tasks and separately bound their actual resource use. Scheduling cost, resource admission and task ownership remain different questions.
 
 <span id="virtual-threads-and-scarce-resources"></span>
 <span id="complete-resource-limit-experiment-with-actual-virtual-threads"></span>
@@ -30,25 +34,19 @@ Virtual threads make a thread-per-task programming style economical for suitable
 <span id="why-is-a-semaphore-still-useful-with-virtual-threads"></span>
 ## Start and join one virtual thread
 
+Thread.ofVirtual returns a **builder**, a configuration object used to name and create a virtual Thread. Calling its start(task) creates and starts that execution, and the returned Thread handle can be joined just as in the earlier platform example. IsVirtual identifies which kind is actually running.
+
 <JavaExample file="modern/VirtualThreadStartLesson.java" output={"virtual=true\nfinished=true"} />
 
 OfVirtual builds a thread of a different scheduling kind. Start still creates the independent execution, currentThread still identifies that task's Thread, and join still waits for termination. The program uses the stable Java 21 API and needs no preview flags. Compile with a JDK supporting Java 21 or later.
 
 A virtual thread is a real Thread with lifecycle and interruption status; it is not merely a callback name. It is also a daemon thread, so an owner must keep the process alive while required task work remains. Joining or owning an executor lifetime makes that obligation visible.
 
-<span id="worked-example"></span>
-<span id="java-implementation"></span>
-## Use start rather than invoking a virtual Thread's run
-
-<JavaExample file="modern/VirtualInvocationLesson.java" output={"after virtual run: calls=0, state=NEW\nafter start/join: calls=1, virtual=true"} />
-
-The original first-thread example constructed a **platform** Thread with a Runnable. Its direct run call invoked the task on the caller. The virtual Thread API explicitly differs: invoking a virtual Thread object's run directly does nothing. In both cases direct run is not a way to start that Thread lifetime.
-
-This program constructs an unstarted virtual Thread, makes the direct call, observes zero task invocations and NEW, then starts and joins it. The task runs once through the started virtual execution. If the application simply wants an ordinary direct call, invoke the Runnable's own run method instead. [Java 21 Thread.run contract](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Thread.html#run())
-
 ## Trace a blocking task on carrier threads
 
-A platform thread is generally tied to an operating-system thread. The runtime schedules a virtual thread onto a carrier platform thread while it runs. During supported blocking operations, it can unmount, leaving the carrier available to execute another virtual thread. When the operation becomes ready, the task becomes runnable and can later mount on an available carrier.
+A **carrier** is a platform thread currently executing a virtual thread. **Mounting** attaches the virtual execution to a carrier so it can run; **unmounting** suspends that execution while preserving its state and frees the carrier for other work. The task can later mount on an available carrier and continue after its wait becomes ready.
+
+Supported blocking operations cooperate with that runtime mechanism. This is why the drawing follows one task lifetime across a wait rather than assigning it one permanent carrier. The task's own Thread identity remains the same even when a later carrier differs.
 
 <Diagram client:visible definition={"sequenceDiagram\n participant A as Virtual task A\n participant C as Carrier\n participant I as Supported blocking operation\n A->>C: mount and execute\n A->>I: begin blocking wait\n Note over A,C: A can unmount and the carrier runs other ready work\n I-->>A: operation becomes ready\n A->>C: mount on an available carrier and resume"} caption="Suspension preserves the task's execution state. Resumption need not use the same carrier, and no extra processor is created." />
 
@@ -92,11 +90,21 @@ For a semaphore limit of two, a third virtual task can wait for admission withou
 
 **Selection exercise:** a long CPU loop remains competing execution work; a suitable blocking service call can release the carrier while waiting. Neither case makes a downstream service unlimited. Select deadlines/admission around that service independently of whether its callers use virtual Threads. [JEP 444 scheduling and resource guidance](https://openjdk.org/jeps/444)
 
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+## Use start rather than invoking a virtual Thread's run
+
+<JavaExample file="modern/VirtualInvocationLesson.java" output={"after virtual run: calls=0, state=NEW\nafter start/join: calls=1, virtual=true"} />
+
+The original first-thread example constructed a **platform** Thread with a Runnable. Its direct run call invoked the task on the caller. The virtual Thread API explicitly differs: invoking a virtual Thread object's run directly does nothing. In both cases direct run is not a way to start that Thread lifetime.
+
+This program constructs an unstarted virtual Thread, makes the direct call, observes zero task invocations and NEW, then starts and joins it. The task runs once through the started virtual execution. If the application simply wants an ordinary direct call, invoke the Runnable's own run method instead. [Java 21 Thread.run contract](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/lang/Thread.html#run())
+
 ## Pinning and diagnostic guidance must name the runtime
 
-Blocking while holding a synchronized monitor could pin a carrier on Java 21–23. Java 24 changed monitor handling to remove that common cause. On the selected modern runtime, native/foreign interactions and other constraints can still matter. Read the actual target JDK's guidance and diagnostics before applying migration advice.
+**Pinning** means a virtual thread cannot unmount at a point where it blocks, retaining its carrier during that wait. Blocking while holding a synchronized monitor could cause this on Java 21–23. Java 24 changed monitor handling to remove that common cause. On the selected modern runtime, native/foreign calls into non-Java code and other constraints can still matter. Read the actual target JDK's guidance and diagnostics before applying migration advice.
 
-A long critical section still serializes contenders even when the carrier can be released. Replacing every synchronized block with ReentrantLock based on older pinning advice is not a general performance strategy. Use suitable JFR/thread-dump facilities and recorded workload evidence. Thread.getAllStackTraces covers platform threads rather than enumerating all virtual task lifetimes.
+A long critical section still makes contenders take turns even when the carrier can be released. Replacing every synchronized block with ReentrantLock based on older pinning advice is not a general performance strategy. Use Java Flight Recorder (JFR), the runtime's diagnostic recording facility, and suitable thread dumps with actual workload evidence. Thread.getAllStackTraces covers platform threads rather than enumerating all virtual task lifetimes.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>

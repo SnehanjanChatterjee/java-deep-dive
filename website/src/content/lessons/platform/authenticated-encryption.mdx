@@ -11,6 +11,12 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 
+## Authenticated encryption combines secrecy with tamper detection
+
+**Authenticated encryption** protects a plaintext message’s confidentiality and authenticates the protected representation. The encrypted bytes are **ciphertext**. A **tag** lets the receiver detect an invalid protected message under the chosen construction and key. **Associated data** is context authenticated without being encrypted.
+
+AES-GCM means the Advanced Encryption Standard used in Galois/Counter Mode. It also requires a **nonce**, an operation-specific value whose uniqueness requirements belong to the protocol. First follow one message encrypted and decrypted with a fresh key. Then change a protected byte and observe rejection. Key, nonce, tag length and context have separate roles; none is simply another name for the message.
+
 ## Protect confidentiality and reject modified ciphertext
 
 Encryption hides plaintext, while an authenticated-encryption construction also detects unauthorized modifications under its key and protocol. AES-GCM supplies authenticated encryption with associated data. Java's Cipher API expresses the transformation as AES/GCM/NoPadding; specifying the mode avoids relying on a provider's unspecified default choice.

@@ -18,9 +18,13 @@ import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 <span id="timed-waits-and-choosing-alternatives"></span>
 ## A consumer cannot take a message that does not exist
 
-A lock protects an update while a thread owns it. A consumer that finds an empty mailbox needs another capability: stop using execution capacity until a producer changes the state. Sleeping while holding the mailbox monitor prevents the producer from entering. Repeatedly checking without waiting wastes work and does not create a correct handoff.
+A **producer** supplies data and a **consumer** takes it for use. Our mailbox has one message slot. Its **condition predicate** is a true/false question about shared state: does the slot currently contain a message? The consumer may proceed only while that answer is true.
 
-`wait` lets the consumer release the target monitor and suspend. Before it returns, the consumer must reacquire that monitor. The mailbox fields record the condition; notification merely makes waiters eligible to try again.
+The mailbox's monitor protects checking and changing its fields. If the slot is empty, the consumer needs to pause while allowing the producer to enter. Object.wait supplies that guarded waiting operation: it places the caller in this object's **wait set**, its group of waiting callers, releases the selected monitor and suspends the caller. Before wait returns, the caller must acquire the monitor again.
+
+The producer stores a message under that same monitor and calls notify or notifyAll. This **notification** makes waiters eligible to try again; the message itself remains recorded in the mailbox field. A waiting consumer reacquires ownership, checks the predicate again and takes the available value.
+
+The complete program deliberately lets the consumer announce that it reached the empty-mailbox case before main supplies the message. That small startup handshake makes the trace reproducible. Follow the ordinary empty → waiting → filled → consumed path first; closure, multiple waiter predicates and timeout rules come later in this lesson. Sleeping while retaining the monitor would prevent the producer from filling the mailbox, while repeated uncoordinated checking would waste work.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -64,7 +68,7 @@ Notify selects one arbitrary waiter; the contract does not promise a random dist
 
 ## Why wakeup requires a while loop
 
-A notification does not reserve the item. Another consumer can reacquire first and remove it. Spurious wakeups are also permitted. In both cases the awakened thread must check again. Notify/notifyAll retain the notifier's ownership until it exits; they do not hand the lock to a selected consumer.
+A notification does not reserve the item. Another consumer can reacquire first and remove it. A **spurious wakeup**, a permitted return from waiting without a corresponding notification, can also occur. In both cases the awakened thread must check again. Notify/notifyAll retain the notifier's ownership until it exits; they do not hand the lock to a selected consumer.
 
 Each object can serve as a monitor. A synchronized instance method locks its receiver; a static synchronized method locks the declaring Class object. Calling wait/notify without owning the target monitor throws IllegalMonitorStateException. Wait releases only its target monitor, not every other lock held by the thread. Monitors are reentrant, but callbacks under a lock can still observe a temporarily broken invariant or introduce another lock dependency.
 

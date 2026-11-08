@@ -5,7 +5,7 @@ group: "HTTP and networking"
 summary: "Handle response status, body lifetime, size bounds, timeouts and cancellation as separate contracts."
 order: 720
 version: "Java 21+ examples; HTTP API Java 11+"
-prerequisites: ["libraries/text-encodings"]
+prerequisites: ["libraries/text-encodings", "libraries/tcp-sockets"]
 advanced: true
 ---
 
@@ -14,7 +14,19 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Request, transport and application outcomes
 
-HttpClient sends HTTP requests and receives responses; it is part of the standard API from Java 11. A reusable client owns configuration such as connection policy and is distinct from an individual HttpRequest. HttpResponse contains status, headers and a body representation selected by a BodyHandler.
+**Hypertext Transfer Protocol (HTTP)** describes request/response exchanges. A request selects a destination **URI (Uniform Resource Identifier)**, a method such as GET for retrieval, optional headers carrying metadata, and possibly a body. A response supplies a status code, headers and a body. HttpClient sends these exchanges and is part of the standard API from Java 11. A reusable client owns configuration such as connection policy and is distinct from an individual HttpRequest. HttpResponse contains status, headers and a body representation selected by a BodyHandler.
+
+Build and send one retrieval request before classifying failures. In this fragment, endpoint is the URI provided by the local test server:
+
+```java
+final HttpRequest request = HttpRequest.newBuilder(endpoint).GET().build();
+final HttpResponse<String> response = client.send(
+        request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+final int status = response.statusCode();
+final String text = response.body();
+```
+
+The builder configures a request, build returns its immutable value, and send invokes the exchange using the reusable client. ofString chooses an in-memory text body; it does not decide whether the status is accepted by the application. The complete lab below creates and owns the server/client and handles their lifetimes.
 
 A received 404 or 500 is an ordinary HTTP response, not automatically an IOException. A connection failure, unsuccessful application status, cancelled wait and malformed body are different outcomes. Design the failure policy before writing retries or mapping every problem to an empty result.
 
@@ -34,6 +46,26 @@ The test server's respond method sends bytes whose length is known, closes its o
 
 Using this handler for a known short loopback response is deliberate. It is not a recommendation to buffer an arbitrarily large untrusted response. Body representation and accepted size are separate policy choices.
 
+## Build a POST request and inspect response headers
+
+<JavaExample file="modern/HttpPostLab.java" output={"200:POST:hello\nheader=echo\nGET=405\noversize=413"} />
+
+This additional Java 21+ lab creates an owned loopback endpoint, sends a five-byte UTF-8 body, reads a custom response header, and exercises method and request-size rejection. No external service or framework is needed. The complete request is an immutable HttpRequest built from a mutable builder; do not concurrently share an unfinished builder as if it were a request value.
+
+| Request choice | Java API | Behavior to explain |
+| --- | --- | --- |
+| Retrieval method | GET() | Select GET, which is also the usual builder default |
+| Text body | POST(BodyPublishers.ofString(text, charset)) | Encode the supplied text under the chosen charset |
+| Binary body | BodyPublishers.ofByteArray(bytes) | Publish the supplied byte representation |
+| Another method | method(name, publisher) | Supply both method and body policy explicitly |
+| Add header value | header(name, value) | Add a value; repeated calls can produce multiple values |
+| Replace header values | setHeader(name, value) | Replace the builder's values for that name |
+| Read response metadata | headers().firstValue(name) | Obtain an Optional for a possibly absent header |
+
+The server's echo helper validates the method, reads at most 129 bytes to enforce its 128-byte accepted limit, writes the POST prefix and known payload, then closes the exchange. The body limit is a byte budget, not an arbitrary time deadline. The two failure requests still produce normal HTTP responses:405 for GET at this endpoint and413 for the oversized body.
+
+Redirect handling belongs to the client's configuration. This lab explicitly uses NEVER. A redirect can change the destination and has method/body rules depending on status and client policy; it is not automatically the same application operation at another address. Keep credentials, replayability and retry semantics tied to the intended endpoint/protocol.
+
 ## Buffered and streaming bodies
 
 An in-memory String/byte-array handler waits for the chosen representation to be collected. An InputStream handler returns an owned stream that the application must consume/close. A successful send does not make it valid to leak that stream. Failing to consume/cancel/close appropriately can hold resources or affect connection reuse.
@@ -50,6 +82,14 @@ This command-line example accepts one URI, sends GET, accepts status 200 and rea
 
 The limit bounds buffered memory. It does not by itself bound how long a slow streaming body can take. An end-to-end streaming deadline/cancellation policy needs additional ownership of body consumption. Do not describe connectTimeout or a timed future wait as proof that every downstream action stopped.
 
+## Completed size and encoding exercise
+
+<JavaExample file="modern/HttpBoundaryLab.java" output={"hello\nsize rejected\nencoding rejected"} />
+
+The loopback server exposes a small accepted body, a ten-byte body exceeding the eight-byte limit and malformed UTF-8. fetch accepts status 200, reads at most limit+1 bytes, rejects oversize, then decodes the complete body with REPORT. It closes the InputStream on success and every failure. The catch distinguishes the intended size failure from unrelated I/O setup/transport failures rather than printing success for any exception.
+
+This completes byte-size and decoding policy, not a full streaming deadline. A delayed-body test needs explicit coordination for when headers/body progress occur and a concrete cancellation design. A timed future wait alone would only bound that wait; it cannot establish that body consumption and remote effects stopped. That advanced lifecycle requires the task/cancellation concepts in the concurrency module.
+
 ## Timeout and cancellation scopes
 
 Connection timeout concerns establishing a connection. A request timeout concerns the request's documented response behavior; streaming consumption after the response has been made available needs particular care. A caller's Future.get timeout only bounds that wait. CompletableFuture exceptional timeout is another completion event and does not establish that a remote side effect never happened.
@@ -64,7 +104,7 @@ GET is often suitable for retrieval, but business semantics and endpoint behavio
 
 ## TLS and endpoint trust
 
-For external secure endpoints, use normal certificate-chain and hostname verification. Encryption without verifying the expected endpoint does not establish the intended peer identity. Never solve a trust failure by teaching a permissive trust manager or hostname verifier.
+For HTTPS, HTTP carried over Transport Layer Security (TLS), the transport also authenticates the endpoint. For external secure endpoints, use normal certificate-chain and hostname verification. Encryption without verifying the expected endpoint does not establish the intended peer identity. Never solve a trust failure by teaching a permissive trust manager or hostname verifier.
 
 The loopback lab intentionally uses plain HTTP to isolate status/body behavior without certificate setup. It does not model secure deployment, authentication or authorization. Those are additional boundaries with their own contracts.
 
@@ -104,34 +144,6 @@ The retry decision depends on possible prior effects, idempotency, remaining dea
 When its connection/configuration ownership matches the application's scope. Constructing one per tiny request can defeat reuse and complicate shutdown. Reuse does not mean unbounded accepted work or shared mutable request builders without a policy.
 
 </details>
-
-## Completed size and encoding exercise
-
-<JavaExample file="modern/HttpBoundaryLab.java" output={"hello\nsize rejected\nencoding rejected"} />
-
-The loopback server exposes a small accepted body, a ten-byte body exceeding the eight-byte limit and malformed UTF-8. fetch accepts status 200, reads at most limit+1 bytes, rejects oversize, then decodes the complete body with REPORT. It closes the InputStream on success and every failure. The catch distinguishes the intended size failure from unrelated I/O setup/transport failures rather than printing success for any exception.
-
-This completes byte-size and decoding policy, not a full streaming deadline. A delayed-body test needs explicit coordination for when headers/body progress occur and a concrete cancellation design. A timed future wait alone would only bound that wait; it cannot establish that body consumption and remote effects stopped. That advanced lifecycle requires the task/cancellation concepts in the concurrency module.
-
-## Build a POST request and inspect response headers
-
-<JavaExample file="modern/HttpPostLab.java" output={"200:POST:hello\nheader=echo\nGET=405\noversize=413"} />
-
-This additional Java 21+ lab creates an owned loopback endpoint, sends a five-byte UTF-8 body, reads a custom response header, and exercises method and request-size rejection. No external service or framework is needed. The complete request is an immutable HttpRequest built from a mutable builder; do not concurrently share an unfinished builder as if it were a request value.
-
-| Request choice | Java API | Behavior to explain |
-| --- | --- | --- |
-| Retrieval method | GET() | Select GET, which is also the usual builder default |
-| Text body | POST(BodyPublishers.ofString(text, charset)) | Encode the supplied text under the chosen charset |
-| Binary body | BodyPublishers.ofByteArray(bytes) | Publish the supplied byte representation |
-| Another method | method(name, publisher) | Supply both method and body policy explicitly |
-| Add header value | header(name, value) | Add a value; repeated calls can produce multiple values |
-| Replace header values | setHeader(name, value) | Replace the builder's values for that name |
-| Read response metadata | headers().firstValue(name) | Obtain an Optional for a possibly absent header |
-
-The server's echo helper validates the method, reads at most 129 bytes to enforce its 128-byte accepted limit, writes the POST prefix and known payload, then closes the exchange. The body limit is a byte budget, not an arbitrary time deadline. The two failure requests still produce normal HTTP responses:405 for GET at this endpoint and413 for the oversized body.
-
-Redirect handling belongs to the client's configuration. This lab explicitly uses NEVER. A redirect can change the destination and has method/body rules depending on status and client policy; it is not automatically the same application operation at another address. Keep credentials, replayability and retry semantics tied to the intended endpoint/protocol.
 
 ## References
 

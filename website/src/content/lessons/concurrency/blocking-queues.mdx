@@ -21,9 +21,13 @@ import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 <span id="producer-consumer-mistakes"></span>
 ## A producer and consumer can run at different rates
 
-A producer discovers work while a consumer processes it. A bounded queue lets a short burst wait in storage. When full, the insertion API decides whether to wait, fail immediately or wait only within a budget. When empty, the consumer makes the corresponding retrieval choice.
+A **BlockingQueue** is a queue interface adding operations that can wait for data or storage space. A **producer** inserts work and a **consumer** removes it for processing. The queue allows their rates to differ without requiring either side to write its own lock-and-condition protocol.
 
-A BlockingQueue combines ordering/storage with those waiting operations. Blocking describes caller behavior; not every implementation supplies a useful capacity bound. Null elements are prohibited because retrieval APIs use null for absence or timeout.
+For the first example choose ArrayBlockingQueue, a bounded first-in-first-out queue. **Capacity two** means at most two elements can be stored between producer and consumer. Put waits while those slots are full; take waits while they are empty. Removing an item frees storage before the consumer necessarily finishes processing it.
+
+Picture three payloads, the values carried by work items: 10, 20 and 12. Main supplies them in that order while one worker takes exactly three values and adds them. FIFO preserves accepted storage order, and join lets main observe the finished total. This known three-item batch is the ordinary case; general termination and close-and-drain come later.
+
+Blocking describes the available waiting operations, rather than making every method wait or every implementation bounded. The method comparison below adds immediate and timed choices after the complete example. Null elements are prohibited because retrieval methods use null for absence or timeout.
 
 <span id="alternative-queue-structures"></span>
 <span id="queue-interview-questions"></span>
@@ -61,7 +65,7 @@ A false offer means no item was accepted. Interrupted waits report interruption 
 <span id="implement-a-closeable-fifo"></span>
 ## Trace FIFO and closure
 
-BlockingQueue has no universal close method. Applications can coordinate known producer completion, interruption or sentinel messages. A poison-pill design needs sufficient terminal signals for its consumers and a rule excluding late producers. Null cannot be its sentinel.
+BlockingQueue has no universal close method. Applications can coordinate known producer completion, interruption or **sentinel messages**, special values representing an end condition. A **poison pill** is a sentinel telling a consumer to stop. Such a design needs sufficient terminal signals for its consumers and a rule excluding late producers. Null cannot be its sentinel.
 
 For an implementation exercise, make lifecycle part of the guarded state. This queue defines close-and-drain: reject new puts, preserve accepted elements, and return null only after closed and empty.
 
@@ -82,7 +86,7 @@ Do not place an unconditional blocking put of a terminal signal in an interrupte
 
 ## Queue representation and alternatives
 
-ArrayBlockingQueue uses a fixed array, count, put/take indexes, one ReentrantLock and separate notEmpty/notFull Conditions. The complete state transition occurs under that lock; an awakened thread reacquires and loops. Linearization is the protected insertion/removal transition, not the earlier signal that a thread started.
+ArrayBlockingQueue uses a fixed array, count, put/take indexes, one ReentrantLock and separate notEmpty/notFull Conditions. The complete state transition occurs under that lock; an awakened thread reacquires and loops. The protected insertion/removal supplies the operation's taking-effect position, or linearization point, rather than the earlier signal that a thread started.
 
 LinkedBlockingQueue uses linked nodes, distinct put/take locks and count/signalling coordination; give it a useful explicit capacity. SynchronousQueue performs a rendezvous without buffered storage. PriorityBlockingQueue orders retrieval but is logically unbounded; DelayQueue adds time eligibility. These are distinct admission/order policies, not equivalent backpressure switches.
 

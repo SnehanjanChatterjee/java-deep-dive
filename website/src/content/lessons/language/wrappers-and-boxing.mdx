@@ -2,7 +2,7 @@
 title: "Wrapper values, boxing and null boundaries"
 module: "language"
 group: "Conversions and numeric boundaries"
-summary: "Distinguish primitive parsing, wrapper construction, typed equality, identity caches and explicit null policies."
+summary: "Represent primitive values as objects and handle the difference between a missing number and zero."
 order: 135
 version: "Java 8+"
 prerequisites: ["language/types-and-conversions", "language/strings"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Use an object when the API requires an object
 
-A primitive holds a value such as int 42. A wrapper object represents a corresponding value through an object API. Integer is not a mutable int cell: its numeric value cannot be changed. Assigning a different Integer reference changes a variable's binding, and incrementing a boxed number unboxes, calculates and boxes a result.
+A primitive int variable holds a number directly. Some operations need an object reference instead—for example, storing values in a generic collection or representing a potentially absent number. A **wrapper class** supplies an object representation of one primitive type. Integer wraps int; Double wraps double; the remaining pairs are listed below.
+
+**Boxing** obtains a wrapper reference for a primitive value. **Unboxing** obtains the primitive value from its wrapper. Java can insert these conversions automatically at permitted assignments and calls. They change how a value participates in an API, the application programming interface exposed by a type; they do not turn the wrapper into a writable primitive variable.
+
+Integer values are immutable. Assigning a different Integer reference changes a variable's binding, and incrementing a boxed number unboxes, calculates and boxes a result. Null is also a possible reference value, but has no number to unbox. The central design question is therefore what absence means at a boundary expecting a primitive result.
 
 | Primitive | Wrapper | Primitive | Wrapper |
 | --- | --- | --- | --- |

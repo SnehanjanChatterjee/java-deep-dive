@@ -2,7 +2,7 @@
 title: "Throw, throws, checked failures and causes"
 module: "reliability"
 group: "Failure contracts"
-summary: "Declare checked failures, throw specific exception objects and preserve causes across API boundaries."
+summary: "Decide which failures a caller must handle and preserve the reason a higher-level operation failed."
 order: 300
 version: "Java 8+"
 prerequisites: ["reliability/exception-flow", "objects/nested-and-enums"]
@@ -13,9 +13,13 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Declare what a caller must handle
 
-Throw executes a failure path: `throw new CountFormatException(cause)`. Throws declares a method's checked failure contract: callers must catch that checked type or declare it in their own throws clause. A throws declaration does not install a handler, automatically throw anything or exclude unchecked failures.
+A method's **failure contract** tells its caller which failures the API reports and which handling obligations appear in source. This is a separate question from the handler-search flow: both checked and unchecked failures use the same runtime propagation mechanism, but the compiler applies different rules to their declarations.
 
-Throwable has Exception and Error branches. RuntimeException and its subclasses are unchecked; other Exception subclasses are checked. Errors are also unchecked and usually describe serious runtime/linkage conditions rather than ordinary input validation. Checked means a compiler obligation, not a guarantee that a failure is recoverable. Unchecked does not mean harmless.
+`throw` is an executable statement: it throws a particular failure object now. `throws` is part of a method declaration: it lists failure types the method may report without handling there. For a **checked** failure, a caller must catch the type or declare it in its own throws clause. Declaring throws neither installs a catch nor automatically creates a failure.
+
+The unchecked families are RuntimeException and Error plus their subclasses. Other throwable types are checked, including ordinary Exception subclasses such as IOException. Errors usually describe serious runtime/linkage conditions rather than ordinary input validation. Checked means a compiler obligation, not a promise that recovery is possible; unchecked does not mean harmless.
+
+The count parser below introduces its own checked CountFormatException to describe invalid count input at its API boundary. It preserves the original parsing failure as its **cause**, the underlying failure that explains why the higher-level operation failed. Follow the successful parse first, then the invalid parse and its translation.
 
 <JavaExample file="CheckedFailureLesson.java" output={"12\nInvalid count\nNumberFormatException\nattempt finished"} />
 
@@ -35,18 +39,9 @@ The application boundary decides whether to report, retry or abort. Logging and 
 
 ## Finally preserves cleanup opportunity, not guaranteed success
 
-Finally normally runs when leaving try through normal completion, return or exception. It need not run after process termination, VM failure or a path that never leaves the try. Returning or throwing from finally can replace a pending result/failure. Use it carefully for owned state; resource closing has a construct that explicitly preserves simultaneous failures in the next chapter.
+A **finally block** supplies work to perform when control leaves the associated try/catch, whether the body succeeded, a handler ran or a failure is propagating. It is not another catch and does not mean the attempted operation succeeded. Think of it as work performed before the selected return/continuation is completed.
 
-## Practice: choose catch or declare
-
-A reusable parser cannot decide whether the application should prompt again or abort. Should it catch everything and print an error?
-
-<details>
-<summary>Answer</summary>
-
-No. Return a parsed value or throw its declared contextual failure, preserving the cause. Let the application boundary decide how to respond. A caller choosing to recover catches CountFormatException; an intermediate method with no recovery policy declares it. A retry needs idempotency, deadline, partial-effect and cancellation rules; recognizing an exception type alone does not establish safety, and a timeout does not prove a remote write never happened.
-
-</details>
+Finally normally runs when leaving try through normal completion, return or exception. It need not run after process termination, virtual-machine failure or a path that never leaves the try. Returning or throwing from finally can replace a pending result/failure. Use it carefully for owned state; resource closing has a construct that explicitly preserves simultaneous failures in the next chapter.
 
 ## Trace normal completion, handling and a pending return
 
@@ -80,6 +75,17 @@ The assert statement expresses a condition expected to hold inside a program. A 
 After ordinary compilation, `java -cp out AssertionSwitchLesson` prints continued under the default disabled application-assertion configuration. `java -ea -cp out AssertionSwitchLesson` instead throws AssertionError with negative internal count and never reaches the print. The example deliberately violates its internal expectation; it is not a valid inventory implementation.
 
 Use an ordinary if/throw check for public argument validation and required authorization/domain constraints. Putting a required state update inside assert is also wrong because a disabled assertion does not evaluate that expression at all. A test framework's assertions are a separate API with their own execution behavior, rather than a reason to assume language assert is always enabled. [JLS assert statement](https://docs.oracle.com/javase/specs/jls/se25/html/jls-14.html#jls-14.10)
+
+## Practice: choose catch or declare
+
+A reusable parser cannot decide whether the application should prompt again or abort. Should it catch everything and print an error?
+
+<details>
+<summary>Answer</summary>
+
+No. Return a parsed value or throw its declared contextual failure, preserving the cause. Let the application boundary decide how to respond. A caller choosing to recover catches CountFormatException; an intermediate method with no recovery policy declares it. A retry needs idempotency, deadline, partial-effect and cancellation rules; recognizing an exception type alone does not establish safety, and a timeout does not prove a remote write never happened.
+
+</details>
 
 ## Failure-contract references
 

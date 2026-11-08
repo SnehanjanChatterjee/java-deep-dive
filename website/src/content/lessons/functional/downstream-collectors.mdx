@@ -15,9 +15,9 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Distinguish filtering input from filtering inside a group
 
-A grouping classifier decides which key an input belongs to. A downstream collector decides what information to retain for that group. Moving a filter across the grouping boundary can therefore change which keys exist.
+A **downstream collector** runs inside another collector's result-building step. In groupingBy, the classifier first selects a group key, then the downstream recipe processes that group's input. This gives two different places to filter.
 
-<JavaExample file="modern/DownstreamCollectors.java" output={"downstream filter={a=[ants], b=[]}\nupstream filter={a=[ants]}\ndownstream flatMap={a=[a, e, n, p, s, t], b=[b, e, o]}\ntee average=3.25\nempty average present=false\nunmodifiable collector mutation rejected"} />
+Follow ants,ape,bee,bob. Grouping by first letter creates a and b. If filtering(length>3,toList()) runs downstream, ants enters a's list, ape is rejected from that list, and both b words are rejected from b's list. The b key still exists because its inputs were classified. If filter runs upstream instead, bee and bob never reach the classifier, so b is absent.
 
 The source uses the ASCII fixture ants,ape,bee,bob and groups by its first UTF-16 code unit. A downstream filtering(length>3,toList()) produces a=[ants], b=[]: b was encountered, but none of its values passed the downstream filter. Applying filter before grouping removes those b inputs entirely, leaving only a=[ants].
 
@@ -49,6 +49,8 @@ A teeing merger combines final results, not mutable partial containers supplied 
 The example ends with toUnmodifiableList, available from Java 10, and demonstrates its mutation rejection. It also rejects null inputs under its element contract. This differs from wrapping a still externally aliased backing list and from Stream.toList's null policy.
 
 collectingAndThen, available in Java 8, provides a general downstream-plus-finisher composition. It can transform a mutable private accumulator into a different published result type. A finisher that merely wraps an object still exposed through another alias does not establish independent ownership.
+
+<JavaExample file="modern/DownstreamCollectors.java" output={"downstream filter={a=[ants], b=[]}\nupstream filter={a=[ants]}\ndownstream flatMap={a=[a, e, n, p, s, t], b=[b, e, o]}\ntee average=3.25\nempty average present=false\nunmodifiable collector mutation rejected"} />
 
 ## Worked questions
 

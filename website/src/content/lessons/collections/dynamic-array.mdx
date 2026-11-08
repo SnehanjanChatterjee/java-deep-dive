@@ -15,7 +15,9 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="concepts"></span>
 ## Represent a growing list with a fixed array
 
-ArrayList's public operations hide storage management. To implement a focused subset, keep an Object array and a logical size. Only indexes below size are elements; remaining slots are unused capacity. The invariant is `0 <= size <= elements.length`, with logical elements stored in the active prefix.
+We want a small class that can append 10 and 30, insert 20 between them, read/replace positions, and return removed values. ArrayList already does this; implementing a focused subset teaches the storage steps its API hides.
+
+Start with two fields: Object[] elements is the allocated storage, and int size counts used positions. An empty array of capacity four is [null,null,null,null] with size zero. Appending 10 writes position zero and changes size to one. Appending 30 writes position one and changes size to two. Keep an Object array and a logical size. Only indexes below size are elements; remaining slots are unused capacity. The invariant is `0 <= size <= elements.length`, with logical elements stored in the active prefix.
 
 A null element can be valid, so null cannot distinguish membership from spare capacity. Size makes that distinction. Element indexes permit `0 <= index < size`; insertion positions also permit index equal to size. Validate those boundaries before allocating or mutating.
 
@@ -27,12 +29,6 @@ Starting with [10,30,null,null], size two, insert 20 at index one. Move 30 from 
 <Diagram client:visible definition={"flowchart LR\n A[Validate logical position] --> B[Ensure spare capacity]\n B --> C[Shift suffix right]\n C --> D[Write new value]\n D --> E[Increment size once]"} caption="Insertion keeps bounds validation and allocation ahead of mutation; appending shifts a suffix of length zero." />
 
 <span id="java-implementation"></span>
-## Complete generic implementation
-
-<JavaExample file="SimpleArrayList.java" output={"20\n30\n2\nnull"} />
-
-This one-file container implements size, get, set, append, indexed insertion, removal, clear and a bulk-removal extension. It deliberately does not implement the full List contract, iterators, backed ranges, serialization or concurrency. Every typed write receives T; get localizes the Object-to-T cast. Erasure prevents allocating a direct generic T array.
-
 ## Explain each method against the representation
 
 get validates an element index, then reads one slot. set reads/saves the prior element through that same check before writing the replacement; size does not change. add(value) delegates to add(size,value), which validates an insertion position, ensures room and uses System.arraycopy to shift size−index references right. arraycopy handles overlapping source/destination ranges correctly.
@@ -40,6 +36,12 @@ get validates an element index, then reads one slot. set reads/saves the prior e
 remove saves the old value, shifts size−index−1 references left, decrements size and clears the vacated slot. The saved reference remains returnable even after clearing. clear nulls the active range before setting size to zero, retaining capacity for reuse. None of these operations clones the element objects.
 
 ensureCapacity leaves existing storage intact if room remains. Otherwise it computes a doubled array within the explicit exercise bound and replaces storage only after allocation/copy succeeds. The capacity limit is a teaching policy, not an ArrayList API limit.
+
+## Complete generic implementation
+
+<JavaExample file="SimpleArrayList.java" output={"20\n30\n2\nnull"} />
+
+This one-file container implements size, get, set, append, indexed insertion, removal, clear and a bulk-removal extension. It deliberately does not implement the full List contract, iterators, backed ranges, serialization or concurrency. Every typed write receives T; get localizes the Object-to-T cast. Erasure prevents allocating a direct generic T array.
 
 <span id="mechanics-and-tradeoffs"></span>
 ## Prove the growth bound

@@ -5,7 +5,7 @@ group: "Functions and method references"
 summary: "Resolve static, bound, unbound, constructor and super references, observing receiver timing, this scope and comparator composition."
 order: 560
 version: "Java 8+"
-prerequisites: ["functional/lambdas-and-optional"]
+prerequisites: ["functional/predicates-and-functions"]
 advanced: false
 ---
 
@@ -14,9 +14,15 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Name an existing implementation
 
-When a lambda only calls an existing method, a method reference can name that method. Start by expanding it back to a lambda to identify the arguments, receiver and result. The target interface still resolves overloads and compatible parameter/result types.
+A parsing function already exists: Integer.parseInt converts decimal text to int. If a `Function<String,Integer>` lambda does nothing except call it, a **method reference** can name that implementation:
 
-<JavaExample file="MethodReferenceLab.java" output={"42\njava\njvm\n0\n2\n4\ntrue"} />
+```java
+final Function<String, Integer> longForm = text -> Integer.parseInt(text);
+final Function<String, Integer> reference = Integer::parseInt;
+final Integer value = reference.apply("42"); // 42
+```
+
+The target Function supplies the argument/result shape. Writing :: names the method; apply invokes it later. To understand any reference, expand it to the corresponding lambda and identify which argument supplies the receiver.
 
 | Reference | Lambda expansion | What supplies the receiver? |
 | --- | --- | --- |
@@ -26,7 +32,11 @@ When a lambda only calls an existing method, a method reference can name that me
 | ArrayList&lt;String&gt;::new | () -> new ArrayList&lt;String&gt;() | New object created per invocation |
 | String[]::new | length -> new String[length] | Array length argument |
 
+<JavaExample file="MethodReferenceLab.java" output={"42\njava\njvm\n0\n2\n4\ntrue"} />
+
 The reference does not invoke the target body just by being declared. Calling apply/get does. A bound receiver is evaluated when the reference is created: a null receiver fails then. `() -> receiver.work()` defers that dereference until invocation. Constructor references can target different overloads depending on their functional signature.
+
+The basic program prints 42 from parsing, java from trimming a bound String, jvm from trimming an argument String, zero from a new empty list's size, and two from a newly allocated array's length. Its final 4 and true are composed function/predicate results, developed below.
 
 ## Observe receiver evaluation, virtual dispatch and super
 

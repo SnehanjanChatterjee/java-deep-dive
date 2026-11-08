@@ -20,6 +20,19 @@ Comparable puts a natural ordering on the type itself through `left.compareTo(ri
 
 ## Use named policies before shorthand
 
+Start with A:20, B:10 and C:10. The domain chooses ID order as the natural order and points then ID as a separate ranking. A named comparator is an ordinary object implementing an interface:
+
+```java
+final CollectionOrdering.Score a = new CollectionOrdering.Score("A", 20);
+final CollectionOrdering.Score b = new CollectionOrdering.Score("B", 10);
+final CollectionOrdering.ByPointsThenId ranking =
+        new CollectionOrdering.ByPointsThenId();
+// a.compareTo(b) is negative: A precedes B by ID.
+// ranking.compare(a, b) is positive: 20 follows 10 by points.
+```
+
+The source's named classes implement those methods. Collections.sort(scores) requests each Score's compareTo; Collections.sort(scores, ranking) asks the separate comparator instead. A comparator is supplied to this operation, not installed as a global ordering of every Score.
+
 <JavaExample file="CollectionOrdering.java" output={"[A:20, B:10, C:10]\n[B:10, C:10, A:20]"} />
 
 Read Score's compareTo first: the identifier is the primary order, with points breaking an identifier tie. Collections.sort(scores) uses that natural order. ByPointsThenId instead compares points first; only a zero result causes a second comparison by ID. Sorting the same objects with that external policy produces B:10, C:10, A:20. No lambda syntax is needed to understand the comparison contract.

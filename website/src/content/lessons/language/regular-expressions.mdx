@@ -2,7 +2,7 @@
 title: "Regular expressions and escaping"
 module: "language"
 group: "Arrays and strings"
-summary: "Build a pattern, find matches and separate Java string escapes from regular-expression syntax."
+summary: "Describe shapes of text, find matching pieces and distinguish pattern syntax from literal text."
 order: 110
 version: "Java 8+"
 prerequisites: ["language/strings", "language/string-operations"]
@@ -13,17 +13,31 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Describe a text pattern rather than every position
 
-A regular expression describes matching text. Java's Pattern compiles that description; a Matcher holds a particular matching operation's state. String.matches tests the **whole** input, while Matcher.find searches for matching occurrences. Confusing those questions can silently accept or reject the wrong text.
+A **regular expression**, often shortened to **regex**, is a small language for describing text patterns. A literal search finds a particular spelling such as `"12"`; a pattern can describe a shape such as “one or more digits,” matching 12, 7 or another digit sequence without listing each value.
+
+Regex syntax gives some characters special meaning. In `\d+`, the digit class describes a digit and + means one or more repetitions of the preceding item. Java's **Pattern** represents a compiled pattern description. A **Matcher** applies one Pattern to one input and remembers where its current search has reached. This library compilation prepares a text-matching operation; it is separate from javac compiling your Java program.
+
+There are two ordinary questions: does the **whole input** match, or can a matching part be **found inside it**? String.matches asks the first; Matcher.find advances to the next occurrence for the second. The example extracts digit sequences from a sentence, then asks whether that entire sentence is a digit sequence.
 
 <JavaExample file="DigitSearch.java" output={"12\n7\nfalse"} />
 
-Compile DigitSearch.java and launch DigitSearch. Output is 12, 7, false on separate lines. The plus means one or more occurrences; here the digit class uses Pattern's default policy. If international decimal digits are required, specify an appropriate Unicode class or flag rather than assuming the shorthand defines your domain.
+Compile DigitSearch.java and launch DigitSearch. Find succeeds for 12, group returns that matched text, and the loop prints it. The next find advances and selects 7. A final unsuccessful find ends the loop. Matches returns false because the surrounding sentence is not entirely digits. Here the digit class uses Pattern's default policy; if international decimal digits are required, specify an appropriate Unicode class or flag rather than assuming the shorthand defines your domain.
 
 ## Account for two escaping layers
 
 The regex engine needs `\d+`. The Java source String must escape its backslash, producing `"\\d+"`. A literal dot in the regex similarly needs `\.` and therefore `"\\."` in ordinary Java source. Text read from a file has no Java-literal layer. Pattern.quote turns external literal text into a literal pattern fragment; blindly interpolating it as regex can change the pattern's meaning.
 
 Compile a reused nontrivial Pattern once. Pattern is immutable and can be shared; Matcher is mutable and should not be shared concurrently. Matching a whole input is useful for format validation, but a syntactically matching string can still violate business rules, such as an out-of-range numeric value.
+
+## Quote the pattern and replacement separately
+
+<JavaExample file="RegexLiteralLesson.java" output={"a$1b$1a\n2\n3"} />
+
+ReplaceLiteral deliberately uses the regex API to expose two separate input languages. Pattern.quote makes the needle literal; Matcher.quoteReplacement makes dollars and backslashes literal in replacement text. Quoting only the needle would leave `$1` interpreted as a group reference rather than the requested literal characters. The simpler String.replace is preferable when the whole task is literal replacement; this implementation teaches the distinction needed when building a larger regex operation.
+
+The helper rejects nulls. A missing needle leaves content unchanged; an empty needle follows the regex zero-width matching contract and inserts at boundaries. Tests include dots, brackets, dollars and backslashes because plain alphabetic input would not distinguish a correctly quoted implementation from an unsafe one.
+
+String.split takes a regex too. Its default zero limit drops trailing empty fields: `a,b,` has two returned fields. A negative limit retains the final empty field and gives three. This is useful for a deliberately simple delimiter format, but it is not a comma-separated values (CSV) parser: quoted delimiters and escaped quotes require that format's grammar. Pattern compilation can fail with PatternSyntaxException; a Matcher also needs a successful match operation before requesting its captured groups.
 
 ## Practice: search or validate?
 
@@ -35,16 +49,6 @@ You must validate an entire three-digit code, and separately extract all numbers
 Use matches for the whole-code rule and find repeatedly for extraction. A three-ASCII-digit format can use `[0-9]{3}`. A range requirement still needs parsing and a numeric check. Some backtracking patterns with nested repetition have pathological behavior on near-matching input; bound input and avoid ambiguous nested repetitions. Do not treat compiling a pattern as proof of safe cost for every input.
 
 </details>
-
-## Quote the pattern and replacement separately
-
-<JavaExample file="RegexLiteralLesson.java" output={"a$1b$1a\n2\n3"} />
-
-ReplaceLiteral deliberately uses the regex API to expose two separate input languages. Pattern.quote makes the needle literal; Matcher.quoteReplacement makes dollars and backslashes literal in replacement text. Quoting only the needle would leave `$1` interpreted as a group reference rather than the requested literal characters. The simpler String.replace is preferable when the whole task is literal replacement; this implementation teaches the distinction needed when building a larger regex operation.
-
-The helper rejects nulls. A missing needle leaves content unchanged; an empty needle follows the regex zero-width matching contract and inserts at boundaries. Tests include dots, brackets, dollars and backslashes because plain alphabetic input would not distinguish a correctly quoted implementation from an unsafe one.
-
-String.split takes a regex too. Its default zero limit drops trailing empty fields: `a,b,` has two returned fields. A negative limit retains the final empty field and gives three. This is useful for a deliberately simple delimiter format, but it is not a CSV parser: quoted delimiters and escaped quotes require that format's grammar. Pattern compilation can fail with PatternSyntaxException; a Matcher also needs a successful match operation before requesting its captured groups.
 
 ## Pattern references
 

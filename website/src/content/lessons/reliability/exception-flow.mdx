@@ -2,7 +2,7 @@
 title: "Exception flow and stack traces"
 module: "reliability"
 group: "Exception flow"
-summary: "Follow handler search, skipped statements and a stack trace through nested method calls."
+summary: "Follow what happens when an operation cannot return normally and learn how a stack trace explains the failure."
 order: 290
 version: "Java 8+"
 prerequisites: ["language/methods-and-references", "objects/inheritance-and-composition"]
@@ -14,7 +14,11 @@ import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
 
 ## A failed operation changes where execution continues
 
-An exception is an object representing an exceptional completion. Throwing it stops the current operation's normal path. Java looks for a matching handler, starting in the current invocation and then its callers. Statements between the throw and the selected handler are skipped; they are not queued to run after the catch.
+A parser can turn `"6"` into an int, but it cannot turn `"bad"` into a valid integer. Returning zero would hide that difference because zero is also a legitimate number. An **exception** communicates that an operation did not finish normally, using an object describing the failure rather than a fabricated success value.
+
+**Normal completion** continues to the next statement or returns the method's result. **Exceptional completion** leaves that path and searches for a matching **handler**, code responsible for responding to the failure. A `try` block identifies work to which a following handler applies. A `catch` names an exception type and a variable receiving the matching failure object, then supplies that handler's body.
+
+Throwing an exception stops the current operation's normal path. Java checks handlers in the current invocation, then its callers. Statements between the failed operation and the selected handler are skipped; they are not queued to run after the catch. The first program makes this visible with printed method-entry labels before parsing deliberately invalid text.
 
 <JavaExample file="ExceptionFlow.java" output={"doubleInput\nparse\ninvalid integer\nafter handler"} />
 
@@ -26,9 +30,24 @@ The animation follows a defined illustrative call chain. It models handler searc
 
 ## Read a stack trace from the failure outward
 
-A Throwable captures stack-trace information. The exception type identifies a failure category; the message provides context; frames identify methods and usually source locations. The upper relevant frame is closest to the failure. Read outward toward the caller whose input or policy needs attention, rather than assuming the last printed line caused the problem.
+**Throwable** is the base type of objects that Java can throw, including exceptions. A **stack trace** records method-call information associated with a failure. The exception type identifies its category; the message provides context; frames identify methods and usually source locations. The upper relevant frame is closest to the failure. Read outward toward the caller whose input or policy needs attention, rather than assuming the last printed line caused the problem.
 
 In this example the important application chain is parse → doubleInput → main. Standard-library parsing frames can appear above those application frames. The exact message and library implementation frames vary across JDKs. To retain the full diagnostic, use `failure.printStackTrace()` at a teaching boundary, or a contextual application logger that accepts the Throwable. Printing only getMessage loses its type, frames, cause and suppressed exceptions.
+
+## Inspect captured application frames without guessing library internals
+
+<JavaExample file="ExceptionTraceLesson.java" output={"NumberFormatException\nparseCount\nloadCount\nmain"} />
+
+The failure originates during parsing. ApplicationFrames reads getStackTrace in its captured order and keeps only frames whose declaring class is this example. ParseCount appears before loadCount and main because the trace runs outward from the failure. It uses method names instead of asserting a release-specific library frame count or source line number. GetClass().getSimpleName supplies the exception category for this small display.
+
+This is an intentionally filtered teaching view. It omits library frames, messages, causes and suppressed failures, so it is not a replacement for preserving a complete Throwable in application diagnostics. A frame named main means that invocation led to the failure, not that the source line calling main necessarily contained the defective parsing logic. Stack traces can also be replaced or disabled by exception APIs; treat them as diagnostic information, not an authorization proof.
+
+<details>
+<summary>An inner catch handles the failure and completes normally. Will an outer catch automatically run too?</summary>
+
+No. Once handled, execution follows that catch's normal continuation. An outer handler participates only if a failure still propagates, for example because the inner catch rethrows or throws another exception. A finally can also affect completion, examined in the next lesson. Catch blocks are alternatives selected by matching, not a list of callbacks all invoked for one failure.
+
+</details>
 
 ## Distinguish handling from continuing as if successful
 
@@ -44,21 +63,6 @@ Move `System.out.println("success")` from inside try to immediately after the ca
 <summary>Answer</summary>
 
 Yes: the catch completes normally, so following statements run. But success would now describe handler completion, not successful parsing. Use a label such as attempt finished, or keep success inside the successful path. Changing statement placement changes observable behavior even though the original exception class is unchanged. For a valid input 6, the helper returns 12, parsed prints, and the original success path runs.
-
-</details>
-
-## Inspect captured application frames without guessing library internals
-
-<JavaExample file="ExceptionTraceLesson.java" output={"NumberFormatException\nparseCount\nloadCount\nmain"} />
-
-The failure originates during parsing. ApplicationFrames reads getStackTrace in its captured order and keeps only frames whose declaring class is this example. ParseCount appears before loadCount and main because the trace runs outward from the failure. It uses method names instead of asserting a release-specific library frame count or source line number. GetClass().getSimpleName supplies the exception category for this small display.
-
-This is an intentionally filtered teaching view. It omits library frames, messages, causes and suppressed failures, so it is not a replacement for preserving a complete Throwable in application diagnostics. A frame named main means that invocation led to the failure, not that the source line calling main necessarily contained the defective parsing logic. Stack traces can also be replaced or disabled by exception APIs; treat them as diagnostic information, not an authorization proof.
-
-<details>
-<summary>An inner catch handles the failure and completes normally. Will an outer catch automatically run too?</summary>
-
-No. Once handled, execution follows that catch's normal continuation. An outer handler participates only if a failure still propagates, for example because the inner catch rethrows or throws another exception. A finally can also affect completion, examined in the next lesson. Catch blocks are alternatives selected by matching, not a list of callbacks all invoked for one failure.
 
 </details>
 

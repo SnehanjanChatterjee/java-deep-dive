@@ -2,7 +2,7 @@
 title: "Constructors, this and encapsulation"
 module: "objects"
 group: "Construction and encapsulation"
-summary: "Initialize valid objects, use this and expose operations through deliberate access boundaries."
+summary: "Give each new object a valid starting state and control how callers can change it."
 order: 160
 version: "Java 8+"
 prerequisites: ["objects/classes-and-instances", "language/control-flow"]
@@ -14,15 +14,25 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Construct a valid object rather than repairing it later
 
-A constructor initializes a newly created instance. Its name matches the class and it has **no return type**, including no void. A score card here must always have a non-null name and nonnegative points. Constructors establish that invariant, and every public mutation must preserve it.
+A newly created object needs a meaningful starting state. A **constructor** is the class's initialization operation selected by a new expression. Its name matches the class and it declares no return type, including no void. Its parameters let the caller supply required state rather than creating an incomplete object and remembering to repair it afterward.
+
+For this score card, the name must be present and points must be nonnegative. Such an always-required condition is an **invariant**: construction establishes it, and operations must preserve it. **Encapsulation** controls access to state through a deliberate set of operations. Private fields help only when the exposed constructors/methods actually enforce the rule.
+
+The keyword **this** identifies the current object inside its instance code. `this.name` selects that object's field; a parameter called name is a separate local value. A call written `this(...)` instead delegates to another constructor in the same class. The example uses that delegation so both construction paths share one validation policy.
 
 <JavaExample file="ConstructorLesson.java" output={"Ada:2\nLin:3\n2"} />
 
 The one-argument constructor delegates with `this(name, 0)`. The two-argument constructor performs the actual initialization. In `this.name = name`, the left side is the current object's field and the right side is the parameter. Parameters can shadow field names; this disambiguates them. Objects.requireNonNull rejects a missing name, and the negative-score check rejects invalid construction. Exception control flow is taught in the reliability module.
 
+## Distinguish a no-argument constructor from the default constructor
+
+Default constructor names a constructor supplied by the compiler when the class declares none. A programmer-written zero-parameter constructor is a no-argument constructor, but is not that implicitly declared default. Writing `void ConstructorLesson()` would declare an ordinary method with an unfortunate name; it would not initialize new objects as a constructor. A constructor is selected by its parameter list, not by a desired return value.
+
+Private fields plus unrestricted setters are not automatically good encapsulation. A setter that accepts negative points would still violate this class's invariant. Award publishes a domain operation, validates before assignment and preserves the old stored points when rejected. A failed constructor also does not roll back unrelated external effects already performed, so keep validation ahead of publication and avoid exposing this while construction is incomplete.
+
 ## Chain constructors and protect state
 
-Once any constructor is declared, the compiler no longer supplies a default no-argument constructor. A caller must use an available declaration. Constructor chaining avoids having several initializers drift apart. These examples put this(...) first for a source form usable on Java 8 and later. Java 25 permits restricted constructor prologues; understand the ordinary initialization model before using that extension.
+Constructor chaining avoids having several initialization paths drift apart. A caller selects an available constructor, and delegation can route it through the shared validating constructor. These examples put this(...) first for a source form usable on Java 8 and later. Java 25 permits restricted constructor prologues; understand the ordinary initialization model before using that extension.
 
 Private fields keep callers from writing `points = -1`. Award checks the requested amount and computes an exact sum before assignment. If validation or overflow fails, the old points remain stored. Final name can be initialized during construction and cannot be reassigned afterward; the String it identifies is itself immutable.
 
@@ -39,6 +49,8 @@ Protected access across packages has receiver restrictions, covered with inherit
 
 Name and points belong to each card. Static created belongs to the class and records successful constructor completions. The source increments it only after validation. `ConstructorLesson.created()` reads shared class state without a receiver. This is a single-threaded illustration; incrementing a plain static int is not a concurrent counter design.
 
+Static fields and methods do not have an implicit this. Instance methods can access static members, but class-qualified access makes their shared nature clearer. A static counter is separate from each card's point total; creating another card neither copies nor resets that counter.
+
 ## Practice: explain the missing default constructor
 
 Why does `new ConstructorLesson()` fail? Why not make points public so callers can set it afterward?
@@ -50,13 +62,7 @@ Neither declared constructor accepts zero arguments, and declaring constructors 
 
 </details>
 
-## Distinguish a no-argument constructor from the default constructor
-
-Default constructor names a constructor supplied by the compiler when the class declares none. A programmer-written zero-parameter constructor is a no-argument constructor, but is not that implicitly declared default. Writing `void ConstructorLesson()` would declare an ordinary method with an unfortunate name; it would not initialize new objects as a constructor. A constructor is selected by its parameter list, not by a desired return value.
-
-Private fields plus unrestricted setters are not automatically good encapsulation. A setter that accepts negative points would still violate this class's invariant. Award publishes a domain operation, validates before assignment and preserves the old stored points when rejected. A failed constructor also does not roll back unrelated external effects already performed, so keep validation ahead of publication and avoid exposing this while construction is incomplete.
-
-Static fields and methods do not have an implicit this. Instance methods can access static members, but class-qualified access makes their shared nature clearer. A static counter is separate from each card's point total; creating another card neither copies nor resets that counter. Continue with <a href={lessonUrl('learn/objects/initialization-order/')}>static and instance initialization order</a> for the exact relation between fields, blocks and delegating constructors.
+Continue with <a href={lessonUrl('learn/objects/initialization-order/')}>static and instance initialization order</a> for the exact relation between fields, blocks and delegating constructors.
 
 ## Construction references
 

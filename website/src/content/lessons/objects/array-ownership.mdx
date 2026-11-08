@@ -2,7 +2,7 @@
 title: "Array covariance and nested ownership"
 module: "objects"
 group: "References and identity"
-summary: "Separate array type checks from shallow copies, shared inner arrays and copied elements."
+summary: "Copy nested arrays deliberately and explain why the actual component type still controls a store."
 order: 200
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "language/methods-and-references", "language/arrays"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Trace a two-dimensional array as an object graph
 
-Cloning an array creates a new outer array and copies its components. For int[], those components are primitive values. For int[][], the components are references to int[] rows. Copying those references leaves the rows shared.
+A nested array is easiest to understand as an **object graph**: objects are the nodes, and references are the connections between them. An int[][] has an outer array whose components identify int[] row arrays. Rows are separate objects and can be shared, null or different lengths; a two-dimensional declaration is not a promise of one rectangular block.
+
+A **shallow copy** creates a new container and copies its component values. For int[] those are primitive ints, so they become independent components. For int[][] the component values are row references, so copying them leaves the same row objects shared. A **deep-copy policy** decides which referenced objects to detach as well. The required depth depends on the promised ownership boundary.
+
+The first outputs trace that sharing. The final branch also demonstrates **array covariance**: a more specific reference array can be viewed through a broader array type while retaining its actual component-type check. Its small try/catch block makes the expected invalid-store failure visible as a label; exception handling is developed fully in the reliability lessons.
 
 <JavaExample file="ArrayOwnership.java" output={"9\nfalse\ntrue\ncomponent rejected"} />
 
@@ -41,7 +45,20 @@ This rejects a null outer input through the clone call. With r rows and n total 
 
 Reference arrays are covariant: a String[] can be assigned to Object[]. The variable's declared type then permits a source-level Object store, but the actual array remains a String[]. Storing an Integer violates its runtime component type, producing ArrayStoreException. The cast/assignment does not convert the array or its existing elements.
 
-Primitive arrays are objects too, but int[] is not Object[]: its individual components are not object references. Ordinary array equals compares identity; Arrays.equals compares one-dimensional contents and Arrays.deepEquals supports nested object-array shapes. Equality is separate from copying.
+The String array was initially filled with a valid String. Storing another String through the broader Object[] reference would also be valid; storing an Integer is what violates the actual component type. Widening the reference changes the source view, not the created array's identity or permitted stored values.
+
+## Separate runtime type, content equality and copying
+
+Every array is an Object, including int[]. But int[] is not Object[]: its components are primitive ints, not object references. An int[][] is an Object[] because its components are int[] references. Covariance changes which array references can be assigned; it does not box individual primitive components or change the actual component type of an existing array.
+
+Ordinary array equals compares identity; Arrays.equals compares one-dimensional contents, and Arrays.deepEquals can compare nested array contents. None copies those arrays or prevents later mutation. Conversely, cloning an outer array changes its identity without changing the row identities. State the operation's purpose before choosing a method with deep in its name. Here copyRows preserves null rows and copies every non-null primitive row, matching the complete source and its null/ragged-row tests. A different domain might reject missing rows, but that would require a different validation policy.
+
+<details>
+<summary>Two source entries identify the same row. Does copying each row independently preserve that alias relationship?</summary>
+
+No. It produces two independent row copies with equal contents. That is appropriate when each result row must be independently owned, but differs from a graph-preserving copy. Arbitrary reference graphs can contain shared nodes and cycles; copying such a graph requires an identity-tracking policy. A specialized primitive-matrix copy should not be advertised as a universal object-graph cloner.
+
+</details>
 
 ## Practice: identify the protected boundary
 
@@ -51,19 +68,6 @@ Does returning `internal.clone()` protect a stored int[][] matrix from caller wr
 <summary>Answer</summary>
 
 Only the outer array is protected. The caller can still change shared rows. CopyRows supplies detached primitive rows under its declared null/ragged-row policy; call it at input and output boundaries if a class promises snapshot ownership. Generic collections use different compile-time type rules, explained after type parameters; this chapter needs no generic-varargs assumptions.
-
-</details>
-
-## Separate runtime type, content equality and copying
-
-Every array is an Object, including int[]. But int[] is not Object[]: its components are primitive ints, not object references. An int[][] is an Object[] because its components are int[] references. Covariance changes which array references can be assigned; it does not box individual primitive components or change the actual component type of an existing array.
-
-`Arrays.deepEquals` can compare nested array contents. It does not copy those arrays or prevent later mutation. Conversely, cloning an outer array changes its identity without changing the row identities. State the operation's purpose before choosing a method with deep in its name. For this matrix, copyRows deliberately rejects null rows and copies every primitive row; a different domain might preserve null rows to represent missing data.
-
-<details>
-<summary>Two source entries identify the same row. Does copying each row independently preserve that alias relationship?</summary>
-
-No. It produces two independent row copies with equal contents. That is appropriate when each result row must be independently owned, but differs from a graph-preserving copy. Arbitrary reference graphs can contain shared nodes and cycles; copying such a graph requires an identity-tracking policy. A specialized primitive-matrix copy should not be advertised as a universal object-graph cloner.
 
 </details>
 

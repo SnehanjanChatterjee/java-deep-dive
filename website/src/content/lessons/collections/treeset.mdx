@@ -23,11 +23,22 @@ Use it when both uniqueness and sorted neighbor/range operations matter. LinkedH
 <span id="worked-example"></span>
 ## Sorted membership and neighbor examples
 
-<JavaExample file="TreeSetExample.java" />
+For ordered unique thresholds, start with ordinary Integer values:
 
-The hash set retains two BigDecimal representations, while the tree set retains one comparison-equivalent value. Lower than 20 is 10; ceiling of 20 includes the exact value 20. Descending traversal visits 30, 20 and 10. The reversed view is backed by the same set.
+```java
+final NavigableSet<Integer> levels = new TreeSet<>();
+levels.add(30);
+levels.add(10);
+levels.add(20);          // traversal: [10,20,30]
+levels.add(20);          // false; membership remains size 3
+final Integer floor = levels.floor(25);   // 20
+final Integer higher = levels.higher(20); // 30
+```
 
-The example demonstrates a contract difference rather than recommending inconsistent equality. A general Set client expects equality-based semantics, so choose an ordering consistent with equals where that contract matters. If the domain means numeric equality independent of scale, normalize values deliberately at its boundary.
+The order comes from Integer.compareTo, not insertion history. floor includes an equal match, while higher is strict. A missing neighbor returns null under this null-free example. NavigableSet names the extra neighbor, endpoint and range operations added to the basic Set contract.
+
+The tree wrapper's internal map stores elements as keys and a shared marker as values. That explains how the preceding TreeMap machinery can maintain sorted membership without a second balancing implementation. First use these ordinary operations; comparison/equality disagreement is a separate later case.
+
 
 <span id="mechanics-and-tradeoffs"></span>
 ## Comparator laws and backed views
@@ -53,6 +64,14 @@ Core membership operations require O(log n) comparison steps. Traversal is O(n),
 <CollectionTrace kind="treeset" />
 
 ## When equality and comparison disagree
+
+BigDecimal is an exact decimal value type discussed in detail in Standard Libraries. For this example only, know that 1.0 and 1.00 compare as the same number but equals also distinguishes their scale (one versus two decimal places). This supplies two unequal values whose comparison result is zero.
+
+<JavaExample file="TreeSetExample.java" />
+
+The hash set retains two BigDecimal representations, while the tree set retains one comparison-equivalent value. Lower than 20 is 10; ceiling of 20 includes the exact value 20. Descending traversal visits 30, 20 and 10. The reversed view is backed by the same set.
+
+The example demonstrates a contract difference rather than recommending inconsistent equality. A general Set client expects equality-based semantics, so choose an ordering consistent with equals where that contract matters. If the domain means numeric equality independent of scale, normalize values deliberately at its boundary.
 
 ### A concrete symmetry trap
 

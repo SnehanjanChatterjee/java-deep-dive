@@ -13,9 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## An interruption is a request the task must interpret
 
-`target.interrupt()` requests interruption of the target Thread. It does not forcibly make an arbitrary method return. Each task needs a response policy: propagate interruption, stop at a safe boundary, or deliberately handle the request while preserving the caller's contract.
+An **interruption status** is an on/off signal associated with one Thread. The owner can request interruption by calling target.interrupt; the target's task then checks the signal or reaches an operation that reports it. The task can finish its current valid unit of work, release resources and return.
 
-There are three similarly named operations. Keep their target and effect separate.
+The flag records a pending request, rather than a queue of numbered requests. **Inspecting** it asks whether a request is present. **Clearing** it changes the flag back to false, so another layer will no longer see that request unless interruption is requested again. This distinction explains why Java has both a non-consuming query and a consuming query.
+
+The flag is separate from the lifecycle enum Thread.State: a thread can have a pending interruption while it is executing ordinary calculations. Use the three operations below to trace whose flag is affected and whether its value is retained. Choosing to propagate, handle or end the work remains the task's response policy.
 
 | Operation | Whose status? | Effect |
 | --- | --- | --- |
@@ -49,13 +51,13 @@ Restoring is not permission to repeat the same interruptible wait in an uncondit
 | Explicit `lockInterruptibly()` is waiting | It supplies an interruptible acquisition contract |
 | `LockSupport.park()` returns after interruption | It does not clear status through an InterruptedException path |
 
-The explicit-lock and AQS lessons develop the last mechanisms. An interrupt request also does not prove that a socket, database operation or native call stopped; read the actual operation's contract.
+The explicit-lock and advanced synchronizer-internals lessons develop the last mechanisms. An interrupt request also does not prove that a socket, database operation or native call stopped; read the actual operation's contract.
 
 ## CPU work needs explicit cancellation checkpoints
 
 A CPU loop does not call an interruptible wait merely by calculating. It can periodically inspect currentThread().isInterrupted, finish or discard its current chunk under a declared rule, release resources and return. Chunk size determines how much work may occur before another check; it is not a measured cancellation-latency guarantee.
 
-Use isInterrupted for a non-consuming check. Use Thread.interrupted only when this boundary deliberately consumes and handles the request. A separate volatile stop flag is another protocol, but it does not automatically wake a sleeping/waiting worker. Avoid mixing flag meanings without one owner and a clear wakeup policy.
+Use isInterrupted for a non-consuming check. Use Thread.interrupted only when this boundary deliberately consumes and handles the request. A separate shared stop flag needs visibility rules, developed in the later volatile-publication chapter. Even a correctly published flag does not automatically wake a sleeping/waiting worker. Give cancellation one owner and a clear wakeup policy.
 
 ## Exercise and interview questions
 

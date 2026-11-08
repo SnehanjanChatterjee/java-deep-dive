@@ -15,6 +15,12 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 import {url as lessonUrl} from '../../../lib/paths';
 
+## A project records source, dependencies and a repeatable build
+
+A **Java project** organizes source files, tests, resources and the instructions needed to build them. A **build** transforms those inputs into compiled classes and packaged artifacts. A **dependency** is code supplied by another artifact; a **test** executes selected behavior and checks an expectation.
+
+Maven is the build tool used in this exercise. Its project description is the Project Object Model (**POM**), stored in pom.xml. JUnit supplies the test runner and assertions. We will start with one addition method, place its source and test in the proper directories, describe the required dependency, and run the same build from a terminal or IDE.
+
 ## Turn individual files into a repeatable project
 
 So far, a small program can be compiled with javac and launched with java. A growing program also has tests, dependencies and a packaging process. A build tool records those inputs and performs a repeatable sequence. An IDE can invoke that same build rather than maintaining an unrelated private definition of success.

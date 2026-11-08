@@ -2,7 +2,7 @@
 title: "Classes, objects and instance state"
 module: "objects"
 group: "Classes and objects"
-summary: "Create separate objects and see how receiver-specific fields and methods hold their state."
+summary: "Use a class to give separate objects their own state and a common set of operations."
 order: 150
 version: "Java 8+"
 prerequisites: ["language/methods-and-recursion"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Give related state and behavior one boundary
 
-A class defines a type: the fields that hold each object's state and the methods that operate on it. An object is one instance of that class. Two ScoreCard objects have the same kinds of fields but can contain different scores, just as two paper cards can have the same layout and different marks.
+Suppose two players need separate scores and the same operations for awarding/reading points. Keeping unrelated variables and helper methods for each player would duplicate both names and rules. **Object-oriented programming** organizes related data and operations around objects, so each player's state can be managed through one common definition.
+
+A **class** declares such a type. A **field** stores part of its state; a **method** defines an operation. **State** means the values currently stored, and **behavior** means the operations the type exposes. An **object**, or **instance**, is one created value of that class with its own instance fields. Two ScoreCards follow one class definition while holding different point totals, just as two paper cards can share a layout and contain different marks.
+
+A variable of class type holds a **reference** identifying an object. A call such as `first.awardPoint()` identifies the object receiving the operation; first is the **receiver**. Start by distinguishing the class declaration, each new object and each variable referring to an object. The program then makes the difference visible by changing only one card.
 
 <JavaExample file="ScoreCard.java" output={"2\n0\nfalse"} />
 
@@ -29,18 +33,7 @@ The field points and the method points() have different roles: one stores state,
 
 ## Class members do not need an object receiver
 
-Main is static: it belongs to ScoreCard as a class. A static method has no implicit current ScoreCard, so it cannot read points without identifying an object. The expression `first.points()` provides that receiver. Instance methods instead have an implicit current object, called this.
-
-## Practice: draw two objects and one alias
-
-After `ScoreCard alias = first; alias.awardPoint();`, what does first.points() return? What does second.points() return?
-
-<details>
-<summary>Answer</summary>
-
-They return 3 and 0. Assignment copies the reference; it does not copy the object. Alias identifies the existing first card, so its method changes that object's field. There are still two ScoreCard objects, not three. The references chapter develops this graph and distinguishes mutation from reassignment in method calls.
-
-</details>
+Fields and methods are **members** of a class. Main is static: it belongs to ScoreCard as a class. A static method has no implicit current ScoreCard, so it cannot read points without identifying an object. The expression `first.points()` provides that receiver. Instance methods instead have an implicit current object, called this.
 
 ## Trace a receiver instead of reading the class like a script
 
@@ -52,6 +45,17 @@ Use this three-step trace when predicting state: identify the object created by 
 <summary>Does declaring ScoreCard third create a third card? Does calling points() award one?</summary>
 
 Neither. A declaration introduces a variable; it must later receive a reference before a read. A read operation returns the current stored number; only awardPoint mutates that number in this class. Separating queries from state changes makes both the API and its trace easier to reason about. The example's card intentionally uses ordinary int increment; a domain counter that must reject overflow needs an explicit policy, as the next constructor lesson supplies.
+
+</details>
+
+## Practice: draw two objects and one alias
+
+After `ScoreCard alias = first; alias.awardPoint();`, what does first.points() return? What does second.points() return?
+
+<details>
+<summary>Answer</summary>
+
+They return 3 and 0. Assignment copies the reference; it does not copy the object. Alias identifies the existing first card, so its method changes that object's field. There are still two ScoreCard objects, not three. The references chapter develops this graph and distinguishes mutation from reassignment in method calls.
 
 </details>
 

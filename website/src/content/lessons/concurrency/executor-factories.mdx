@@ -12,28 +12,16 @@ advanced: false
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
-## A task lifetime is shorter than its worker's lifetime
+<span id="a-task-lifetime-is-shorter-than-its-workers-lifetime"></span>
+## One worker can execute several tasks
 
-A freshly constructed Thread can run one task and terminate. An executor can reuse a worker for task A and then task B. That avoids requiring the application to start a new platform Thread for every small task, while also creating a service lifetime the application must own.
+A **worker pool** is a set of threads reused to execute submitted tasks. One worker can finish task A and then execute task B, so each task's completion does not have to end that worker's lifetime. The application instead owns the longer-lived execution service.
 
-The executor is not automatically faster for every workload. Queueing, synchronization, allocation and context handling have costs. More importantly, factory policies differ in which resource can grow when demand exceeds processing capacity.
+An **executor factory** is a helper method constructing a service with a chosen policy. The name newSingleThreadExecutor selects one active worker at a time; newFixedThreadPool selects a different worker-count policy. Before comparing those names, run two successive tasks through one owned service and follow when that service is shut down.
 
-## Compare the factory policies
+The example supplies a ThreadFactory, a creation callback that receives the worker Runnable and returns an unstarted Thread. It gives any worker created for this service a readable diagnostic name. The executor still starts and manages that worker.
 
-| Factory | Ordinary policy | Resource question |
-| --- | --- | --- |
-| newFixedThreadPool(n) | Up to n active workers; shared unbounded work queue | How much waiting work/state may accumulate? |
-| newSingleThreadExecutor() | At most one task active; unbounded queue; worker replacement if needed | Can one slow task delay every later task? |
-| newCachedThreadPool() | Reuse idle workers or create as needed; idle workers expire | What limits simultaneous platform-thread growth? |
-| newScheduledThreadPool(n) | Delayed/periodic eligibility on scheduled workers | How many delayed jobs and their captured objects may remain queued? |
-| newWorkStealingPool() | Work-stealing pool with target parallelism | Is the workload suitable for decomposition and this ordering policy? |
-| newVirtualThreadPerTaskExecutor(), Java 21+ | New virtual Thread per task | What limits requests, memory and the actual scarce downstream resource? |
-
-Fixed describes the worker limit, not a finite accepted-task limit. Cached describes reuse, not a bound on thread creation. Scheduled delay does not bound delayed storage. Work-stealing does not promise FIFO execution. A virtual-thread executor is not a conventional pool of reused virtual workers.
-
-Most factory-created platform workers are created when needed rather than all being eagerly started at construction. A single-worker service also does not promise one immortal Thread object: a failed worker can be replaced while the service continues. Code needing worker identity or task context must account for this distinction.
-
-The later pool-admission lesson traces an explicitly bounded ThreadPoolExecutor. Choose that when the application needs a defined worker/queue/rejection policy instead of assuming a factory name supplies it.
+After the ordinary batch, compare what can accumulate under each factory. A **work queue** holds accepted tasks waiting for a worker. Bounded workers and bounded waiting storage are different resource decisions. Queueing, synchronization, allocation and context handling have costs, so reuse alone is not a workload-independent speed guarantee.
 
 ## Use one owner for a complete batch
 
@@ -46,6 +34,23 @@ The ThreadFactory names each newly created worker batch-worker. It creates a Thr
 After the final result, finally initiates shutdown and awaits termination. If the finite grace allowance expires, it requests interruption through shutdownNow and waits again. If the owner is interrupted during termination waiting, it requests shutdownNow and propagates the interruption. The example does not pretend that an interruption request can force arbitrary work to stop.
 
 <Diagram client:visible definition={"stateDiagram-v2\n [*] --> Accepting\n Accepting --> Draining: shutdown\n Accepting --> Stopping: shutdownNow\n Draining --> Stopping: shutdownNow if needed\n Draining --> Terminated: accepted work and workers finish\n Stopping --> Terminated: workers actually finish"} caption="A shutdown request and completed termination are separate events. Awaiting termination observes the latter." />
+
+## Compare the factory policies
+
+| Factory | Ordinary policy | Resource question |
+| --- | --- | --- |
+| newFixedThreadPool(n) | Up to n active workers; shared unbounded work queue | How much waiting work/state may accumulate? |
+| newSingleThreadExecutor() | At most one task active; unbounded queue; worker replacement if needed | Can one slow task delay every later task? |
+| newCachedThreadPool() | Reuse idle workers or create as needed; idle workers expire | What limits simultaneous platform-thread growth? |
+| newScheduledThreadPool(n) | Delayed/periodic eligibility on scheduled workers | How many delayed jobs and their captured objects may remain queued? |
+| newWorkStealingPool() | Work-stealing pool with target parallelism | Is the workload suitable for decomposition and this ordering policy? |
+| newVirtualThreadPerTaskExecutor(), Java 21+ | New virtual Thread per task | What limits requests, memory and the actual scarce downstream resource? |
+
+Fixed describes the worker limit, not a finite accepted-task limit. Cached describes reuse, not a bound on thread creation. Scheduled delay does not bound delayed storage. Work-stealing does not promise first-in-first-out (FIFO) execution. A virtual-thread executor is not a conventional pool of reused virtual workers.
+
+Most factory-created platform workers are created when needed rather than all being eagerly started at construction. A single-worker service also does not promise one immortal Thread object: a failed worker can be replaced while the service continues. Code needing worker identity or task context must account for this distinction.
+
+The later pool-admission lesson traces an explicitly bounded ThreadPoolExecutor. Choose that when the application needs a defined worker/queue/rejection policy instead of assuming a factory name supplies it.
 
 ## Match shutdown to the real owner
 

@@ -14,6 +14,12 @@ import Diagram from '../../../components/Diagram.jsx';
 import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts" aria-hidden="true"></span>
+## Compatibility asks what continues working after a change
+
+**Compatibility** concerns existing consumers when an API, library or runtime changes. **Source compatibility** asks whether consumer source still compiles. **Binary compatibility** asks whether already compiled consumer classes still link. **Behavioral compatibility** asks whether the operation still fulfills the consumer’s required meaning.
+
+These questions need different experiments. Recompiling the application and library together cannot show every failure an old class file might encounter. We will compile one client once, keep that binary unchanged and replace its library. Only then will we recompile the same source to compare the outcomes.
+
 ## Keep the client binary fixed while changing the library
 
 A library can compile successfully while breaking a program that was compiled against its previous version. Source compatibility asks whether client source still compiles. Binary compatibility asks whether an already compiled client can link. Behavioral compatibility asks whether the operation still means what the caller expects.

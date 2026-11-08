@@ -19,9 +19,13 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="snapshot-assumptions-to-avoid"></span>
 ## A listener traversal needs stable membership
 
-A dispatcher is iterating listeners while another operation registers a new listener. Should the current dispatch include that new registration? CopyOnWriteArrayList lets an iterator keep the membership array it captured, while writers publish replacement arrays for subsequent readers.
+**Snapshot iteration** means one iterator keeps the element membership it captured when created. CopyOnWriteArrayList provides this for a thread-safe list: updates publish a replacement membership array, while an existing iterator continues through its earlier array.
 
-This fits read-mostly small registries where stable traversal is valuable and updates are infrequent. A large frequently changed list pays substantial copying/allocation cost. Thread-safe is not a universal performance recommendation.
+This is useful for a listener registry. A **listener** is an object invoked when an event occurs; a **dispatcher** walks the registered listeners and calls them. If a new listener registers halfway through one dispatch, the dispatcher can finish using its captured membership while a later dispatch sees the update.
+
+Picture array version one holding references A/B, then version two holding changed/B/C. Keeping version one alive lets its iterator finish with A/B. The references in either array can still identify mutable objects; a membership snapshot is not a historical copy of every object's fields. The first program demonstrates both distinctions before examining the publication mechanism.
+
+This tradeoff fits small read-mostly registries with infrequent membership changes. A large frequently changed list pays copying and allocation costs. Choose the observation contract first, then measure whether the workload justifies those costs.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -39,7 +43,7 @@ The second experiment captures a StringBuilder reference and later mutates that 
 <span id="iteration-interview-questions"></span>
 ## Array publication and iteration
 
-The implementation holds a current array in a volatile field. Readers capture a reference. Writers serialize changes, construct replacement storage and publish it. Never mutating a published array is the crucial representation invariant; the volatile reference alone would not make arbitrary in-place element writes safe.
+The implementation holds a current array in a volatile field. Readers capture a reference. Writers take turns changing membership, construct replacement storage and publish it. Never mutating a published array is the crucial representation invariant; the volatile reference alone would not make arbitrary in-place element writes safe.
 
 Appending to n elements normally copies O(n) references and uses O(n) temporary storage. Ordinary positional get is O(1). Specific calls can optimize cases such as setting an identical reference, so do not assert a new allocation for every conceivable method path.
 

@@ -14,13 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## A socket is an endpoint, not an application message
 
-A TCP connection provides a reliable ordered byte stream between endpoints. Java's Socket exposes input/output streams for an established connection. ServerSocket listens at a local address and port; accept returns a **different Socket** representing one accepted connection. Closing the listening socket and closing an accepted connection have different effects.
+**Transmission Control Protocol (TCP)** provides a reliable ordered byte stream between endpoints. A network **endpoint** combines an address identifying a host/interface with a **port**, a number identifying the listening service there. A **socket** is the program's connection endpoint. Java's Socket exposes input/output streams for an established connection. ServerSocket listens at a local address and port; accept returns a **different Socket** representing one accepted connection. Closing the listening socket and closing an accepted connection have different effects.
 
 TCP does not preserve the boundaries of write calls as application messages. The receiver can obtain part of one write or bytes from several writes together. Define a protocol above that stream. The preceding lesson used byte-length prefixes; this introductory socket program uses a bounded LF-terminated UTF-8 line.
 
 ## Run a complete client and server from one source file
 
-<JavaExample file="SocketLineLesson.java" />
+The server first binds a listener. The client connects to its address/port, then the server's accept returns the connected socket. Our application sends one UTF-8 line: hello followed by **LF (line feed, U+000A)**. The server reads through LF, replies with the same complete line, then closes. Neither side waits for connection closure to mark the message boundary.
 
 The class has two modes, run in separate terminal processes. It needs no thread creation or framework to explain the socket lifecycle. The server binds only to the local loopback address and requests port 0, letting the operating system select an available port.
 
@@ -38,6 +38,8 @@ java SocketLineLesson client PORT
 ```
 
 The client prints `reply=hello`. The server prints `served one request`, closes the accepted connection and its listener, then exits. PORT is a placeholder, not a fixed port guaranteed to be available. Start the server again for another exchange; this program deliberately serves one request.
+
+<JavaExample file="SocketLineLesson.java" />
 
 <Diagram client:visible definition={"sequenceDiagram\n participant S as Server process\n participant C as Client process\n S->>S: bind loopback and print selected port\n C->>S: connect\n S->>S: accept returns connected Socket\n C->>S: UTF-8 hello plus LF\n S->>C: echo same bounded line plus LF\n C->>C: read complete reply and close\n S->>S: close connection and listener"} caption="Connection establishment, message framing and resource closure are separate stages." />
 
@@ -65,7 +67,7 @@ SocketChannel offers another I/O interface and can be configured for nonblocking
 | DatagramSocket / DatagramPacket | Individually addressed datagrams | Handle loss, duplicates, order and receive-buffer limits as required |
 | HttpClient | HTTP requests and responses | Select method/status/body/deadline and application semantics |
 
-UDP keeps datagram boundaries but does not supply TCP's ordered reliable stream. Receiving into a buffer that is too small can truncate a datagram. HTTP supplies a higher-level protocol; it is not a synonym for a raw socket or a guarantee that a received status is application success. The next lesson develops that request/response layer.
+UDP (User Datagram Protocol) keeps datagram boundaries but does not supply TCP's ordered reliable stream. Receiving into a buffer that is too small can truncate a datagram. HTTP (Hypertext Transfer Protocol) supplies a higher-level protocol; it is not a synonym for a raw socket or a guarantee that a received status is application success. The next lesson develops that request/response layer.
 
 ## Interview exercises
 

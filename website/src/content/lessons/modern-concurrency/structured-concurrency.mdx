@@ -21,11 +21,15 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="explain-and-implement-the-task-lifetime"></span>
 ## One operation needs two related results
 
-A parent operation fetches two independent inputs before constructing its answer. With ordinary submissions it can start both, but it must also decide what happens when one fails: cancel the other, respond to parent interruption, and account for actual cleanup. Combining result handles alone does not provide all those lifetime responsibilities.
+**Structured concurrency** organizes related subtasks so their execution lifetimes are owned within one parent operation's scope. The **parent** needs the final answer; its **children** perform pieces of work needed for that answer. A **scope** is the object and code boundary managing the children it starts.
 
-Structured concurrency gives related children one owning scope. They belong to the parent operation's lexical lifetime. This fits one operation's related work; a long-running maintenance service can legitimately have a different owner and longer lifetime.
+Suppose the parent needs two independent values. Starting both is easy with ordinary submissions, but the parent must also observe failures, decide when to cancel a peer, respond to its own interruption and account for cleanup. The structure makes those responsibilities belong to the operation's try-with-resources boundary rather than letting child threads escape its finished lifetime.
 
-The code here targets the Java 25 **preview** API. Use the matching JDK and flags; previews can change between releases.
+In the selected API, opening a scope identifies its owning thread. Fork starts child work and returns a Subtask outcome handle. A **Joiner** is the policy deciding what result or failure join selects. The default policy requires successful results from all children; a child failure selects failure and requests cancellation of peers.
+
+Keep **join** and **close** distinct. Join waits for the selected policy outcome; close accounts for actual child-thread termination before the owner leaves the resource boundary. Cooperative tasks must still release their own resources, and a child ignoring interruption can delay that close. The first program uses two successful children before the failure/cancellation examples add those branches.
+
+This fits work related to one operation. A long-running maintenance service can legitimately have a different owner and longer lifetime. The code targets the Java 25 **preview** API, which requires matching compile/run flags and can change between releases.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -46,6 +50,8 @@ java --enable-preview StructuredConcurrencyDemo
 
 <span id="implement-failure-and-sibling-cleanup"></span>
 ## Follow failure into sibling cleanup
+
+Under the default policy, FailedException reports the selected task failure and retains its original cause. The next program makes the failure child wait until its peer entered, so we can distinguish a failure outcome, a cancellation request and actual sibling cleanup.
 
 <JavaExample file="modern/StructuredFailureLesson.java" output={"child failed\ncleanup remaining=0"} />
 

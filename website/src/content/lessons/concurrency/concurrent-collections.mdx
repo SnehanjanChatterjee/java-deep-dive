@@ -5,7 +5,7 @@ group: "Concurrent collections"
 summary: "Match an actual shared operation to atomicity, iteration, ordering and capacity contracts."
 order: 880
 version: "Java 8+"
-prerequisites: ["concurrency/future-cancellation", "collections/choosing-collections"]
+prerequisites: ["concurrency/future-cancellation", "collections/choosing-collections", "concurrency/monitors-wait-notify"]
 advanced: true
 ---
 
@@ -26,9 +26,30 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="inspect-one-complete-guarded-queue-implementation"></span>
 ## Name the operation before choosing the container
 
-A frequency table needs an atomic per-key increment. A work pipeline needs storage plus a policy when it is empty or full. A listener registry may need stable membership during callbacks. All involve sharing, but the word concurrent does not make their required behavior identical.
+A **concurrent collection** is a container whose documented operations support access by multiple threads. Its **contract** specifies which changes are indivisible, how traversal behaves during updates, which order is preserved and whether storage or waiting is bounded. The class name alone cannot choose those requirements for an application.
 
-Write the complete operation: which state must agree, what ordering matters, whether an absent item means wait or return, and who ends the work. A sequence of thread-safe calls does not automatically become one atomic operation.
+Start with the complete operation. A frequency table needs one indivisible increment for a key. A work queue needs a rule for empty and full storage. A listener registry, a list of callbacks invoked for events, may need one stable membership set throughout a dispatch. All share data, but each needs a different observation or update guarantee.
+
+The familiar monitor remains a useful baseline: guard the complete state transition with one lock and check its waiting predicate. First trace a tiny bounded queue using that principle, then compare the library contracts that specialize it. Two individually safe method calls still leave an interference interval unless their larger operation has its own protocol.
+
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+<span id="trace-a-bounded-producer-consumer-queue"></span>
+## Trace storage and application ownership separately
+
+At FIFO capacity two, inserting first and second fills storage. Removing first frees a slot; third can reuse that physical position while logical order remains second, third. Bounded queued storage does not bound running producers, waiting requests or downstream connections. A larger request may hold memory before insertion and after removal.
+
+FIFO means first-in-first-out: the earliest accepted stored element is the next removed. The teaching queue uses an array as a ring. Head identifies the next removal position, tail the next insertion position, and size counts occupied slots. Indexes wrap from the last slot back to zero. One monitor guards those fields and their empty/full predicates.
+
+The guarded queue below is a complete small implementation of that storage invariant:
+
+<JavaExample file="BoundedQueueDemo.java" output={"first\nsecond\nthird"} />
+
+Slots, head, tail and size share one monitor. Put waits while full, take while empty, and both recheck after reacquisition. Size distinguishes empty from full when indexes coincide. Take clears the old slot so unused capacity does not retain an object. Its main is a sequential wraparound trace; the BlockingQueue chapter then runs an actual producer and consumer and adds explicit closure.
+
+This code is a teaching queue, not an implementation of ConcurrentLinkedQueue or a skip list. The different algorithms are developed in their own chapters after the public contracts.
+
+An operation is **linearizable** when its effect can be placed at one point between its invocation and return while preserving the specified sequential behavior. That point is its **linearization point**. A protected queue insertion/removal can supply such a transition; a changing aggregate observation or an iterator may have a weaker contract. Ask which operation is guaranteed, rather than applying one label to every method on a class.
 
 ## Choose a contract for a concrete problem
 
@@ -43,23 +64,10 @@ Write the complete operation: which state must agree, what ordering matters, whe
 
 Each container has a focused chapter and complete usage example. AtomicInteger/AtomicReference and LongAdder address different scalar-state questions in the later atomics chapter; a statistics sum is not a hard admission decision.
 
-<span id="worked-example"></span>
-<span id="java-implementation"></span>
-<span id="trace-a-bounded-producer-consumer-queue"></span>
-## Trace storage and application ownership separately
-
-At FIFO capacity two, inserting first and second fills storage. Removing first frees a slot; third can reuse that physical position while logical order remains second, third. Bounded queued storage does not bound running producers, waiting requests or downstream connections. A larger request may hold memory before insertion and after removal.
-
-The guarded queue below is a complete small implementation of that storage invariant:
-
-<JavaExample file="BoundedQueueDemo.java" output={"first\nsecond\nthird"} />
-
-Slots, head, tail and size share one monitor. Put waits while full, take while empty, and both recheck after reacquisition. Size distinguishes empty from full when indexes coincide. Take clears the old slot so unused capacity does not retain an object. Its main is a sequential wraparound trace; the BlockingQueue chapter then runs an actual producer and consumer and adds explicit closure.
-
-This code is a teaching queue, not an implementation of ConcurrentLinkedQueue or a skip list. The different algorithms are developed in their own chapters after the public contracts.
-
 <span id="compare-atomicity-and-iterator-contracts"></span>
 ## Compare iteration guarantees
+
+**Traversal** is a sequence of observations, such as advancing an iterator through elements. A snapshot fixes the captured membership, a weakly consistent traversal can reflect some concurrent updates, and fail-fast detection tries to report unsupported structural change. These policies describe different observations; exception detection is not the mechanism that makes a shared algorithm safe.
 
 | Container family | Traversal model | What it means |
 | --- | --- | --- |
@@ -72,7 +80,7 @@ The loose phrase fail-safe hides important differences. A snapshot array still p
 
 ## Hold a synchronized wrapper's mutex for a traversal
 
-Collections.synchronizedMap protects individual operations through its wrapper mutex. Iterating is a sequence of operations, so its documented traversal protocol requires synchronizing on the **returned map wrapper** across the whole traversal:
+Collections.synchronizedMap protects individual operations through a **mutex**, a mutual-exclusion lock. Here the returned wrapper object's monitor is that lock. Iterating is a sequence of operations, so its documented traversal protocol requires synchronizing on the **returned map wrapper** across the whole traversal:
 
 ```java
 final Map<String, Integer> counts = Collections.synchronizedMap(new HashMap<>());

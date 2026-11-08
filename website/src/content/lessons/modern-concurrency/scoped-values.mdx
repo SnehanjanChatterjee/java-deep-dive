@@ -19,9 +19,15 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="implement-scoped-context"></span>
 ## A faraway method needs context from its caller
 
-The ThreadLocal chapter began with `ContextParametersLesson`: report forwards a request identifier to format. Explicit parameters keep this dependency visible. When many intermediate methods only forward context, a bounded implicit parameter can avoid repetitive plumbing while retaining a clear entry/exit lifetime.
+A **ScopedValue** is a key through which code can read a value bound for the duration of an action. A **binding** is the temporary key-to-value association. Its **dynamic scope** is the period while that action and its nested method calls are executing. Outside such a binding, the key is unbound for that execution.
 
-ScopedValue binds an accessible key to a value during the dynamic execution of an action and methods it calls. It is a final API in Java 25. This lesson needs no preview flags. Its basic call-scope mechanism does not require creating any new thread.
+This fits the context problem from ThreadLocal: report needs a request identifier in a faraway formatter. Explicit parameters remain the clearest starting design. When intermediate methods merely forward that context, a bounded implicit parameter can give callees access while making entry, exit and restoration follow the action's lifetime.
+
+Think of entering a call boundary with REQUEST bound to request-42, calling report and format normally, then leaving with the previous binding restored. The association stays fixed within that binding; nested bindings can temporarily shadow it. Unlike a mutable per-thread context convention, this boundary's restoration is managed by the scoped-value mechanism.
+
+Where(key, value) creates a ScopedValue.Carrier, an object holding mappings for a later run/call action. This Carrier is a context configuration object; the carrier in the virtual-thread chapter was a platform execution thread. Run enters the mappings for its action and returns after restoring the earlier associations. The first example creates no new thread.
+
+The code uses the stable Java 25 ScopedValue API and needs no preview flags. Follow the ordinary call chain before studying nested exceptions, null bindings or structured child inheritance.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -37,6 +43,8 @@ When the action completes, REQUEST is unbound again. Normal and exceptional exit
 <span id="scope-nesting-and-inheritance"></span>
 <span id="nested-scopes-and-exceptional-exit"></span>
 ## Scope, nesting and exceptional restoration
+
+**Shadowing** means entering a nested binding for the same key while retaining the outer association for restoration afterward. While the inner action runs, its value is the accessible one. Leaving that action, including by an exception, restores the outer value before outer code resumes.
 
 <JavaExample file="modern/ScopedNestingLesson.java" output={"outer\ninner\nouter\nbound=false"} />
 

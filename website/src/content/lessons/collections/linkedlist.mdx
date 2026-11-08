@@ -16,18 +16,30 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 <span id="concepts"></span>
 ## Nodes, links and positional access
 
-LinkedList stores a sequence as doubly linked nodes. Each node holds an element and references to its predecessor and successor. The list keeps first/last references and a size. It implements both List and Deque and allows null elements, but is not synchronized.
+A LinkedList is an ordered sequence that also exposes deque operations at both ends. Consider an itinerary [A,C] with a cursor already at the place where B belongs. We want to insert B, continue visiting, and possibly remove the last visited stop. ListIterator expresses that editing protocol directly.
 
-Its main distinction from ArrayList is locating versus relinking. Once a node position is known, changing a few links is constant time. Finding the node at an arbitrary index still requires traversal. Choose it only when the actual operation pattern benefits from node-based editing or its API; do not choose it merely because a problem mentions insertion.
+First create the ordinary list. new `LinkedList<>`(Arrays.asList("A","C")) copies those two references into a new container. getFirst reads A; addLast("D") would append another position; removeFirst would remove A. Indexed List methods exist too. Null is permitted, so an endpoint poll returning null can mean either empty or a stored null.
+
+Its representation is a chain of **nodes**. A node holds one element plus references to the previous and next nodes. This will explain local edits after the API example; callers do not receive public Node handles.
 
 <span id="worked-example"></span>
 ## Editing with a list iterator
 
+Place the cursor at listIterator(1), written A | C. Follow these calls as boundary movements:
+
+```java
+final ListIterator<String> cursor = stops.listIterator(1);
+cursor.add("B");     // A, B | C
+final String next = cursor.next(); // C; cursor is after C
+cursor.remove();     // removes C, the last returned value: A, B |
+```
+
+add inserts before the element next would return. It does not make B the last-returned element. Only next or previous establishes the element eligible for remove/set.
+
 <JavaExample file="LinkedListExample.java" />
 
-The cursor initially sits between A and C. Adding B inserts before the element that next would return, so the list becomes `[A, B, C]`. The next call returns C. Iterator remove deletes the last returned element, leaving `[A, B]`; it does not remove B just because B was recently inserted. Removing the last element after adding start returns B.
+The complete source shows [A,B,C], then C returned by next, then [A,B] after iterator removal. Its endpoint calls add start and remove the last B. Obtaining a middle cursor can require traversal; local link editing after it is positioned is a separate cost.
 
-A ListIterator is a cursor between elements, not an index permanently attached to one node. Its remove/set eligibility depends on previous next/previous operations. Calling remove twice without another traversal call is invalid. The iterator maintains the list's mutation protocol while ordinary external structural changes can invalidate it.
 
 ## Keep cursor position separate from last-returned state
 
@@ -57,7 +69,7 @@ OpenJDK traverses from the nearer endpoint for indexed access. Index zero is nea
 
 ### Link insertion
 
-To insert N between P and Q, establish N.previous=P and N.next=Q, then connect P.next=N and Q.previous=N. Endpoint cases update first or last instead of a missing neighbor. Increment size once. If the list was empty, both endpoints must identify N. The invariant is that forward and backward links agree for every adjacent live pair.
+Insertion joins one new node to its two neighbors; removal joins the surviving neighbors to each other. The detailed case proof below follows the four references and endpoint branches. Size changes exactly once per logical insertion/removal.
 
 ### Unlink and retention
 
@@ -105,7 +117,7 @@ This complete single-file teaching implementation supplies endpoint append, inde
 `nodeAt` validates before traversing from the nearer endpoint. `add` treats index equal to size as append; otherwise it connects a new node before the located successor. `unlink` repairs previous.next and next.previous, or first/last when a neighbor is absent. A singleton has neither neighbor, so removing it sets both endpoints to null. The main method demonstrates that empty-list reuse case. Every successful insertion/removal changes size once.
 
 
-The iterator example above is a complete executable Java file. For a handwritten list, use one class with a nested static Node, first, last and size. Implement endpoint insertion/removal before indexed operations; the node-search helper should return the appropriate node without changing the structure.
+The runnable class keeps Node nested and private. Implement endpoint insertion/removal before indexed operations so nodeAt can remain a read-only lookup helper.
 
 A useful implementation order is linkLast, linkBefore, unlink, nodeAt, add and remove. Reuse unlink for all removal paths so head/tail and size bookkeeping do not diverge. Trace three cases explicitly: removing the only node sets both endpoints to null; removing the head updates the successor's previous reference; removing the tail updates its predecessor's next reference.
 

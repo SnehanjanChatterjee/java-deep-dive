@@ -33,9 +33,29 @@ import {url as lessonUrl} from '../../../lib/paths';
 <span id="additional-interview-questions"></span>
 ## Use an explicit lock when acquisition itself needs a policy
 
-The monitor mailbox already supplies exclusion and guarded waiting. ReentrantLock gives the same kind of ownership with additional acquisition operations: an ordinary lock, an interruptible acquisition, or a timed attempt. It can also create separate Conditions for consumers waiting for data and producers waiting for space.
+An **explicit lock** is a library object whose acquisition and release are requested through methods. ReentrantLock protects a critical section through lock/unlock calls, just as synchronized protects one through monitor entry/exit. **Reentrant** means the current owner may acquire that same lock again; each successful acquisition still needs its own release.
 
-The state invariant stays the same. Switching the API does not repair a predicate checked outside the lock or a read performed under an unrelated lock.
+Why use the explicit form? A caller can choose to wait for ownership, give up immediately if unavailable, wait within a time allowance, or respond to interruption during acquisition. These are acquisition policies: rules for what the caller does before it owns the protected state.
+
+It also supports **Condition** objects, each representing a separate group of waiters associated with the lock. A one-slot mailbox can put empty-slot consumers on notEmpty and full-slot producers on notFull. The fields still hold the actual predicates. Await releases the associated lock while waiting; a signal lets a waiter compete to reacquire it and check again.
+
+Begin with ordinary nested lock ownership, then apply acquisition and condition waiting to the familiar mailbox. The invariant stays the same: every participating check and change must follow the same lock protocol.
+
+## Trace nested lock ownership
+
+<JavaExample file="ReentrantLockDepthLesson.java" output={"1\n2\n1\n0"} />
+
+The outer lock call creates hold count one. The same caller can acquire again, producing two rather than waiting for itself. The inner finally removes one hold; it does not make the lock available to another caller yet. Only the outer finally reduces the count to zero. Every successful acquisition needs its own matching release.
+
+| Acquisition form | Waiting/cancellation policy |
+| --- | --- |
+| synchronized | Automatic region release; intrinsic acquisition is not interruptible |
+| lock() | Wait for ownership; no InterruptedException acquisition protocol |
+| lockInterruptibly() | Acquire or report interruption |
+| tryLock() | Immediate success/failure; can take an available lock ahead of queued waiters |
+| timed tryLock | Wait within its documented time/interruption policy |
+
+These choices express acquisition needs rather than a universal speed ranking. A private ReentrantLock also differs from its object's intrinsic monitor: `synchronized (lock)` does not acquire the explicit lock. [Java 8 ReentrantLock contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantLock.html)
 
 ## Acquire first, then enter the release-owning try
 
@@ -54,22 +74,6 @@ try {
 The excerpt assumes lock is a ReentrantLock and notFull is its Condition. Acquisition is before try because an interrupted acquisition has no lock to release. Once acquired, every normal or exceptional body exit must unlock. Ordinary `lock()` does not provide the interruption behavior of `lockInterruptibly()`.
 
 Reentrancy means the owner can acquire the same lock again, increasing its hold count. Matching unlocks are still necessary. This is useful when a protected method calls another protected method; it does not make unknown callbacks safe.
-
-## Trace nested lock ownership
-
-<JavaExample file="ReentrantLockDepthLesson.java" output={"1\n2\n1\n0"} />
-
-The outer lock call creates hold count one. The same caller can acquire again, producing two rather than waiting for itself. The inner finally removes one hold; it does not make the lock available to another caller yet. Only the outer finally reduces the count to zero. Every successful acquisition needs its own matching release.
-
-| Acquisition form | Waiting/cancellation policy |
-| --- | --- |
-| synchronized | Automatic region release; intrinsic acquisition is not interruptible |
-| lock() | Wait for ownership; no InterruptedException acquisition protocol |
-| lockInterruptibly() | Acquire or report interruption |
-| tryLock() | Immediate success/failure; can barge even on a fair ReentrantLock |
-| timed tryLock | Wait within its documented time/interruption policy |
-
-These choices express acquisition needs rather than a universal speed ranking. A private ReentrantLock also differs from its object's intrinsic monitor: `synchronized (lock)` does not acquire the explicit lock. [Java 8 ReentrantLock contracts](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/ReentrantLock.html)
 
 ## Implement a timed condition mailbox
 
@@ -98,7 +102,7 @@ Zero timeout can still deliver an immediately available value if acquisition suc
 
 A fair ReentrantLock influences its documented acquisition policy under contention. It does not make operating-system scheduling fair, guarantee end-to-end latency, or eliminate cycles involving other locks. Untimed tryLock can acquire opportunistically even on a fair lock. Select the exact acquisition contract before relying on fairness.
 
-AQS supplies internal state/queue machinery; the later implementation chapter explains that machinery after latches and permits. <a href={lessonUrl('learn/concurrency/read-write-locks/')}>Read/write locking</a> and <a href={lessonUrl('learn/concurrency/stamped-lock/')}>optimistic validation with StampedLock</a> have different contracts and their own focused chapters. They are not additional modes to enable blindly on this mailbox.
+AbstractQueuedSynchronizer, abbreviated AQS, is a framework supplying internal state and waiting-queue machinery. The later implementation chapter explains it after latches and permits. <a href={lessonUrl('learn/concurrency/read-write-locks/')}>Read/write locking</a> and <a href={lessonUrl('learn/concurrency/stamped-lock/')}>optimistic validation with StampedLock</a> have different contracts and their own focused chapters. They are not additional modes to enable blindly on this mailbox.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>

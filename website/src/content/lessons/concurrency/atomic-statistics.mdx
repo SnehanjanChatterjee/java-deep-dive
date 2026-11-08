@@ -13,9 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Statistics and admission answer different questions
 
-A request counter asks how many events have been recorded. A resource budget asks whether **this** caller is allowed to take one of the remaining units. The budget needs one indivisible conditional decision, as the previous CAS lesson established. A sum observed across independently updated statistics cells is not a replacement for that admission decision.
+**Aggregation** combines contributions into a summary, such as a total or maximum. LongAdder accepts additive contributions and exposes their combined sum. LongAccumulator accepts a combining function and an **identity**, the starting value that leaves a contribution unchanged when combined with it. Zero is the identity for addition; Long.MIN_VALUE works for the maximum of long values.
 
-LongAdder supports additive updates and a combined sum. LongAccumulator generalizes the aggregation function and identity. Under contention their implementations can distribute updates over multiple variables, trading a more involved observation for reduced contention on one location. This is a mechanism to evaluate for a workload, not a universal claim that they beat AtomicLong.
+This fits statistics such as recorded events or observed sizes. A resource budget asks a different question: may **this** caller consume capacity now? That requires the indivisible conditional decision from the CAS lesson. A live statistics observation is not a replacement for that admission protocol.
+
+The first program uses two workers, each contributing 1, 2 and 3, and observes a sum and maximum after joining both. Begin with that completed accounting. Then examine what changes when readers ask for a summary while contributors are still updating.
 
 ## Observe completed contributors
 
@@ -23,7 +25,7 @@ LongAdder supports additive updates and a combined sum. LongAccumulator generali
 
 Both workers use the same two aggregate objects. Each contributes 1, 2 and 3. LongAdder therefore records two copies of six, giving twelve. LongAccumulator uses Long::max with Long.MIN_VALUE as its identity, giving maximum three.
 
-The loop variable value is local to each invocation. The aggregate references captured by the shared Runnable refer to the same two objects. Main starts both workers and joins both before reading either result. At that quiescent boundary there are no concurrent updates, so the outputs include every completed contribution.
+The loop variable value is local to each invocation. The aggregate references captured by the shared Runnable refer to the same two objects. Main starts both workers and joins both before reading either result. This is a **quiescent** boundary: updates have stopped, so the outputs include every completed contribution.
 
 | Contribution | Additive aggregate | Maximum aggregate |
 | --- | --- | --- |
@@ -32,6 +34,8 @@ The loop variable value is local to each invocation. The aggregate references ca
 | Both complete | 12 | 3 |
 
 The table is an arithmetic accounting trace, not a claimed update order between workers or a view of private cells. The aggregate is allowed to group contributions differently while respecting its supported function contract.
+
+Under **contention**, multiple threads compete to update the same shared location. These implementations can distribute contributions over multiple variables or cells, trading a more involved observation for less competition on one location. That mechanism is worth evaluating for a workload, rather than a universal claim that it beats AtomicLong.
 
 ## A live sum is not one atomic snapshot
 
@@ -43,7 +47,7 @@ AtomicLong.incrementAndGet can supply the value assigned by one atomic increment
 
 ## The reduction function needs laws
 
-LongAccumulator may regroup and retry applications of its function. Use a side-effect-free function with a valid identity, designed for associative accumulation; commutativity is important when encounter order is not defined. Maximum with Long.MIN_VALUE fits: max(identity, x) is x, and grouping/order do not change the maximum.
+**Associativity** means regrouping inputs does not change the result; **commutativity** means changing their order does not change it. LongAccumulator may regroup and retry applications of its function. Use a side-effect-free function, which does not change external state, with a valid identity and suitable combination laws. Commutativity matters when encounter order is not defined. Maximum with Long.MIN_VALUE fits: max(identity, x) is x, and grouping/order do not change the maximum.
 
 Subtraction is not an associative reduction: `(10 - 3) - 2` differs from `10 - (3 - 2)`. Sending a message from the function is also wrong because evaluation can be retried. Integer addition needs an overflow policy, and floating-point aggregation may differ with grouping because of rounding. Do not infer a business guarantee from the word accumulator alone.
 

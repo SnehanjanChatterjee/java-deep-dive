@@ -17,6 +17,18 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 A Map associates one value with each key. Replacing that value does not create a second key, and different keys can share equal values. A null-capable map also distinguishes an absent key from a present key whose value is null. get alone cannot distinguish those cases.
 
+Suppose A's score has not been entered yet but its key is registered. These two states need different meanings:
+
+```java
+scores.put("A", null);          // A is present, awaiting a score
+scores.containsKey("A");       // true
+scores.get("A");               // null
+scores.containsKey("missing"); // false
+scores.get("missing");         // also null
+```
+
+Now putIfAbsent("A",7) installs 7 for that null-valued mapping. replace("A",7,8) succeeds only if the old value is still 7. remove("A",7) then fails because the value has become 8. These sequential conditions prevent unintended replacement/removal within this single-threaded example; concurrent atomicity needs a separate contract.
+
 <JavaExample file="MapViewsAndUpdates.java" output={"null\nnull\ntrue\nfalse\n8\none removed=1, still has 8=true\nbacking empty=true\nlive=9, snapshot=1"} />
 
 The program first stores A=null. getOrDefault("A",99) returns null because the mapping exists. putIfAbsent treats mapped-null as needing a supplied value and installs seven. replace("A",7,8) succeeds. remove("A",7) fails because the current value is now eight, leaving it intact. The boolean result records a conditional decision, rather than a possibly ambiguous old value.

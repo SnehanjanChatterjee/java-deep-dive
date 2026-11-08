@@ -13,13 +13,22 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## A typed container can still expose mutable elements
 
-`List<Date>` means its elements follow the Date type contract; it does not promise that the list or dates are immutable. Collections.unmodifiableList blocks structural writes through that view while still observing writes through other aliases. A structural copy detaches membership but can retain the same mutable Date references.
+A schedule should remember the dates supplied at construction even if its caller later edits them. That is an **ownership** promise: the schedule controls the state that determines its value. A type such as `List<Date>` only says what kind of elements may be read and written; it does not make that promise for us.
+
+There are two things to protect: the list's **membership** (which references it holds, in what order) and each referenced Date's mutable timestamp. Date is used here because setTime visibly changes an existing object. Its number is milliseconds from the epoch; calendar conversion is not needed for the experiment.
+
+Trace one input Date initially holding 1000:
+
+1. The constructor allocates a new list and a new Date with the same timestamp. Internal and caller dates now have equal values but separate identities.
+2. The caller changes its original Date to 2000. The schedule's private Date stays at 1000.
+3. The accessor returns another copied Date. Changing that returned object to 3000 leaves the private Date at 1000 again.
 
 <JavaExample file="ImmutableSchedule.java" output={"1000\n1000\ntrue"} />
 
-CopyDates rejects a null list and null elements, allocates a new list and constructs a new Date from each original timestamp. Construction stores that snapshot; the accessor repeats copying so a caller cannot receive an internal Date. Setting the input to 2000 or an accessor result to 3000 leaves the stored timestamp at 1000. Independent equivalent snapshots compare equal and hash the same state.
+copyDates implements both boundaries: new ArrayList creates independent membership; new Date(date.getTime()) copies each value. Collections.unmodifiableList returns a view that rejects list writes through that view. Here it wraps a private copy, so no caller retains a mutable alias to that backing list. The final true compares two independently constructed schedules with the same timestamp.
 
-Each copy costs O(n) time and space. Returning immutable values such as Instant could simplify ownership by allowing a structural copy of immutable references. This example retains Date specifically to make element copying observable; it is not a recommendation to choose mutable legacy time values for a new domain.
+Each copy takes O(n) time and space. For new date/time models, immutable Instant values can eliminate the per-element Date copy; the next sections separate that decision from copying the container.
+
 
 ## Write the ownership promise separately from the element type
 
@@ -42,14 +51,6 @@ An unmodifiable outer container does not prevent a retained inner alias from cha
 
 The nested-collections chapter supplies complete independent-row and frozen-set examples after the collection operations are taught. This chapter's schedule keeps one container level and one mutable element level visible before adding those structures.
 
-## Modern record components need the same policy
-
-<JavaExample file="modern/CoreRecordOwnership.java" output={"1\ntrue\nfound=2\nmissing=x\nabsent input"} />
-
-This optional example requires Java 21+ record patterns. Sample copies its array on input/output and explicitly defines content equality. Found uses List.copyOf (Java 10+) for an unmodifiable structural snapshot and rejects null list/elements. Because the elements here are immutable String, no Date-style element copy is needed. Mutable nested elements would require another explicit policy.
-
-Missing validates its key. Describe handles both alternatives and null explicitly; null input is not silently translated into a Missing domain outcome. Each constructor owns its invariant before a switch selects behavior. These generic ownership decisions are the same decisions made for the earlier primitive-array immutable class.
-
 ## Equality and hashing need the same stable state
 
 ImmutableSchedule compares the stored date values, not the identity of its private list. Copies constructed independently at timestamp 1000 compare equal and hash the same state. Because callers cannot mutate the private Date values through constructor/accessor aliases, those equality inputs remain stable.
@@ -68,6 +69,16 @@ Which copies remain necessary when a schedule stores immutable Instant elements?
 Copy the container structure so later caller additions/removals cannot change the schedule. Sharing immutable element references is safe under that value contract; per-element cloning is unnecessary. An unmodifiable view alone still observes caller mutations and is not a detached snapshot. On Java 8, copy into a private ArrayList and wrap it; on Java 10+ List.copyOf provides a structural snapshot with its documented null policy. Concurrency and safe publication are additional concerns rather than guarantees inferred from a wildcard or wrapper.
 
 </details>
+
+## Modern record components need the same policy
+
+This extension assumes the records, sealed alternatives and pattern-switch lessons. It requires Java 21+ for record patterns; the ownership principle above works on Java 8 without them.
+
+<JavaExample file="modern/CoreRecordOwnership.java" output={"1\ntrue\nfound=2\nmissing=x\nabsent input"} />
+
+This optional example requires Java 21+ record patterns. Sample copies its array on input/output and explicitly defines content equality. Found uses List.copyOf (Java 10+) for an unmodifiable structural snapshot and rejects null list/elements. Because the elements here are immutable String, no Date-style element copy is needed. Mutable nested elements would require another explicit policy.
+
+Missing validates its key. Describe handles both alternatives and null explicitly; null input is not silently translated into a Missing domain outcome. Each constructor owns its invariant before a switch selects behavior. These generic ownership decisions are the same decisions made for the earlier primitive-array immutable class.
 
 ## Ownership references
 

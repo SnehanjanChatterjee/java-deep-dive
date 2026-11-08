@@ -2,7 +2,7 @@
 title: "Equality, hashing and ordering contracts"
 module: "objects"
 group: "References and identity"
-summary: "Compare identity, logical equality, hashes and ordering with explicit object contracts."
+summary: "Choose what makes objects equal, compute matching hashes and distinguish equality from ordering."
 order: 210
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "language/methods-and-references"]
@@ -26,7 +26,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Decide what the same value means
 
-Identity asks whether two references identify one object. Object's default equals uses identity, but a value class can define logical equality. Two independently created names can represent the same name even though they are different objects. Choose the meaningful state before implementing the relation.
+Two separately created name objects can both contain Ada. Should the program treat them as the same name? **Identity** asks whether references identify one object, using `==`. **Logical equality** asks whether the objects represent the same value under a chosen domain rule, using equals. Object, the base class of Java class instances, supplies identity-based equals unless a class overrides it.
+
+A **hash code** is an int summary used by hash-based data structures to find candidate values efficiently. It must agree with the chosen equality rule: equal values need equal hashes. It is neither a unique object ID nor a cryptographic digest. **Ordering** is another relation, deciding which value comes before another; a comparison result of zero need not automatically mean equals is true.
+
+Begin by choosing which state defines a Name's value. Then implement equality and the corresponding hash together, and test the relation between independently created objects. The later collections lessons use these contracts; no container implementation is needed to understand the example itself.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="trace-set-membership-under-value-equality" aria-hidden="true"></span>
@@ -34,6 +38,8 @@ Identity asks whether two references identify one object. Object's default equal
 <span id="implement-defensive-copy-value-semantics" aria-hidden="true"></span>
 
 <JavaExample file="EqualityBasics.java" output={"false\ntrue\ntrue"} />
+
+Main creates two Names containing Ada. Identity prints false because they are different objects. Equals prints true because their selected String state matches, and their hash comparison prints true because hashCode uses that same state. Equal hashes alone would not prove equality; this trace checks both operations independently.
 
 Name is final, so no subtype can introduce a competing equality policy. Equals first accepts the same reference, then checks the other object's type and compares the immutable String field. Instanceof is false for null, making the later cast safe on that path. `equals(Name)` would be an overload rather than an override of equals(Object); @Override prevents that mistake.
 
@@ -47,9 +53,32 @@ Name is final, so no subtype can introduce a competing equality policy. Equals f
 
 ## Preserve the equality laws and matching hash
 
-Equals must be reflexive, symmetric, transitive and consistent while relevant state stays unchanged, and it must return false for null. Equal objects must have equal hash codes. Unequal objects may collide; a constant hash can satisfy the contract while producing poor hash-table performance. Hash stability is required while equality-relevant state remains unchanged.
+An equality implementation must behave as one coherent relation. For non-null values a, b and c, read its laws as concrete obligations:
+
+| Law | Required reasoning |
+| --- | --- |
+| Reflexive | a equals itself |
+| Symmetric | If a equals b, b must equal a |
+| Transitive | If a equals b and b equals c, a must equal c |
+| Consistent | Repeating the comparison gives the same answer while relevant state is unchanged |
+| Null rejection | a.equals(null) is false |
+
+Equal objects must have equal hash codes. Unequal objects may **collide**, meaning produce the same hash; a constant hash can satisfy the contract while producing poor hash-table performance. Hash stability is required while equality-relevant state remains unchanged. A later hash-based container uses hashing to locate candidates and equality to distinguish them.
 
 The example hashes the same String that defines equality. A derived cache or diagnostic timestamp need not participate if it is not part of the domain value. Entities with stable IDs can intentionally use a different policy from values whose full components matter. State that policy rather than mechanically including every field.
+
+## Distinguish an override from a same-named overload
+
+Suppose Name declared `boolean equals(Name other)` but inherited Object.equals(Object). For `Name a` and `Name b`, `a.equals(b)` could select the new overload. For `Object other = b`, `a.equals(other)` would select Object's identity method instead. Merely changing the argument's declared type would appear to change equality. The correct override accepts Object, checks the admissible type and then compares meaningful state; @Override makes the mistaken narrower declaration fail compilation.
+
+Object's default equality is identity, not a shallow field traversal. A field-based equals is not automatically deep graph equality either: each selected field comparison follows its own contract. Identity hash codes also are not guaranteed unique IDs; distinct objects can have the same identity hash. An ordinary hash code is neither a memory address nor proof of equality. [Object identity and value contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html)
+
+<details>
+<summary>Does equals(null) returning false make candidate.equals(expected) safe when candidate is null?</summary>
+
+No. There is no receiver on which to invoke equals. Use a known non-null expected value as receiver, Objects.equals for a null-safe relation, or reject absent input explicitly. These policies decide how absence participates; they do not change the reflexive/symmetric/transitive obligations for actual values.
+
+</details>
 
 <span id="why-inheritance-can-break-symmetry" aria-hidden="true"></span>
 
@@ -64,6 +93,14 @@ Suppose Point compares coordinates while ColorPoint adds color. If Point accepts
 A comparison result of zero can mean equal ordering position without equals returning true. BigDecimal("1.0") and BigDecimal("1.00") compare numerically as zero but differ in scale-sensitive equality. Sorted sets/maps use comparison zero for membership; hash-based containers use hashes and equals. Their detailed APIs and bucket mechanics are taught in collections.
 
 Mutating a key's equality state after insertion can break lookup: the stored insertion hash and newly computed hash can disagree. Resizing does not repair a violated key contract. Prefer stable keys. Immutability and defensive copies have their own next chapter; equality alone does not establish ownership.
+
+## Know the other basic Object operations
+
+Every class instance has Object behavior through inheritance. GetClass returns the Class object describing the receiver's actual runtime class; declaring a reference as Object does not change that class. ToString supplies a textual representation. Override it when a meaningful diagnostic value helps, while avoiding secrets or a representation accidentally treated as a stable storage format.
+
+Object's default toString combines a runtime type name with a hexadecimal hash-code representation. It is not a portable memory address or guaranteed unique identifier, and an overridden hashCode can affect that default representation. `System.out.println(object)` uses the object's text conversion; it does not inspect and format every private field automatically. Arrays also need deliberate content formatting, such as Arrays.toString, rather than expecting ordinary Object text to list their components.
+
+Clone is protected on Object and is not automatically a public copying API for every object. Its default field copy is shallow: reference fields still identify the same referents. Cloneable is a marker controlling that Object behavior, not an interface declaring a public clone method. The checked exception and working shallow-versus-independent-copy example follow in the failure-contract lesson after checked failures have been taught. Wait/notify are monitor coordination operations reserved for the concurrency lessons, not general-purpose polling methods.
 
 <span id="designing-and-testing-a-complete-value-boundary" aria-hidden="true"></span>
 <span id="common-mistakes" aria-hidden="true"></span>
@@ -82,28 +119,6 @@ Name gains a final familyName. What must change, and which checks detect an inco
 Validate and store both components; compare both in equals and hash both in hashCode, for example with Objects.hash(value, familyName). Construct a, b and c with identical components to check symmetry/transitivity and equal hashes. Change only familyName to check inequality. Also compare with null and an unrelated type. An object comparing equal to itself alone exercises almost none of the new value policy. Hash collisions between unequal values are permitted and are not a test failure.
 
 </details>
-
-
-## Distinguish an override from a same-named overload
-
-Suppose Name declared `boolean equals(Name other)` but inherited Object.equals(Object). For `Name a` and `Name b`, `a.equals(b)` could select the new overload. For `Object other = b`, `a.equals(other)` would select Object's identity method instead. Merely changing the argument's declared type would appear to change equality. The correct override accepts Object, checks the admissible type and then compares meaningful state; @Override makes the mistaken narrower declaration fail compilation.
-
-Object's default equality is identity, not a shallow field traversal. A field-based equals is not automatically deep graph equality either: each selected field comparison follows its own contract. Identity hash codes also are not guaranteed unique IDs; distinct objects can have the same identity hash. An ordinary hash code is neither a memory address nor proof of equality. [Object identity and value contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Object.html)
-
-<details>
-<summary>Does equals(null) returning false make candidate.equals(expected) safe when candidate is null?</summary>
-
-No. There is no receiver on which to invoke equals. Use a known non-null expected value as receiver, Objects.equals for a null-safe relation, or reject absent input explicitly. These policies decide how absence participates; they do not change the reflexive/symmetric/transitive obligations for actual values.
-
-</details>
-
-## Know the other basic Object operations
-
-Every class instance has Object behavior through inheritance. GetClass returns the Class object describing the receiver's actual runtime class; declaring a reference as Object does not change that class. ToString supplies a textual representation. Override it when a meaningful diagnostic value helps, while avoiding secrets or a representation accidentally treated as a stable storage format.
-
-Object's default toString combines a runtime type name with a hexadecimal hash-code representation. It is not a portable memory address or guaranteed unique identifier, and an overridden hashCode can affect that default representation. `System.out.println(object)` uses the object's text conversion; it does not inspect and format every private field automatically. Arrays also need deliberate content formatting, such as Arrays.toString, rather than expecting ordinary Object text to list their components.
-
-Clone is protected on Object and is not automatically a public copying API for every object. Its default field copy is shallow: reference fields still identify the same referents. Cloneable is a marker controlling that Object behavior, not an interface declaring a public clone method. The checked exception and working shallow-versus-independent-copy example follow in the failure-contract lesson after checked failures have been taught. Wait/notify are monitor coordination operations reserved for the concurrency lessons, not general-purpose polling methods.
 
 <span id="references" aria-hidden="true"></span>
 

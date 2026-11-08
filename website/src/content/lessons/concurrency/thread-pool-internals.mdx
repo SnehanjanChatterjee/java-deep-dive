@@ -20,9 +20,13 @@ import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 <span id="pool-configuration-mistakes"></span>
 ## A worker limit does not bound accepted work
 
-Suppose one request arrives while every worker is busy. A pool may queue it, create another worker if policy allows, or refuse it. A queue absorbs a burst; it cannot create sustained processing capacity. If arrivals continue faster than completion, an unbounded queue converts overload into growing latency and retained request state.
+A **ThreadPoolExecutor** is an execution service combining reusable worker threads with a queue of accepted tasks waiting to run. Its **admission decision** determines what happens to each newly submitted task: run it on a worker, store it for later, or apply a rejection policy.
 
-ThreadPoolExecutor combines core size, maximum size, queue capacity/type, keep-alive, thread factory and rejection policy. Learn their combined admission decision rather than treating a factory name such as fixed as a complete resource bound.
+Three settings explain the ordinary decision. **Core size** is the worker-count threshold below which a new task normally causes worker creation. Once that threshold is reached, the pool tries its work queue. **Queue capacity** limits stored waiting tasks. **Maximum size** limits growth when the queue cannot accept another task; a larger maximum does not make the pool skip an available queue slot.
+
+This matters during overload, when work arrives faster than it can be completed. A queue can absorb a burst while retaining each task's state; an unbounded backlog can keep increasing waiting time and memory use. A finite worker count alone therefore does not define a finite accepted workload.
+
+Start with core one, maximum two and one queue slot. The example uses ArrayBlockingQueue as fixed-capacity task storage and AbortPolicy as the rule that throws when the pool refuses a task. Familiar latches keep workers busy long enough to follow each decision. Idle-worker timeout, alternate handlers and source internals come after that ordinary admission trace.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -38,17 +42,18 @@ Use core one, maximum two, and queue capacity one. Hold accepted workers at a la
 | C | Queue full: grow toward maximum | Two active, one queued |
 | D | Queue full and maximum reached | AbortPolicy rejects D |
 
-### Follow the submitted tasks through the pool
-
-The letters A–D identify four calls to execute in the program below. They are submission identities: the program reuses one Runnable description. Follow B into the queue before C is allowed to create the second worker. C can therefore start while the earlier submission B is still queued.
-
-<AdvancedThreadMotion client:visible model="executor" />
-
-D's rejection is a separate outcome from waiting in the queue. The completion part shows one legal order after the release gate opens; it does not add a global FIFO execution guarantee to ThreadPoolExecutor. The queue and worker counts in the model follow the [documented admission rules](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html).
-
 <JavaExample file="ExecutorSaturationLab.java" output={"rejected\ncompleted=3"} />
 
 FirstStarted and bothStarted establish the intended occupancy milestones. Release holds tasks without guessed sleeps. After release, A/C finish and a worker drains B. Main shuts down and awaits termination before observing completed-task statistics. Finally opens release and requests cleanup on an exceptional path. The guard durations expose a broken demonstration; they are not workload recommendations.
+
+
+### Follow the submitted tasks through the pool
+
+The letters A–D identify four calls to execute in the program above. They are submission identities: the program reuses one Runnable description. Follow B into the queue before C is allowed to create the second worker. C can therefore start while the earlier submission B is still queued.
+
+<AdvancedThreadMotion client:visible model="executor" />
+
+D's rejection is a separate outcome from waiting in the queue. The completion part shows one legal order after the release gate opens; it does not add a global first-in-first-out (FIFO) execution guarantee to ThreadPoolExecutor. The queue and worker counts in the model follow the [documented admission rules](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/concurrent/ThreadPoolExecutor.html).
 
 <span id="admission-algorithm"></span>
 ## Follow the admission algorithm
@@ -74,18 +79,24 @@ These dry runs assume a running pool, successful thread creation and the stated 
 | DiscardPolicy | Drops silently | Submit-produced Future can remain incomplete |
 | DiscardOldestPolicy | Drops queued head and retries | Changed ordering/loss; poor fit for some queues |
 
-CallerRunsPolicy discards during shutdown. A rejection handler returning normally does not prove execution occurred. Retries, result handles, shutdown and overload all need a policy. Do not describe a pool as backpressure without stating who waits or refuses work.
+CallerRunsPolicy discards during shutdown. A rejection handler returning normally does not prove execution occurred. Retries, result handles, shutdown and overload all need a policy. **Backpressure** feeds capacity pressure back to upstream submitters so they can slow or otherwise respond. If that is the intended behavior, state exactly which caller waits, performs work or observes refusal.
 
 <span id="workers-queues-and-overload"></span>
 <span id="workers-and-retrieval"></span>
 <span id="termination-and-resource-budgets"></span>
 ## Workers, retrieval and termination
 
-On the OpenJDK source baseline, runWorker executes tasks and getTask retrieves more, using take or timed poll according to idle-worker policy. Keep-alive normally concerns excess workers; allowCoreThreadTimeOut changes core-idle behavior. An empty queue alone does not establish termination.
+On the OpenJDK source baseline, runWorker executes tasks and getTask retrieves more, using take or timed poll according to idle-worker policy. **Keep-alive** is the idle-time allowance used when workers are eligible to time out. It normally concerns excess workers; allowCoreThreadTimeOut changes core-idle behavior. An empty queue alone does not establish termination.
 
 The lifecycle distinguishes accepting work, draining accepted work after shutdown, interruption/stopping, and completed worker termination. AwaitTermination waits for that actual transition. The internal control representation coordinates run state and worker count rather than treating a flag write as instant thread death.
 
 A ThreadFactory can name workers and configure uncaught-error policy. A factory returning null can prevent worker creation. beforeExecute/afterExecute hooks must not break workers; a Future-wrapped task can capture a failure without passing it directly as afterExecute's Throwable. Observe the actual task representation.
+
+## Avoid a dependency that cannot be scheduled
+
+With two workers and a barrier requiring three tasks, the first two tasks can occupy the pool while the third stays queued. The barrier cannot advance because no worker is available for that third participant. Increasing a wait timeout does not create execution capacity.
+
+Likewise, a worker retaining the only permit while waiting for a child that needs the same permit creates a resource dependency. Draw the work and resources together. Coordination utilities do not remove the need to prove useful progress.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>

@@ -2,7 +2,7 @@
 title: "Records and validated value components"
 module: "objects"
 group: "Nested and domain types"
-summary: "Model a value with record components, generated members and explicit construction validation."
+summary: "Declare a value through named components and understand its generated members and validation."
 order: 240
 version: "Java 16+"
 prerequisites: ["objects/immutable-design", "objects/constructors-and-access"]
@@ -26,9 +26,13 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Declare a transparent data carrier
 
-A record declares a fixed set of components. `record Range(int start, int end)` supplies private final component fields, start()/end() accessors, a canonical constructor, equality, hashing and a descriptive string representation. Unlike a conventional mutable class, its declaration directly publishes the component structure of its value.
+A **record** is a class form for a value described by a fixed set of named **components**. A Range has a start and an end; those components are its published value structure. Records make that structure explicit so the compiler can supply the routine constructor, readers, equality, hashing and text representation instead of requiring each to be handwritten.
 
-Records are final and extend Record; they can implement interfaces but cannot extend another class or add instance fields. Static fields and ordinary methods are allowed. Records became final in Java 16. The Java 8-compatible immutable class from the previous chapter teaches the same ownership concerns without requiring record syntax.
+In `record Range(int start, int end)`, the parentheses form the **record header**. The compiler supplies private final component fields and public **accessors**, start() and end(), which read them. It also supplies the **canonical constructor**, whose parameters correspond to the components in their declared order. This is a concrete API generated at compilation, not automatic validation of every combination of component values.
+
+When a Range must have start no greater than end, write constructor validation. A **compact constructor** supplies that validation body without repeating the component parameter list or normal field assignments. The example first uses that form, then applies the already learned defensive-copy policy to a record containing an array.
+
+Record classes are implicitly final and extend Record; they can implement interfaces but cannot extend another class or add instance fields. Static fields and ordinary methods are allowed. Records became a permanent language feature in Java 16. The Java 8-compatible immutable class from the previous chapter teaches the same ownership concerns without requiring record syntax.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="compare-a-legacy-outcome-model" aria-hidden="true"></span>
@@ -38,6 +42,19 @@ Records are final and extend Record; they can implement interfaces but cannot ex
 <JavaExample file="modern/RecordValueLesson.java" output={"2:5\n1\ntrue"} />
 
 Compile and run this example on Java 16 or later. Its Range compact constructor rejects start greater than end before generated field assignments occur. No explicit assignment to this.start is needed in that compact form. A normal canonical constructor instead declares every component and assigns the fields itself. Additional constructors delegate to another record constructor. Canonical visibility must be at least as accessible as the record.
+
+## Read the generated API before choosing a record
+
+`Range` exposes start() and end(), not JavaBeans getStart()/getEnd() setters/getters. Its component fields cannot be reassigned by clients. A record can add operations such as length, implement an interface and declare static constants, but cannot add a hidden instance field outside its header. If a component should not be part of the published value representation, a conventional class may express that boundary better.
+
+Component equality follows the record contract, rather than primitive `==` for every possible type. In particular, generated floating-point component comparisons treat NaN values as equal and distinguish positive from negative zero. Reference components use their equality behavior. Arrays therefore retain array identity semantics unless explicitly handled. These are independent choices from validation and copying. [Record generated-member contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html)
+
+<details>
+<summary>Can a compact constructor normalize parameters before implicit assignments?</summary>
+
+Yes: a component parameter can be normalized, such as replacing text with text.trim(), and the generated assignments store the resulting parameter values after the compact body. Assigning this.component directly in that compact body is not the compact-constructor form. Validate or normalize the parameters, then allow the implicit assignment; use a normal canonical constructor when explicit field assignment is required.
+
+</details>
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 <span id="record-constructors-and-exhaustive-patterns" aria-hidden="true"></span>
@@ -80,20 +97,6 @@ Would input copying alone make generated equality compare two independent Sample
 <summary>Answer</summary>
 
 No. Copying changes ownership, not the array equality contract. Independent copies remain different array objects. Override equals and hashCode together for content semantics, and copy on output as well if mutable components must remain private. For a list component, a structural snapshot still does not freeze mutable elements; the generics ownership chapter supplies that separate example.
-
-</details>
-
-
-## Read the generated API before choosing a record
-
-`Range` exposes start() and end(), not JavaBeans getStart()/getEnd() setters/getters. Its component fields cannot be reassigned by clients. A record can add operations such as length, implement an interface and declare static constants, but cannot add a hidden instance field outside its header. If a component should not be part of the published value representation, a conventional class may express that boundary better.
-
-Component equality follows the record contract, rather than primitive `==` for every possible type. In particular, generated floating-point component comparisons treat NaN values as equal and distinguish positive from negative zero. Reference components use their equality behavior. Arrays therefore retain array identity semantics unless explicitly handled. These are independent choices from validation and copying. [Record generated-member contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Record.html)
-
-<details>
-<summary>Can a compact constructor normalize parameters before implicit assignments?</summary>
-
-Yes: a component parameter can be normalized, such as replacing text with text.trim(), and the generated assignments store the resulting parameter values after the compact body. Assigning this.component directly in that compact body is not the compact-constructor form. Validate or normalize the parameters, then allow the implicit assignment; use a normal canonical constructor when explicit field assignment is required.
 
 </details>
 

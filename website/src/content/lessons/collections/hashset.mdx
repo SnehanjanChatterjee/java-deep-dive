@@ -23,6 +23,18 @@ The membership relation comes from equals/hashCode, not object identity. Two sep
 <span id="worked-example"></span>
 ## Hash collisions and duplicate membership
 
+Start with names that should appear once in a membership index:
+
+```java
+final Set<String> seen = new HashSet<>();
+final boolean first = seen.add("Ada"); // true; size 1
+final boolean again = seen.add(new String("Ada")); // false; size 1
+final boolean known = seen.contains("Ada"); // true
+final boolean removed = seen.remove("Ada"); // true; size 0
+```
+
+The second add has an equal value in a different String object. It leaves the original member unchanged. No list position is created for the duplicate, and none of these calls requires traversal order. Now test the other situation: unequal values whose hashes collide.
+
 <JavaExample file="HashSetExample.java" />
 
 Aa and BB have the same String hash but are unequal, so the size is 2. Adding another equal Aa returns false. No assertion depends on HashSet iteration order. LinkedHashSet prints `[B, A, C]`, discarding the duplicate B while keeping first appearance. Removing then reinserting A produces `[B, C, A]`, because it is a new membership insertion.
@@ -72,7 +84,7 @@ Set equality compares membership rather than encounter order. Bulk membership ch
 
 A bucket collision means two hashes select the same table location. A full-hash collision means the raw/spread hash values are equal. Both permit distinct members. A duplicate is a key equal under the membership relation. These cases require different tests: same bucket/different hashes, same hash/unequal values and equal-but-separately-allocated values.
 
-The backing map's marker is not a user-visible value. Because every present membership maps to that same non-null marker, add/remove can distinguish membership changes through previous-marker results. That argument would fail if a custom wrapper allowed arbitrary null backing values to represent presence inconsistently.
+The shared marker delegation above relies on one non-null value for every present key. Allowing arbitrary backing values, especially null, would require a different presence test; the set representation must preserve that invariant.
 
 ### Mutation is a relation failure, not a disappearing allocation
 

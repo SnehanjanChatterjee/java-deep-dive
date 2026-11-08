@@ -2,7 +2,7 @@
 title: "Switch statements and switch expressions"
 module: "language"
 group: "Decisions and loops"
-summary: "Select discrete alternatives and distinguish fallthrough from a returned expression value."
+summary: "Choose behavior from one value and distinguish selecting a statement from producing a result."
 order: 60
 version: "Java 8+"
 prerequisites: ["language/control-flow"]
@@ -13,7 +13,9 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Group discrete alternatives
 
-An if/else chain is useful for arbitrary boolean conditions, including ranges. A switch selects among discrete cases for one selector. The example classifies numbered days: one through five are weekdays, six and seven are weekends, and other numbers violate its domain.
+Sometimes a decision asks which one of several named values an input has, rather than whether it lies in a range. A **switch** expresses that selection once. Its **selector** is the expression being examined. A **case label** names a value to match, and **default** supplies the path when no named case matches.
+
+For numbered days, the selector is day: one through five mean weekday, six and seven mean weekend, and other numbers are outside the chosen domain. An if/else chain could express the same decision. Switch groups the alternatives around the one value being selected; it does not repeatedly ask unrelated boolean questions.
 
 First choose and print a message using only statements inside main:
 
@@ -24,6 +26,8 @@ Day is seven, so execution enters the case-seven group, assigns weekend and brea
 ## Explain colon-label fallthrough
 
 With colon labels, execution continues into following statements and labels unless something transfers control. A return exits the method. A break exits the switch, allowing statements after the switch to run. Merely reaching another case label does not stop execution. This makes intentional grouping possible, but can also accidentally execute a later group's work.
+
+This continuation is called **fallthrough**. The selector chooses the entry point, not a separate sealed box around each colon-labeled group. Trace both where execution enters and which statement ends that path. Break is sufficient for the statement-only program here; the method lesson explains return before the optional helper comparison below.
 
 For a variable assigned inside a switch, definite assignment must cover every path before the variable is read. Do not add a silent default value simply to conceal an unhandled domain case. Classic selectors have restrictions on accepted types; the pattern-switch chapter later extends the model to type alternatives and explicit null handling. A null boxed or String selector in a classic switch throws rather than selecting default.
 
@@ -41,6 +45,16 @@ final String kind = switch (day) {
 
 Arrow rules do not fall through. A block arm can use yield to provide the switch expression's value; yield is different from returning from the enclosing method. A switch expression must produce a value or complete abruptly on every required path. The classic runnable example remains usable on Java 8.
 
+## Compare a helper after learning methods
+
+The next methods lesson explains parameters and returned values. After that, compare this reusable day classifier, which preserves the earlier domain choice of rejecting invalid day numbers:
+
+<JavaExample file="SwitchBasics.java" output={"weekday\nweekend"} />
+
+Each selected group returns text to main. Return leaves the helper, whereas break in the first program leaves only the switch. This optional comparison uses the same selection concept with a different continuation point; it is not required to run the statement-only introduction.
+
+Classic Java 8 switch accepts byte, short, char, int, their corresponding wrappers, String and enums. It does not accept long, floating-point or boolean selectors. Classic integral/String case labels must be suitable compile-time constants; duplicate labels are rejected. These restrictions describe the classic form here, while later pattern matching and version-specific extensions have their own rules.
+
 ## Practice: choose break or return
 
 A switch appears in a method that must print a footer after choosing a message. Should each case return immediately?
@@ -51,16 +65,6 @@ A switch appears in a method that must print a footer after choosing a message. 
 Return would skip the footer by exiting the method. Assign a message and break from each ordinary colon group, then print the message/footer after the switch. On Java 14+, an expression assigned to a local often makes this structure clearer. If exiting the entire method is the intended behavior, return is appropriate. State the desired continuation point before selecting a branching keyword.
 
 </details>
-
-## Compare a helper after learning methods
-
-The next methods lesson explains parameters and returned values. After that, compare this reusable day classifier, which preserves the earlier domain choice of rejecting invalid day numbers:
-
-<JavaExample file="SwitchBasics.java" output={"weekday\nweekend"} />
-
-Each selected group returns text to main. Return leaves the helper, whereas break in the first program leaves only the switch. This optional comparison uses the same selection concept with a different continuation point; it is not required to run the statement-only introduction.
-
-Classic Java 8 switch accepts byte, short, char, int, their corresponding wrappers, String and enums. It does not accept long, floating-point or boolean selectors. Classic integral/String case labels must be suitable compile-time constants; duplicate labels are rejected. These restrictions describe the classic form here, while later pattern matching and version-specific extensions have their own rules.
 
 ## Switch references
 

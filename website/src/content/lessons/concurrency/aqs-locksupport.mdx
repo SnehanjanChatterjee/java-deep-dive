@@ -17,9 +17,15 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="interview-questions-and-worked-reasoning"></span>
 ## Build a gate that stays open after its first release
 
-The latch lesson taught a one-way completion condition. Consider an even smaller event: state zero means closed; state one means permanently open. Awaiters block until open. Repeated opens do nothing, and opening lets all current and future waiters pass.
+A **synchronizer** is an object coordinating permission or progress through shared state and waiting. **AbstractQueuedSynchronizer**, abbreviated **AQS**, is a library framework for building such objects. A subclass defines what its integer state means and which transitions permit progress; the framework supplies the contended waiting/retry machinery around that policy.
 
-Its public contract has no owner, reset or consumed permit. That differs from an owner-tracked reentrant lock and from a semaphore whose acquisitions reduce available permits. Define that state meaning before choosing waiting machinery.
+Study it with an **open-once signal**. State zero means closed and state one means permanently open. An await caller may pass only at one; opening allows all current and future awaiters to pass. Open is **idempotent**: repeating it leaves the same open state rather than creating additional consumed permits.
+
+Here **acquisition** means asking whether the caller may proceed, and **release** changes state so waiters may become eligible. This shared event has no exclusive owner and does not decrement state as each waiter passes. That differs from a reentrant lock's ownership count and a semaphore's available-permit count.
+
+The mental model has two parts: a persistent gate predicate and a queue of callers waiting to retry it. This queue contains waiting threads, rather than the work items in an executor queue. **Parking** is the runtime waiting facility used to suspend a thread instead of making it spin; LockSupport exposes the low-level park/unpark operations studied after the complete gate.
+
+Read the public await/open wrapper first, then the nested Sync policy methods. This is an implementation exercise explaining how familiar blocking utilities can be built on a framework, rather than a reason to replace an existing CountDownLatch in ordinary application code.
 
 <span id="tryreleaseshared-publishes-one-transition"></span>
 ## Complete one-shot shared synchronizer

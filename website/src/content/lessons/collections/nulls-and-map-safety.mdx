@@ -15,7 +15,9 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Ask which implementation is being used
 
-“Set accepts null” and “Map is thread-safe” are incomplete statements. Those are interfaces with implementations that make different eligibility, ordering and concurrency promises. A constructor or wrapper can also change the supported operations without changing the variable's declared interface.
+A score register can use no mapping for an unknown student and a present-null mapping for a student awaiting a score. HashMap supports that distinction: get returns null in both cases, while containsKey separates them. A pending-work queue has a different need: poll returning null should unambiguously mean there is no job. ArrayDeque rejects stored null for that reason.
+
+These are **null policies**, the rules for accepting null as stored data. They belong to the concrete implementation and operation. Set and Map are interfaces, so their names alone cannot answer whether a null element, key or value is allowed. Choose the representation after deciding what absence means in the application.
 
 <JavaExample file="CollectionNullPolicies.java" output={"ArrayList=true\nLinkedList=true\nHashSet=true\nTreeSet natural=false\nTreeSet null-order=true\nArrayDeque=false\nPriorityQueue=false\nHashMap key/value=true/true\nLinkedHashMap key/value=true/true\nTreeMap key/value=false/true\nHashtable key/value=false/false\nConcurrentHashMap key/value=false/false\nConcurrentSkipListMap key/value=false/false\nfloor null key=null, entry exists=true"} />
 
@@ -49,6 +51,8 @@ All those structures can still reference a mutable StringBuilder. The program ch
 Factory policies also differ from ordinary mutators. Set.of rejects duplicate supplied elements, while Set.copyOf consumes a collection and collapses duplicates. Map.of rejects duplicate supplied keys, unlike repeated HashMap.put replacement. The factories reject nulls. SimpleImmutableEntry is unmodifiable but permits null components; Map.entry rejects them. Match the exact API, not only the adjective “immutable.”
 
 ## Choose the shared-map contract, not a benchmark winner
+
+The next comparison previews the concurrency module. **Synchronization** coordinates overlapping access; an **atomic operation** behaves as one indivisible update under its specified contract. A multi-call protocol is several steps, such as “if missing, install.” Individually coordinated calls do not automatically make that larger protocol atomic. Read this as a choice of guarantees to study after threads, rather than a recipe for adding locks before those mechanisms are taught.
 
 | Choice | Operation coordination | Traversal/compound-operation responsibility |
 | --- | --- | --- |

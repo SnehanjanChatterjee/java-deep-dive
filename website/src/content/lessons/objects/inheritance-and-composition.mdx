@@ -2,7 +2,7 @@
 title: "Inheritance, dispatch and composition"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Follow overridden methods and delegate behavior through clearly defined object relationships."
+summary: "Understand how a subclass inherits behavior and how collaborating objects provide an alternative."
 order: 180
 version: "Java 8+"
 prerequisites: ["objects/interfaces", "language/method-overloading"]
@@ -28,7 +28,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Extend a type only when its contract still holds
 
-Inheritance makes a class a subtype of another class. A Child can be used through a Parent reference, but the replacement must preserve the behavior promised to callers. Reusing a few lines is not enough reason to expose every superclass operation. Composition instead keeps another object as a collaborator and delegates selected responsibilities.
+**Inheritance** declares one class as a more specific kind of another. In `class Child extends Parent`, Parent is the **superclass** or base class, and Child is the **subclass**. A Child instance can be used where a Parent reference is expected: Child is a **subtype**. The inherited API becomes part of what Child promises its callers.
+
+A subclass can provide an **override**, a new implementation of an inherited instance-method signature. **Dynamic dispatch** chooses that implementation from the actual receiving object at runtime. This differs from **overloading**, where the compiler chooses a signature from declared argument/receiver types. A base-typed variable and a subclass object are therefore not contradictory descriptions: one limits the visible contract, while the other can determine the implementation of a selected call.
+
+**Composition** takes another route: an object keeps a collaborator in a field and **delegates**, meaning forwards selected work to it. Checkout's Pricing collaborator is the earlier example. Inheritance exposes a subtype relationship; composition lets the owner choose which collaborator operations to publish. Reusing a few lines alone is not enough reason to promise that a subtype satisfies every superclass operation.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="compose-a-capability-instead-of-inheriting-storage" aria-hidden="true"></span>
@@ -45,6 +49,22 @@ At the first call, receiver is declared Parent and argument is declared Object. 
 
 An override uses the same parameter signature; return type can narrow covariantly, access cannot narrow and declared checked exceptions cannot broaden. `@Override` catches accidental overloads. Static methods hide rather than override, fields are selected from the declared reference type, and private methods are not inherited for overriding. Constructors are neither inherited nor overridden.
 
+<span id="access-boundaries-and-behavioral-substitution" aria-hidden="true"></span>
+
+## Choose composition by the behavior you expose
+
+<Diagram client:visible definition={"flowchart LR\n C[Checkout] -->|delegates| P[Pricing interface]\n P --> D[DiscountPricing]\n P --> R[RegularPricing]"} caption="A collaborator varies without making Checkout a subtype of a pricing implementation." />
+
+A queue inheriting a general mutable list may expose indexed insertions that bypass first-in, first-out (FIFO) rules. A composed queue keeps storage private and publishes only valid queue operations. A subtype that strengthens preconditions, weakens postconditions or rejects promised operations can compile while violating substitution. A **precondition** is what a caller must supply; a **postcondition** is what a successful operation promises afterward. Split capabilities rather than pretending that UnsupportedOperationException fulfills an operation promised to work.
+
+A strategy supplies a varying behavior, as Pricing does. A decorator implements the same interface and wraps a delegate to add behavior. Explain the responsibility and invariant before choosing a pattern name.
+
+## Check substitution with a caller's ordinary expectation
+
+Suppose a base operation accepts every nonnegative amount and promises a nonnegative result. A subtype accepting only amounts over 100 strengthens the precondition; a caller using the base contract can now fail unexpectedly. Returning a negative result weakens the postcondition. These behavioral errors can compile because the Java type checker checks member signatures and access rules, not every domain promise.
+
+Use an abstract base when a shared invariant and implementation must be maintained across related subclasses. Use an interface when clients need a capability independent of representation. Use delegation when the owner should choose which operations to expose. None of these choices alone guarantees substitutability; document and test the common contract for every implementation.
+
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 <span id="construction-order-and-member-resolution" aria-hidden="true"></span>
 
@@ -55,16 +75,6 @@ An override uses the same parameter signature; return type can narrow covariantl
 Fields first have default values. The subclass constructor implicitly invokes an accessible no-argument super constructor. Base calls report, which dispatches to Child even though Child's field initializer has not run. Its value is still zero; initialValue computes seven when the field initializer is reached, rather than declaring a compile-time constant. After Base returns, Child's initializer runs and its constructor body prints seven. Initializers within one class run in textual order. Static class initialization has related but distinct rules developed in the JVM module.
 
 Avoid overridable calls and leaking this while establishing an invariant. A final method removes the override hazard, but it can still call external callbacks or expose incomplete state. Java 25's permitted work before explicit super/this invocation does not grant unrestricted access to an uninitialized receiver. If a superclass has only argument-taking constructors, supply an appropriate explicit super(...) chain.
-
-<span id="access-boundaries-and-behavioral-substitution" aria-hidden="true"></span>
-
-## Choose composition by the behavior you expose
-
-<Diagram client:visible definition={"flowchart LR\n C[Checkout] -->|delegates| P[Pricing interface]\n P --> D[DiscountPricing]\n P --> R[RegularPricing]"} caption="A collaborator varies without making Checkout a subtype of a pricing implementation." />
-
-A queue inheriting a general mutable list may expose indexed insertions that bypass FIFO rules. A composed queue keeps storage private and publishes only valid queue operations. A subtype that strengthens preconditions, weakens postconditions or rejects promised operations can compile while violating substitution. Split capabilities rather than pretending that UnsupportedOperationException fulfills an operation promised to work.
-
-A strategy supplies a varying behavior, as Pricing does. A decorator implements the same interface and wraps a delegate to add behavior. Explain the responsibility and invariant before choosing a pattern name.
 
 <span id="interface-defaults-and-nested-types" aria-hidden="true"></span>
 <span id="defaults-and-explicit-conflict-resolution" aria-hidden="true"></span>
@@ -89,13 +99,6 @@ For `Parent p = new Child(); p.describe("text");`, can the runtime choose Child.
 No. Only Parent's visible describe(Object) signature participates at that call. The String argument widens to Object, then Child's override of describe(Object) runs. Reassigning p or changing its declared type is different from virtual dispatch. Return types alone cannot create another overload. A base-typed API is useful because it deliberately limits the contract visible to callers.
 
 </details>
-
-
-## Check substitution with a caller's ordinary expectation
-
-Suppose a base operation accepts every nonnegative amount and promises a nonnegative result. A subtype accepting only amounts over 100 strengthens the precondition; a caller using the base contract can now fail unexpectedly. Returning a negative result weakens the postcondition. These behavioral errors can compile because the Java type checker checks member signatures and access rules, not every domain promise.
-
-Use an abstract base when a shared invariant and implementation must be maintained across related subclasses. Use an interface when clients need a capability independent of representation. Use delegation when the owner should choose which operations to expose. None of these choices alone guarantees substitutability; document and test the common contract for every implementation.
 
 For a fully visible distinction between field selection, static hiding and instance overrides, continue with <a href={lessonUrl('learn/objects/member-selection/')}>member selection</a>. <a href={lessonUrl('learn/objects/initialization-order/')}>Initialization order</a> traces static and instance blocks before the construction hazard here, and <a href={lessonUrl('learn/objects/object-relationships/')}>object relationships</a> makes shared versus privately owned collaborators explicit.
 

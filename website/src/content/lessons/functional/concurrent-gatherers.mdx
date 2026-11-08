@@ -1,0 +1,75 @@
+---
+title: "Concurrent intermediate mapping with gatherers"
+module: "modern-concurrency"
+group: "Parallel data processing"
+summary: "Bound mapper work within one stage while preserving result order and defining failure, cancellation and resource ownership."
+order: 1046
+version: "Java 24+; stable API"
+prerequisites: ["functional/parallel-streams", "functional/gatherers", "modern-concurrency/virtual-threads"]
+advanced: true
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+
+## Overlap mapping work without changing the result sequence
+
+A pipeline may need to map independent input values through work that waits for external services. Ordinary map processes the transformation under the stream's evaluation model. Gatherers.mapConcurrent supplies a different intermediate-stage contract: concurrent mapping with a positive maximum concurrency and encounter-ordered results. It uses virtual threads for mapper executions; the virtual-thread lessons explain why cheaper waiting still needs resource limits.
+
+Start with an intentionally small transformation before considering I/O: label 1,2,3 as v1,v2,v3. A concurrency bound of two permits overlapping mapper executions. Even if mapping 2 completes before mapping 1, the result sequence must remain v1,v2,v3. Completion order and encounter order describe different properties.
+
+```java
+final List<String> labels = values.stream()
+        .gather(Gatherers.mapConcurrent(2, value -> "v" + value))
+        .toList();
+```
+
+The gather stage is intermediate: later map/filter/limit operations can still consume its results. It is different from selecting parallelStream for the entire pipeline and from a concurrent terminal collector.
+
+<Diagram client:visible definition={"flowchart LR\n S[Encountered inputs: 1 then 2 then 3] --> A[At most 2 concurrent mapper tasks]\n A --> F[Completion can be out of order]\n F --> O[Ordered emission: v1 then v2 then v3]\n O --> D[Later stream stages]"} caption="A per-stage concurrency bound controls mapper execution; ordered emission can wait for an earlier result." />
+
+## Follow the complete bounded-stage example
+
+The helper rejects a null input list and a nonpositive concurrency bound. Each mapper rejects a null element. It returns an unmodifiable list under Stream.toList's contract; it does not modify the input list or assert worker timing.
+
+<JavaExample file="modern/ConcurrentGatherer.java" output={"mapConcurrent=[v1, v2, v3]"} />
+
+For [3,1,2], labels returns [v3,v1,v2], because the source's encounter order is the requested order, not numeric sorting. Empty input returns an empty list and invokes no mapper. maxConcurrency=1 is valid; it retains the same result contract with only one mapper active at a time.
+
+## Separate stage admission from global resource limits
+
+mapConcurrent(2,mapper) bounds mapper work for that evaluation. Two separate evaluations can each have their own two active operations. The parameter is not a process-wide semaphore, a database connection pool or a limit on all captured resources. Use the ownership and admission protocol matching the external resource.
+
+Ordered emission also means a slow early mapping can delay delivery of later completed results. The operation does not promise that side effects execute or finish in encounter order. Do not use its result order as an audit of remote request timing.
+
+## Preserve failures and cancellation meaning
+
+If a mapper completed exceptionally when its result is due for emission, mapConcurrent rethrows the failure as a RuntimeException and cancels remaining tasks under its documented protocol. It does not convert failure to an absent element. The helper's null-element test makes that boundary observable. If the domain expects recoverable per-item failures, represent those outcomes explicitly rather than catching every failure and returning invented success.
+
+When downstream no longer wants elements, in-progress tasks are cancelled on a best-effort basis. Mapper tasks may already have started. Interruption and cancellation do not establish that a remote side effect was never applied. Mappers owning streams, connections or other resources must close them under their own lifetimes and cooperate with interruption where supported.
+
+## Solved design questions
+
+<details>
+<summary>Can this replace the custom sequential running-total gatherer?</summary>
+
+No. Independent mapping turns one input into its corresponding output. A running prefix depends on preceding values and needs that ordered state relationship. Launching independent tasks does not supply the missing prefix-combination algorithm.
+
+</details>
+
+<details>
+<summary>Does a bound of two mean at most two service requests in the whole program?</summary>
+
+Only if the program's complete admission design makes that true. This stage's per-evaluation bound does not coordinate other evaluations or callers. Share a deliberate resource limiter when the service requires a global bound.
+
+</details>
+
+<JavaExample file="modern/tests/ConcurrentGathererTest.java" />
+
+The tests check encounter-ordered values, empty input, null list/elements and invalid bounds. They do not assert which worker finishes first or treat one successful run as proof of cancellation behavior in an external service.
+
+## References
+
+- [Gatherers.mapConcurrent contract and virtual-thread execution](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Gatherers.html#mapConcurrent(int,java.util.function.Function))
+- [Gatherer lifecycle and downstream demand](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Gatherer.html)
+- [JEP 485: stable gatherers in Java 24](https://openjdk.org/jeps/485)

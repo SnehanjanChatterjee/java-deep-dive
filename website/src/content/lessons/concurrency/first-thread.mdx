@@ -15,11 +15,13 @@ import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 
 ## Give an execution some work
 
-A `Runnable` is an object describing an action with no arguments and no returned result. Its `run()` method is the action. A `Thread` object represents one thread lifetime and provides operations such as start and join. Constructing that object does not create a running execution. Calling its `start()` requests the separate execution that invokes the action; calling `run()` directly invokes an ordinary method on the caller's execution.
+A **task** is a unit of work, such as printing a message or calculating a value. A **thread** is the execution that performs statements. To let main continue independently of a task, we must describe the task and then arrange a second thread to execute it.
 
-Keep three things distinct: the task description, the Thread object used to control one lifetime, and the execution that runs statements. The same Runnable can be called directly by main, passed to a new Thread, or later submitted to an executor. Each choice gives a different owner/execution arrangement without changing the Runnable interface.
+Java's `Runnable` interface describes work through one method, `void run()`: no arguments and no returned value. A `Thread` object is the handle used to start and observe one thread lifetime. Constructing that object records the task and its name; it does not start an execution.
 
-The lambda below creates one Runnable. It prints the name of the thread **currently executing** the action. Creating the lambda does not invoke it.
+For the platform Thread constructed below, `start()` requests an independent execution of the task. An ordinary `run()` call instead executes on the caller's existing thread and returns to that caller. Later, `join()` lets main wait for the started worker to finish. Keep the task object, Thread handle and execution distinct as you follow the program.
+
+The expression `() -> ...` is a **lambda** supplying Runnable's run behavior. The empty parentheses mean no parameters; the expression after the arrow is the action. Creating it describes work without invoking it. Here that action prints the name of the thread executing it, so the output reveals the difference between a direct call and a started worker. Named classes providing the same behavior follow in the next lesson.
 
 ## Run the complete first-thread program
 

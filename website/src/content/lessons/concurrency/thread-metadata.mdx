@@ -13,15 +13,19 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## The receiver and the caller can be different Threads
 
-In main, `worker.getName()` asks about the object referenced by worker. `Thread.currentThread().getName()` asks about the execution making the call. Before start, worker already has a name, while main is still the caller. Inside the started worker's task, currentThread identifies that worker.
+Thread objects carry **metadata**: information describing a thread, such as its name and daemon status. Names help people identify activity in logs. Object identity tells the program which particular Thread handle it holds. These answer different questions even when two names contain identical characters.
 
-A name is a mutable diagnostic label. It need not be unique. Two Thread objects named `same-name` are still two objects and can represent two independent lifetimes. Use an explicit task/role identifier for application decisions; renaming a diagnostic label must not change whose turn it is to update state.
+For an instance call such as `worker.getName()`, the **receiver** is the object before the dot: worker. The **caller** is the thread executing the statement. In main, that call asks for worker's name while main remains the caller. `Thread.currentThread()` instead returns the caller's own Thread handle. Inside a started worker's task, it identifies that worker.
+
+A name is a mutable diagnostic label and need not be unique. The first example constructs two distinct Threads named same-name to separate name equality from object identity. It also runs a **daemon** thread: one whose continued existence alone does not keep the JVM process alive. Main joins that daemon because this particular task is required work. Its priority, a platform scheduling input, is discussed after these stable observations.
 
 ## Observe stable properties
 
 <JavaExample file="ThreadMetadataLesson.java" output={"same name=true\nsame object=false\ncaller is first=false\nworker observed daemon=true\nworker finished=true"} />
 
 The first two Threads are constructed but never started. The program compares their equal name strings and unequal object references. Constructing them does not keep the process alive. The third Thread is configured as daemon **before** start. Its task records its own daemon status, then returns. Main joins it before reading that recorded value.
+
+Use a separate task or role identifier for application decisions. Renaming a diagnostic label must not change which work a thread is responsible for performing.
 
 The join matters even for a daemon. It deliberately keeps main alive until this required work completes; daemon status does not provide a result or cleanup acknowledgement. There is no timing race in the reported final `!isAlive()` because main has completed the join.
 
@@ -31,7 +35,7 @@ The join matters even for a daemon. It deliberately keeps main alive until this 
 | Object reference | Referring to this Thread's operations and lifetime | That the receiver is the current caller |
 | Thread ID | Correlating diagnostic observations | Submission order, application role or permission |
 | Daemon status | Whether this thread alone keeps the JVM running | Lower scheduling priority or reliable final cleanup |
-| Priority | Platform-thread scheduling input | A portable happens-before edge or exact run order |
+| Priority | Platform-thread scheduling input | Shared-data visibility or exact run order |
 
 ## Daemon status is a process-lifetime policy
 
@@ -43,9 +47,9 @@ Virtual threads, studied later, are always daemon and have fixed priority. Their
 
 ## Priority cannot implement a dependency
 
-Platform Thread priorities range from `MIN_PRIORITY` through `MAX_PRIORITY`, with `NORM_PRIORITY` as the normal value. An out-of-range argument is invalid. Scheduling effects depend on the runtime and platform; priority ten does not prove a task starts or finishes before priority one. It also cannot repair a data race, release another thread's lock or guarantee starvation freedom.
+Platform Thread priorities range from `MIN_PRIORITY` through `MAX_PRIORITY`, with `NORM_PRIORITY` as the normal value. An out-of-range argument is invalid. Scheduling effects depend on the runtime and platform; priority ten does not prove a task starts or finishes before priority one. Changing priority also cannot make competing updates safe, release locks held by another thread or guarantee that a waiting worker receives service. The synchronization and liveness chapters explain those separate problems.
 
-To require B to consume A's finished result, use a completion relation such as join or a suitable task result. To protect an invariant, use a sharing protocol. Repeatedly raising priorities is neither protocol.
+To require B to consume A's finished result, use a completion relation such as join or a suitable task result. To preserve a rule about shared data, use a sharing protocol. Repeatedly raising priorities supplies neither kind of coordination.
 
 ## Numeric IDs belong to diagnostics
 

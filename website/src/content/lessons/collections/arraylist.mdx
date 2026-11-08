@@ -16,18 +16,29 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 <span id="concepts"></span>
 ## Resizable arrays and positional order
 
-ArrayList is a resizable array implementing List. It preserves positional order, accepts duplicate and null elements, and provides constant-time indexed access. Its logical size counts elements; capacity counts allocated reference slots. Choose it when indexed reads and traversal dominate and the application does not require thread-safe mutation.
+Use ArrayList when a program needs an ordered sequence whose length changes: a reading list, collected search results, or a list of scores. Positions start at zero. Repeated equal values still occupy separate positions, and a position can shift when a preceding element is inserted or removed.
 
-A list's position is not an object identifier. Inserting before index 3 moves the old element at 3 to 4. References stored in the list still identify the same objects; moving a reference does not clone its referent. Implementations of List share an API but can have very different traversal and mutation costs.
+Create an empty list, append three scores, then insert a score between the first two:
+
+```java
+final List<Integer> scores = new ArrayList<>();
+scores.add(10);
+scores.add(20);
+scores.add(30);                 // [10, 20, 30]
+scores.add(1, 15);             // [10, 15, 20, 30]
+```
+
+The variable exposes the List contract; ArrayList supplies resizable array storage. size is now four. **Capacity** is the number of available reference slots behind the contract; unused slots are not additional list positions. Null and duplicates are permitted by ArrayList, but this first sequence uses only ordinary Integer values.
 
 <span id="worked-example"></span>
 ## Insertion, removal and view examples
 
+Before running the complete example, distinguish the two remove calls: remove(1) selects a position and returns 15, leaving [10,20,30]. remove(Integer.valueOf(20)) selects a value and returns true, leaving [10,30]. The primitive and reference argument types choose different overloads at compile time.
+
 <JavaExample file="ArrayListExample.java" />
 
-The first output is `[10, 15, 20, 30]`: indexed insertion shifts the suffix. `remove(1)` removes by position and returns 15. `remove(Integer.valueOf(20))` selects the Object overload and removes that value, leaving `[10, 30]`. Overload selection matters especially for List of Integer.
+The first output shows the insertion above. The final [99,30] results from replacing index zero through a subList backed view. A view changes the same underlying position; new `ArrayList<>`(view) would instead copy the visible references into an independent container. Neither operation clones element objects.
 
-The subList is a backed range view. Setting its first element changes the original list to `[99, 30]`. Creating that view is not a copy and does not establish independent ownership. `new ArrayList<>(view)` would detach the container, but still share mutable element objects.
 
 ## Construct storage, then use the complete positional API
 
@@ -74,7 +85,7 @@ A structural modification changes size or otherwise structurally changes storage
 
 ### Explain iterator mutation as a state machine
 
-An iterator distinguishes the next cursor position from the last element it returned. Its remove operation deletes that last returned element and becomes unavailable until another qualifying traversal. A ListIterator additionally supports backward traversal, insertion and replacement. Adding through the iterator changes its cursor relationship; it does not mean the newly added element is automatically the last-returned element removable by remove.
+Use the cursor/last-returned protocol from the iteration chapter. For ArrayList, a supported iterator removal also shifts the surviving suffix and updates its expected modification state. A ListIterator can edit in both directions, but newly added values are not automatically last-returned values.
 
 Fail-fast bookkeeping compares an expected modification count with the container's current structural state. It catches some misuse, including misuse in one thread. It is not synchronization, and a missing ConcurrentModificationException is not evidence that racing access was safe. Replacing a value is different from changing the logical size, but neither distinction authorizes unsynchronized access to shared mutable elements.
 

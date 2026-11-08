@@ -15,11 +15,9 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Add newer operations to the established pipeline model
 
-Java 9 added prefix operations and convenient source forms. Java 16 added mapMulti families and Stream.toList. They extend the same source/intermediate/terminal model; they do not change ordinary streams into persistent reusable containers.
+A sequence may contain a meaningful boundary: read the positive prefix until the first zero, then process the remainder separately. takeWhile and dropWhile express this encounter-order task; filtering asks a different per-element question. A second task may emit both a value and its negative from one input, which mapMulti can express.
 
-<JavaExample file="modern/ModernStreamOperations.java" output={"ofNullable=0\nfinite iterate=[1, 2, 3, 4, 5]\ntakeWhile=[1, 2]\nfilter=[1, 2, 3]\ndropWhile=[0, 3]\nmapMulti=[2, -2]\ntoList mutation rejected\ntoList retains null=null"} />
-
-The full program requires Java 16 because it combines these families. Each method's introduction version matters when extracting a smaller fragment for an older target.
+The established pipeline model still applies. Prefix operations, ofNullable and finite iterate require Java 9; mapMulti and Stream.toList require Java 16. The combined downloadable program therefore needs 16+, while each smaller feature is labelled at its point of use.
 
 ## Stop iteration using an explicit predicate
 
@@ -52,6 +50,10 @@ Stream.toList, Java 16, is terminal and returns an unmodifiable list in encounte
 Collectors.toList (8+) does not promise a particular implementation or mutability. Collectors.toUnmodifiableList (10+) rejects nulls. List.of (9+) also rejects nulls but is a factory over supplied values rather than a stream terminal. new ArrayList&lt;&gt;(result) explicitly asks for a mutable independent container.
 
 None of those operations deep-copies arbitrary mutable elements. An unmodifiable list of StringBuilder can still observe text edits through an alias. The collection-ownership chapters supply the complete backing/snapshot demonstration.
+
+<JavaExample file="modern/ModernStreamOperations.java" output={"ofNullable=0\nfinite iterate=[1, 2, 3, 4, 5]\ntakeWhile=[1, 2]\nfilter=[1, 2, 3]\ndropWhile=[0, 3]\nmapMulti=[2, -2]\ntoList mutation rejected\ntoList retains null=null"} />
+
+The full program requires Java 16 because it combines these families. Each method's introduction version matters when extracting a smaller fragment for an older target.
 
 ## Worked questions
 

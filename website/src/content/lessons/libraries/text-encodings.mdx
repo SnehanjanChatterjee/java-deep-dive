@@ -14,11 +14,17 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## A byte count is not a character count
 
-A String exposes UTF-16 code units. A file or network protocol carries bytes. A charset defines the translation between them. The euro sign is one UTF-16 code unit but three UTF-8 bytes: E2 82 AC. A supplementary character can occupy two UTF-16 units and four UTF-8 bytes.
+A file stores bytes; String exposes UTF-16 code units. **Encoding** turns text into bytes, and **decoding** turns bytes back into text under an agreed charset. UTF means Unicode Transformation Format: UTF-16 uses 16-bit code units, while UTF-8 encodes Unicode scalar values using byte sequences.
+
+For the euro sign, String.length is one but UTF-8 needs three bytes, written in hexadecimal as E2 82 AC (two hex digits describe one byte). A supplementary code point can need two UTF-16 units and four UTF-8 bytes. The two counts answer different questions.
 
 An explicit charset means the writer and reader use the same declared representation. It is not a claim that every input byte sequence is valid text. A decoder must also choose whether malformed input is rejected or replaced.
 
 ## Decode a complete bounded value
+
+First encode the complete value: `byte[] encoded = "€".getBytes(StandardCharsets.UTF_8)`. The resulting array has length three. Decoding that whole valid sequence under UTF-8 reconstructs the original text. For input validation, decodeStrict creates a decoder with REPORT error actions so malformed input fails instead of silently changing the data.
+
+ByteBuffer.wrap supplies the byte-array storage to this decoder API without copying it. The buffer chapter develops its cursor; this use only needs the whole bounded array as input.
 
 <JavaExample file="TextEncodingLab.java" output={"1\n3\n€\nincomplete UTF-8 rejected"} />
 
@@ -38,14 +44,6 @@ Decoding reconstructs characters. It does not canonicalize case, Unicode normali
 
 A delimiter protocol must define whether a delimiter is a byte sequence or a decoded character rule. A length prefix must state byte length versus character count. The euro sign needs length three in the UTF-8 framing protocol, even though text.length() is one.
 
-## Complete the malformed-input exercise
-
-<JavaExample file="TextEncodingLabTest.java" />
-
-The solution accepts complete UTF-8 and empty input, rejects a truncated multibyte sequence and a malformed continuation, and rejects null input. An empty byte array is valid empty text; it is not EOF by itself. EOF is reported by the underlying source and determines whether more bytes can still arrive.
-
-For strict text input, call decodeStrict once the declared complete payload is present. For unbounded text streams, use a Reader/decoder with a deliberate incremental protocol rather than reading all content just to get one complete byte array.
-
 ## Carry decoder state across one-byte input chunks
 
 <JavaExample file="EncodingBoundaryLab.java" output={"units=2, points=1, bytes=4\nreconstructed=true\nsurrogate rejected"} />
@@ -63,6 +61,14 @@ The Reader is a character-stream API, not a code-point iterator. Reading into a 
 | Stateful byte stream to text | Reader carrying decoder state | InputStreamReader supplied with the configured decoder |
 
 The unpaired high surrogate has no complete Unicode scalar value to encode, so the strict encoder rejects it. Replacement can be appropriate for best-effort display; it changes the data and should not silently become a protocol validation policy. Charset instances can be shared, but encoder/decoder instances carry operation state and need their own ownership.
+
+## Complete the malformed-input exercise
+
+<JavaExample file="TextEncodingLabTest.java" />
+
+The solution accepts complete UTF-8 and empty input, rejects a truncated multibyte sequence and a malformed continuation, and rejects null input. An empty byte array is valid empty text; it is not EOF by itself. EOF is reported by the underlying source and determines whether more bytes can still arrive.
+
+For strict text input, call decodeStrict once the declared complete payload is present. For unbounded text streams, use a Reader/decoder with a deliberate incremental protocol rather than reading all content just to get one complete byte array.
 
 ## References
 

@@ -17,6 +17,15 @@ Two algorithms can return the same result while doing very different amounts of 
 
 Start with counts instead of a stopwatch. A loop that visits n items once performs n body executions. Two nested loops that each range over n items perform n × n pair visits. This difference becomes more significant as n increases, even when both programs finish quickly for tiny examples.
 
+Before running the file, inspect the two counted bodies. For n = 4, the first increments four times; the second increments four times for each of four outer iterations.
+
+```java
+for (int i = 0; i < n; i++) { count++; }
+for (int row = 0; row < n; row++) {
+    for (int column = 0; column < n; column++) { pairs++; }
+}
+```
+
 <JavaExample file="OperationCounts.java" output={"1:1:1\n2:2:4\n4:4:16\n8:8:64"} />
 
 Each line prints input size, linear count and quadratic count. Doubling 4 to 8 doubles the first count from 4 to 8 and quadruples the second from 16 to 64. The code does not measure milliseconds. A counter increment is the selected unit of work in this experiment.
@@ -49,20 +58,7 @@ The sorted-array search lesson repeatedly removes about half the candidate range
 
 For r rows with c cells in every row, a full visit takes r×c cell visits, not r² unless the dimensions happen to be equal. For jagged rows of lengths c₀,c₁,..., the work is their sum, plus visiting the row containers. A method receiving two separate lists of lengths n and m can likewise have O(n+m) sequential traversal or O(nm) all-pairs work.
 
-Building a hash membership index from m values and checking n candidates has expected O(m+n) key operations under suitable hashing. It also stores O(m) memberships. Repeatedly scanning the second list instead can take O(nm) comparisons. State both sizes and include index construction; quoting only the later lookup cost omits part of the algorithm.
-
-For geometric growth with an initial capacity of two, append counts make the amortized argument concrete:
-
-| Append number | Capacity after append | References copied by this expansion |
-| --- | --- | --- |
-| 1–2 | 2 | 0 |
-| 3 | 4 | 2 |
-| 4 | 4 | 0 |
-| 5 | 8 | 4 |
-| 6–8 | 8 | 0 |
-| 9 | 16 | 8 |
-
-Nine element writes and fourteen copied references are separate cost components. The total remains proportional to n as the sequence grows; the ninth call itself still copies eight references.
+A later application builds a hash membership index: a structure storing values so membership can be queried without a full scan. Building that index from m values and checking n candidates has expected O(m+n) key operations under suitable hashing. It also stores O(m) memberships. Repeatedly scanning the second list instead can take O(nm) comparisons. State both sizes and include index construction; quoting only the later lookup cost omits part of the algorithm.
 
 ## Distinguish best, worst and expected cases
 
@@ -79,6 +75,19 @@ Imagine a growable array that doubles whenever its current storage is full. Most
 Across a long sequence of appends, the copied prefixes have sizes such as 2, 4, 8 and 16. Their geometric sum stays proportional to the total number of appended elements. Including the ordinary element writes, total work across n appends remains O(n), giving amortized O(1) per append under this growth policy.
 
 Amortized analysis distributes a sequence's total cost; it does not promise that each call is fast. It also does not require random inputs in the way an expected-case analysis does. The dynamic-array implementation chapter will connect this accounting to its actual capacity policy and copy operation.
+
+For geometric growth with an initial capacity of two, append counts make the amortized argument concrete:
+
+| Append number | Capacity after append | References copied by this expansion |
+| --- | --- | --- |
+| 1–2 | 2 | 0 |
+| 3 | 4 | 2 |
+| 4 | 4 | 0 |
+| 5 | 8 | 4 |
+| 6–8 | 8 | 0 |
+| 9 | 16 | 8 |
+
+Nine element writes and fourteen copied references are separate cost components. The total remains proportional to n as the sequence grows; the ninth call itself still copies eight references.
 
 ## Count storage as carefully as work
 

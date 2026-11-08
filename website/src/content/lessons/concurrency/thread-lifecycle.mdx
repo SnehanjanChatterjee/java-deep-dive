@@ -19,9 +19,13 @@ import BasicThreadMotion from '../../../components/BasicThreadMotion.jsx';
 <span id="interview-questions-with-reasoning"></span>
 ## A sleeping worker needs a way to stop
 
-Suppose a worker periodically checks for work. Its owner no longer needs it. Returning from the owner's method does not cancel the worker, and interrupting does not forcibly unwind arbitrary Java code. A reliable design gives the worker a cancellation signal it understands and keeps an owner responsible for observing termination.
+The **lifecycle** of a thread is the progression from an unstarted object, through its started execution, to termination. **Cancellation** is an application decision to stop needing some work. The thread's **owner** is the code responsible for starting it, requesting cancellation when needed and accounting for its eventual end.
 
-The first-thread lesson introduced create/start/join. Here we add one operation: `interrupt`, a cooperative request. The task must either inspect the interrupted status or use an operation whose contract responds to interruption.
+Returning from the method that started a Thread does not itself end that Thread's execution. Its task needs to reach a return or other terminating outcome under the program's lifetime policy.
+
+Suppose that owner starts a worker which periodically waits before checking for more work. If the owner wants to stop it, the worker needs a way to notice the request and leave its run method. Java supplies an **interruption status**, an on/off flag associated with each Thread. Calling interrupt requests interruption; the task chooses a response at a safe point.
+
+There are two ordinary response paths in the program below. A status check can notice the request before a wait. An **interruptible** wait such as Thread.sleep can instead report the request by throwing InterruptedException. The worker responds by leaving its body through finally cleanup, then main joins to observe termination. This is cooperative cancellation: the request and the actual end are separate steps.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -44,12 +48,14 @@ These are Java virtual-machine states, rather than a direct inventory of operati
 
 ## Read states without guessing timing
 
+A **monitor** is Java's built-in object lock: one thread can own it while executing a protected region. The synchronization chapters teach its use. For this lifecycle table, it is enough to know that BLOCKED specifically describes a thread waiting to enter such a monitor; other waiting mechanisms have different state labels.
+
 | Thread.State | Useful interpretation | What it cannot prove |
 | --- | --- | --- |
 | NEW | Created but not started | That calling run directly starts it |
 | RUNNABLE | Executing or eligible to execute | Continuous CPU use |
 | BLOCKED | Waiting to enter an intrinsic monitor | Every kind of lock wait |
-| WAITING | An indefinite supported wait, join or park | Deadlock by itself |
+| WAITING | An indefinite supported wait, such as join | A dependency cycle or permanent lack of progress by itself |
 | TIMED_WAITING | A bounded supported wait or sleep | An exact return-to-execution deadline |
 | TERMINATED | Execution ended | Application success |
 
@@ -59,7 +65,7 @@ These are Java virtual-machine states, rather than a direct inventory of operati
 
 The worker marker follows one legal path in which it reaches sleep before the owner interrupts. Main can itself enter WAITING while joining; that does not mean the worker is still in its timed sleep. BLOCKED is reserved here for intrinsic-monitor contention, demonstrated by the counter and mailbox models. A thread need not visit every state displayed on the board. [Java Thread.State definitions](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Thread.State.html)
 
-getState is a changing diagnostic snapshot. A ReentrantLock contender can park rather than appear BLOCKED. NEW before start and TERMINATED after a successful join are stable boundaries; sampling a state after an arbitrary sleep is not a coordination technique.
+GetState is a changing diagnostic snapshot. Library locks such as ReentrantLock can suspend a contender using a different waiting mechanism, called parking, rather than putting it in BLOCKED. Their later chapters explain that mechanism. NEW before start and TERMINATED after a successful join are stable boundaries; sampling a state after an arbitrary sleep is not a coordination technique.
 
 ## Interruption is a cooperative protocol
 

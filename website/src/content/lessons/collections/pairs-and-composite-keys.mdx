@@ -15,11 +15,16 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Two values can form one logical key
 
-A coordinate (3,5) or an association of two identifiers can be a single set member. Two separately allocated pair objects should count as one only if their declared equality says so. HashSet can store arbitrary pair types; the problem is not that it cannot “understand pairs.”
+A grid location needs both row and column. Storing only row 3 cannot distinguish (3,5) from (3,8). A **pair** groups two components into one value, and a **composite key** uses that grouped value as a map key or set member.
+
+Choose the equality rule first: these are ordered coordinates, so (3,5) equals another (3,5), while (5,3) is different. Two distinct allocations can represent the same coordinate. To make HashSet use that rule, Pair implements equals with corresponding component comparisons and hashCode from the same components.
+
+Predict the first four outputs: adding (3,5) succeeds; adding another equal (3,5) returns false; adding (5,3) succeeds; the set has size two. HashSet supports this just as it supports String values, provided the value type supplies its consistent contract.
 
 <JavaExample file="PairValues.java" output={"true\nfalse\ntrue\nsize=2\ntext collides=true\npairs equal=false"} />
 
-The first (3,5) insertion succeeds. Another equal (3,5) returns false. (5,3) is different under this ordered-pair contract, giving size two. No output depends on the set's encounter order.
+The last two lines test a different issue: printable text can be ambiguous even when the typed pairs are different. That encoding problem is developed after the equality implementation.
+
 
 ## Connect both type parameters to the representation
 

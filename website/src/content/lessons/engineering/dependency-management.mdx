@@ -18,6 +18,12 @@ import bomPom from '../../../../../java-examples/projects/dependency-conflict/co
 import managedAppPom from '../../../../../java-examples/projects/dependency-conflict/app/pom-bom.xml?raw';
 import {url as lessonUrl} from '../../../lib/paths';
 
+## Dependencies form a graph of requested artifacts
+
+A **dependency** is an external artifact that a project needs for compilation, testing or execution. Maven identifies artifacts using coordinates such as group, artifact name and version. A **direct dependency** is declared by this project; a **transitive dependency** is requested through another dependency. Those relationships form a graph.
+
+Different paths can request different versions of the same artifact. Maven applies mediation and management rules to select versions for the build. We will trace one direct and one transitive request, inspect the selected graph, and then separate dependency scopes from packaging. A bill of materials (**BOM**) manages versions; importing it does not itself add all the listed libraries.
+
 ## Explain which library actually reaches the application
 
 An application uses a library directly. Its adapter also depends on an older version of that library. Which version is compiled and launched? Maven resolves a dependency graph; importing a Java class does not select or download its JAR.
@@ -74,6 +80,8 @@ mvn clean install
 mvn -pl app dependency:tree -Dverbose -Dincludes=study.course
 java -cp app/target/classes:adapter/target/classes:shared-v2/target/classes study.course.app.Main
 ```
+
+In these commands, `-pl app` selects the app project, `-Dverbose` sets a plugin property requesting additional tree detail, and `-Dincludes=study.course` narrows the displayed artifacts. The later `-f` commands select an alternate POM file. These switches change this Maven invocation; they do not rewrite machine-wide configuration.
 
 install first builds the modules and places their artifacts/POMs in this project's local repository. It is a local operation; deploy would publish to a configured remote repository and is not needed here. The output directories are Maven-generated. Use a semicolon classpath separator on Windows.
 

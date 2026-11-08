@@ -19,17 +19,13 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="fork-and-join-mistakes"></span>
 ## Split the calculation before choosing a scheduler
 
-To sum an array, workers can accumulate into one shared counter, but then every addition needs coordination. A different design gives each task a disjoint range, computes a local sum, then combines completed results. Parallelism is possible because the data ownership and combination are explicit.
+**Divide-and-conquer** solves a problem by splitting it into smaller problems of the same kind, solving those parts and combining their answers. For an array sum, give each task a separate range and a local accumulator. Combining finished partial sums avoids making every array element update one shared counter.
 
-A RecursiveTask returns a value; RecursiveAction represents work without one. ForkJoinPool supplies scheduling for these related tasks. The algorithm still needs a base case, a lawful partition and a combination operation.
+A **recursive task** repeats that split for a range that is still too large. Its **base case** is the small range handled by an ordinary loop. The **threshold** is the maximum range length that takes this sequential path; making child ranges smaller ensures recursion eventually reaches it.
 
-<span id="worked-example"></span>
-<span id="java-implementation"></span>
-## Trace disjoint range sums
+The source uses half-open ranges: [from,to) includes from and excludes to. Child ranges [from,mid) and [mid,to) share no elements and together cover the parent. That simple ownership rule lets their calculations proceed independently while the input remains read-only.
 
-For `[1,2,3,4,-5]` and threshold two, range [0,5) splits at two. The left [0,2) sums one plus two. The right [2,5) splits into [2,3), sum three, and [3,5), sum minus one. Three plus two is the final five.
-
-<Diagram client:visible definition={"flowchart TD\n R[Range 0 to 5] --> L[0 to 2: sum 3]\n R --> Q[2 to 5]\n Q --> A[2 to 3: sum 3]\n Q --> B[3 to 5: sum minus 1]\n A --> C[Right total 2]\n B --> C\n L --> T[Combined total 5]\n C --> T"} caption="Half-open child ranges are disjoint and cover the parent. Every input contributes exactly once." />
+ForkJoinPool schedules these related tasks. **Fork** makes a child task available for execution; **join** obtains a child's completed outcome. This join concerns a task result, rather than a Thread's lifetime. RecursiveTask supplies a compute method returning a value; RecursiveAction is the corresponding form without a returned result. First follow the small sum program, then trace its task tree and scheduling mechanics.
 
 ## Implement a recursive range sum
 
@@ -40,6 +36,14 @@ Sum validates null input and a positive threshold, creates an explicitly owned p
 Forking makes work available; it does not guarantee another worker starts it immediately. Computing one branch locally avoids creating unnecessary task handling for both halves. An empty input returns the additive identity zero. Every recursive child is smaller, so a positive threshold ensures the base case is reached.
 
 The input array is shared read-only by contract. A final array reference does not prevent a caller from mutating its elements; keep the input stable until completion or design a snapshotting API. Each task's accumulator is local, avoiding a shared mutable total.
+
+<span id="worked-example"></span>
+<span id="java-implementation"></span>
+## Trace disjoint range sums
+
+For `[1,2,3,4,-5]` and threshold two, range [0,5) splits at two. The left [0,2) sums one plus two. The right [2,5) splits into [2,3), sum three, and [3,5), sum minus one. Three plus two is the final five.
+
+<Diagram client:visible definition={"flowchart TD\n R[Range 0 to 5] --> L[0 to 2: sum 3]\n R --> Q[2 to 5]\n Q --> A[2 to 3: sum 3]\n Q --> B[3 to 5: sum minus 1]\n A --> C[Right total 2]\n B --> C\n L --> T[Combined total 5]\n C --> T"} caption="Half-open child ranges are disjoint and cover the parent. Every input contributes exactly once." />
 
 <span id="work-stealing-representation"></span>
 ## Follow a compute call through its return value

@@ -2,7 +2,7 @@
 title: "Console input, parsing and borrowed streams"
 module: "reliability"
 group: "Resource ownership"
-summary: "Read lines or tokens, distinguish EOF from invalid data and close only input the operation owns."
+summary: "Read text while a program runs, interpret it as values and keep input ownership clear."
 order: 315
 version: "Java 8+"
 prerequisites: ["reliability/exceptions-and-resources", "language/string-operations", "language/arrays"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Separate obtaining text from interpreting it
 
-Command-line arguments are Strings supplied when a program starts. Console input arrives later from a stream and may block waiting for a person or another process. Reading a line obtains a representation; parsing decides whether that representation is a valid value. Treat end-of-input, malformed text and an I/O failure as separate outcomes.
+An interactive program must obtain data before it can calculate with it. **Command-line arguments** arrive as Strings when the program starts. **Standard input**, exposed as System.in, is a stream from which the running program can receive later input, often from a keyboard or a shell pipe. A **stream** supplies a sequence over time, so reading may block until input becomes available.
+
+Java distinguishes byte input from character input. A **Reader** exposes text units; an InputStreamReader decodes incoming bytes using a chosen charset. A **BufferedReader** adds buffering and a readLine operation. A **Scanner** instead helps recognize tokens, such as whitespace-separated integers. These wrappers do different jobs and can hold their own buffered state.
+
+Reading obtains text; **parsing** interprets it as a value such as an int. **End of file/input (EOF)** means no more input is available, not an empty String or the number zero. **Input/output (I/O)** failures report problems obtaining data, while malformed text and a negative-but-well-formed number fail at later interpretation/domain boundaries. The example keeps those outcomes distinct and keeps borrowed-input ownership explicit.
 
 <JavaExample file="ConsoleInputLesson.java" output={"12\n12:remaining=[]:name=Ada"} />
 

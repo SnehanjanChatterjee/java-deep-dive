@@ -17,10 +17,20 @@ import Diagram from '../../../components/Diagram.jsx';
 
 A search can legitimately find no matching value. Returning Optional makes that outcome visible in the method's result type. A returned Optional should itself never be null. First declare what empty means: a missing configuration value is different from a malformed present value or a failed network request.
 
-Create a known value with Optional.of(value), a nullable boundary with ofNullable(value), or deliberate absence with empty(). of(null) fails immediately. Optional is a value-based result abstraction; do not rely on identity, synchronize on it or assume it is Serializable.
+`Optional<T>` contains either one non-null T or no value. For an optional configuration port, Optional.of(443) means present and Optional.empty() means missing. The caller decides what to do about missing data:
+
+```java
+final Optional<Integer> configured = Optional.of(443);
+final int port = configured.orElse(8080); // 443
+final int defaultPort = Optional.<Integer>empty().orElse(8080); // 8080
+```
+
+ofNullable translates a nullable boundary into those two cases; of(null) rejects an invalid promised value. isPresent queries presence; get retrieves only when presence is already guaranteed and throws for empty. Prefer a fallback, action or required-value failure when it directly expresses the caller's policy. Optional itself should not be null.
 
 <span id="worked-example" aria-hidden="true"></span>
 ## Transform a present value and preserve absence
+
+For the first text result, start with present " java ", trim it with map, then use filter to retain only nonempty text. The intermediate value is "java", so retrieval returns it. The second expression starts empty, so it has no text to transform and returns its fallback.
 
 <JavaExample file="FunctionalValues.java" output={"java\nfallback"} />
 
@@ -40,11 +50,11 @@ The example is a small composition, not an invocation-count experiment. The sepa
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 ## Observe eager and lazy fallback
 
-<JavaExample file="OptionalFallbackLab.java" output={"present eager: present, calls=1\npresent lazy: present, calls=0\nempty eager: fallback, calls=1\nempty lazy: fallback, calls=1"} />
-
 Java evaluates arguments before entering a method. With orElse(fallback(counter)), fallback runs even when the value is present; its result is then discarded. With orElseGet(() -> fallback(counter)), constructing the supplier does not execute its body. Optional invokes it only for empty. Each observation gets its own counter, so prior runs cannot contaminate the result.
 
-This difference concerns work and failures, not just speed. If the eager fallback throws, orElse is never entered even for a present Optional. A lazy fallback can still throw when absence actually requires it. Supplier does not promise memoization across separate calls.
+<JavaExample file="OptionalFallbackLab.java" output={"present eager: present, calls=1\npresent lazy: present, calls=0\nempty eager: fallback, calls=1\nempty lazy: fallback, calls=1"} />
+
+The present/eager counter reaches one even though its returned text stays present. Present/lazy is zero; both empty cases need one fallback call. This difference concerns work and failures, not just speed. If the eager fallback throws, orElse is never entered even for a present Optional. A lazy fallback can still throw when absence actually requires it. Supplier does not promise memoization across separate calls.
 
 <JavaExample file="OptionalFallbackLabTest.java" />
 

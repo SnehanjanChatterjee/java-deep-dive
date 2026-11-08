@@ -2,7 +2,7 @@
 title: "Packages, classpaths and development tools"
 module: "execution"
 group: "Tools and project structure"
-summary: "Organize a greeting into a package, select a classpath and launch the same code from a terminal or IDE."
+summary: "Organize class names and files so the compiler and launcher can find a growing program."
 order: 30
 version: "Java 8+"
 prerequisites: ["execution/compilation-and-jvm"]
@@ -14,7 +14,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Put a class in a namespace
 
-The <a href={lessonUrl('learn/execution/compilation-and-jvm/')}>compilation and JVM walkthrough</a> followed one unchanged greeting into a running main. Now give that class a package and a deliberate output location. Two projects can both define a class named Hello. A package gives a type a qualified name such as `study.Hello`. It also participates in Java access control. An import only lets source use a shorter name: it does not download a library, load a class or grant access.
+As a program grows, several source files must be named, found and compiled together. A **package** groups named Java types in a namespace. A namespace distinguishes names that would otherwise collide: two projects may both declare Hello, while `study.Hello` and `tools.Hello` are different qualified names. A **qualified name** includes the package before the class name.
+
+A package also participates in source access control, developed after classes and objects. Here its immediate purpose is organization. Keep three things distinct: the package names the class, the directory holds its file, and the **classpath** tells the compiler or launcher where class definitions can be found. An **import** merely lets source use a shorter accessible name; it does not download, load or grant access to a class.
+
+The <a href={lessonUrl('learn/execution/compilation-and-jvm/')}>compilation walkthrough</a> used an unqualified greeting. Now put that same main body in package study, so it has the binary name `study.Hello`. Binary name means the name used in compiled class references and the launch command; for this top-level class it matches its qualified source name.
 
 Create `src/study/Hello.java`:
 
@@ -30,28 +34,23 @@ java -cp out study.Hello
 
 Run from the directory containing `src`. `-d out` creates `out/study/Hello.class`. The classpath contains the directory **above** `study`; the launcher appends the package path to that root. Output is `Hello, Java!`. The working directory matters when resolving relative paths.
 
+## Keep imports, package names and files distinct
+
+The package declaration names the type's namespace; the directory layout mirrors that namespace for predictable tools and classpath lookup. A package named study.tools is distinct from study: a subpackage does not automatically receive package access to its parent's types. An import shortens an accessible type name in source and cannot bypass an access restriction. Java.lang types such as String and System are available without individual imports.
+
+An on-demand import such as java.util.* does not include java.util.concurrent subpackages. Two single-type imports with the same simple name conflict; use an unambiguous qualified type name where needed. After static methods are familiar, a static import can similarly shorten an accessible static member's name, such as Math.max. It does not make instance state static, and an ordinary import does not copy any class into a project. [JLS imports and packages](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.5)
+
+Prefer conventional UpperCamelCase type names, lowerCamelCase methods/variables and lowercase package components. These are readability conventions rather than an alternative type system. Keep one public top-level type in its matching source filename for the javac workflow shown here. A file with no package declaration belongs to an unnamed package; use named packages for code intended to form a larger reusable project.
+
 ## Know which tool owns which job
 
 Javac compiles source. Java launches a program. Javadoc generates API documentation from source comments, and javap inspects compiled class files. An IDE combines these operations but still selects a particular JDK and launch configuration. Bytecode instructions and call frames are developed in the JVM module; they are not prerequisites for this greeting.
 
-Build into a separate output tree so stale class files do not silently compete with new ones. A JAR is an archive of classes/resources. `java -jar app.jar` additionally needs executable-JAR metadata; a library JAR need not be executable. In `java -cp out study.Hello one two`, the words after the class name become application arguments. The classpath option and class name are launcher inputs, not entries in the application's args array. Arrays and argument processing are taught in the language module.
-
-## Diagnose the failing phase
-
-| Symptom | Investigate first |
-| --- | --- |
-| Compiler cannot find symbol | Spelling, imports, compilation dependencies |
-| Could not find main class | Qualified name, classpath root, selected working directory |
-| UnsupportedClassVersionError | Compiler target and runtime JDK |
-| NoSuchMethodError | Runtime dependency differs from the binary used to compile |
-| ClassNotFoundException | Explicitly requested class unavailable to that loader |
-| NoClassDefFoundError | Missing required definition or earlier failed class initialization |
-
-A runtime linkage error is not repaired by adding an import to already compiled source. Module paths resolve named modules and their encapsulation; putting a modular JAR on the classpath does not make it a named module. Detailed loading and module behavior belongs to the later JVM/platform chapters.
+Build into a separate output tree so stale class files do not silently compete with new ones. A **Java archive (JAR)** bundles classes and other resources into one file. `java -jar app.jar` additionally needs executable-JAR metadata; a library JAR need not be executable. In `java -cp out study.Hello one two`, the words after the class name become application arguments. The classpath option and class name are launcher inputs, not entries in the application's args array. Arrays and argument processing are taught in the language module.
 
 ## Target the intended runtime
 
-On Java 9+, `javac --release 8` selects supported source syntax, class-file format and the platform API for Java 8. `-source` and `-target` alone can leave newer library calls visible. Release targeting does not rewrite incompatible third-party dependencies. Preview features require the matching release and flags at compilation and execution.
+On Java 9+, `javac --release 8` selects supported source syntax, class-file format and the platform application programming interface (API) for Java 8: the library types and operations available to compile against. `-source` and `-target` alone can leave newer library calls visible. Release targeting does not rewrite incompatible third-party dependencies. Preview features require the matching release and flags at compilation and execution.
 
 A process exit status is separate from text printed to the console. Record the exact launch command, JDKs, dependencies and arguments when reproducing a failure. Changing several of these at once can hide the cause.
 
@@ -68,13 +67,20 @@ JShell is useful for isolated expressions, but implicit imports and the selected
 
 </details>
 
-## Keep imports, package names and files distinct
+## Diagnose the failing phase
 
-The package declaration names the type's namespace; the directory layout mirrors that namespace for predictable tools and classpath lookup. A package named study.tools is distinct from study: a subpackage does not automatically receive package access to its parent's types. An import shortens an accessible type name in source and cannot bypass an access restriction. Java.lang types such as String and System are available without individual imports.
+For the greeting, first distinguish a source error reported by javac from a class-name/classpath error reported by java. The remaining names below are a later lookup reference: exceptions, linkage and modules get complete explanations after methods and object types. They are not required vocabulary for running this greeting.
 
-An on-demand import such as java.util.* does not include java.util.concurrent subpackages. Two single-type imports with the same simple name conflict; use an unambiguous qualified type name where needed. After static methods are familiar, a static import can similarly shorten an accessible static member's name, such as Math.max. It does not make instance state static, and an ordinary import does not copy any class into a project. [JLS imports and packages](https://docs.oracle.com/javase/specs/jls/se25/html/jls-7.html#jls-7.5)
+| Symptom | Investigate first |
+| --- | --- |
+| Compiler cannot find symbol | Spelling, imports, compilation dependencies |
+| Could not find main class | Qualified name, classpath root, selected working directory |
+| UnsupportedClassVersionError | Compiler target and runtime JDK |
+| NoSuchMethodError | Runtime dependency differs from the binary used to compile |
+| ClassNotFoundException | Explicitly requested class unavailable to that loader |
+| NoClassDefFoundError | Missing required definition or earlier failed class initialization |
 
-Prefer conventional UpperCamelCase type names, lowerCamelCase methods/variables and lowercase package components. These are readability conventions rather than an alternative type system. Keep one public top-level type in its matching source filename for the javac workflow shown here. A file with no package declaration belongs to an unnamed package; use named packages for code intended to form a larger reusable project.
+A runtime linkage error is not repaired by adding an import to already compiled source. Module paths resolve named modules and their encapsulation; putting a modular JAR on the classpath does not make it a named module. Detailed loading and module behavior belongs to the later JVM/platform chapters.
 
 ## Tools references
 

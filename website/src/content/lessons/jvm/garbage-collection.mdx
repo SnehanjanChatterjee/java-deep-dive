@@ -17,6 +17,12 @@ import {url as lessonUrl} from '../../../lib/paths';
 <span id="the-collector-reclaims-unreachable-state"></span>
 <span id="a-concrete-retaining-path-lab"></span>
 <span id="interview-questions-with-worked-answers"></span>
+## What garbage collection does
+
+**Garbage collection (GC)** is automatic management of storage occupied by objects that are no longer needed under the runtime’s reachability rules. Application code creates objects and changes references; a collector discovers which objects must remain usable and reclaims eligible storage. Removing one reference does not prove an object is unreachable.
+
+A collector must preserve live objects and the references that identify them. Some collectors move survivors; others reclaim without moving them. Generations and regions organize that work. We will trace a small graph before studying those mechanisms, then use one real collection-log event to connect the model to runtime evidence.
+
 ## Find what is reachable before reclaiming storage
 
 The reachability lesson supplied a root set and followed object identities. A tracing collector applies that kind of graph reasoning to a running JVM. Objects reachable through the relevant root/reference rules remain live; an isolated cycle does not become live merely because its objects refer to each other.
@@ -52,6 +58,21 @@ The static window holds sixteen buffers. Each iteration creates a 64 KiB array a
 
 This workload creates allocation pressure without deliberately retaining every historical buffer. It therefore complements CoreRetentionLab, where adding new keys grows a retaining owner. A short log showing a small post-collection occupancy is evidence about that run, not proof that every application using similar arrays has no leak.
 
+## Generations avoid repeating unnecessary discovery work
+
+Many workloads create objects that die soon. A generational collector can focus frequent work on a younger subset while managing longer-lived data differently. Surviving data may move/promote under the selected policy. Not every allocation follows one universal young-to-old journey: large objects, optimizations and collector-specific paths differ.
+
+An old catalog can acquire a reference to a young object. Collecting only young storage must still find that incoming reference, even if the old catalog is not otherwise rescanned completely. Write barriers and card/remembered-set mechanisms record relevant cross-region information. The optimization trades bookkeeping cost for avoiding a full-heap scan on each local collection.
+
+HotSpot commonly allocates small objects through thread-local allocation buffers. This fast path does not make allocation free or apply to every size/collector path. Allocation rate and retained live size remain separate quantities.
+
+## G1: regions, marking and evacuation
+
+**Garbage-First (G1)** is a HotSpot garbage collector. HotSpot is a JVM implementation; the VM specification does not require every implementation to use G1. A **region** is one partition of G1’s managed heap. G1 divides the heap into regions. Young evacuation copies survivors during stop-the-world phases. Concurrent marking gathers liveness information while application work can continue, with coordinating pauses. Mixed collections can collect young regions and selected old regions. A pause target is a goal, not a real-time deadline.
+
+Humongous allocations depend on region sizing/thresholds. Promotion/evacuation pressure, insufficient headroom and fallback collections can disrupt expected latency. The word concurrent does not mean every collector phase runs without stopping application threads. For more detail, enable version-supported `-Xlog:gc*,safepoint` and decode the chosen runtime's event fields rather than reusing one release's format blindly.
+
+
 <span id="read-logs-without-inventing-a-cause"></span>
 ## Read a real G1 event field by field
 
@@ -73,24 +94,10 @@ These are observed teaching records, not promised pause times. The timestamp is 
 The 0.507ms duration describes that recorded pause, not average operation time, request p99 or the complete cost of concurrent GC work. The second event has a different pre-collection occupancy and pause. Comparable low post-collection occupancy is consistent with this bounded owner; a leak investigation would still need repeated equivalent phases and actual retaining paths.
 
 <span id="zgc-concurrent-work-with-headroom-requirements"></span>
-## Generations avoid repeating unnecessary discovery work
-
-Many workloads create objects that die soon. A generational collector can focus frequent work on a younger subset while managing longer-lived data differently. Surviving data may move/promote under the selected policy. Not every allocation follows one universal young-to-old journey: large objects, optimizations and collector-specific paths differ.
-
-An old catalog can acquire a reference to a young object. Collecting only young storage must still find that incoming reference, even if the old catalog is not otherwise rescanned completely. Write barriers and card/remembered-set mechanisms record relevant cross-region information. The optimization trades bookkeeping cost for avoiding a full-heap scan on each local collection.
-
-HotSpot commonly allocates small objects through thread-local allocation buffers. This fast path does not make allocation free or apply to every size/collector path. Allocation rate and retained live size remain separate quantities.
-
-## G1: regions, marking and evacuation
-
-G1 divides the heap into regions. Young evacuation copies survivors during stop-the-world phases. Concurrent marking gathers liveness information while application work can continue, with coordinating pauses. Mixed collections can collect young regions and selected old regions. A pause target is a goal, not a real-time deadline.
-
-Humongous allocations depend on region sizing/thresholds. Promotion/evacuation pressure, insufficient headroom and fallback collections can disrupt expected latency. The word concurrent does not mean every collector phase runs without stopping application threads. For more detail, enable version-supported `-Xlog:gc*,safepoint` and decode the chosen runtime's event fields rather than reusing one release's format blindly.
-
 <span id="choosing-a-collector-from-a-workload"></span>
 ## ZGC and workload tradeoffs
 
-ZGC performs much marking and relocation concurrently, using barriers/metadata so application references remain valid during that work. It still needs CPU and free-space headroom to keep up. Allocation stalls and non-GC application waits can cause poor latency despite short individual pauses. On the JDK 25 baseline ZGC is generational; its older non-generational mode was removed in JDK 24.
+The **Z Garbage Collector (ZGC)** is another HotSpot collector, designed around concurrent work and short pauses. ZGC performs much marking and relocation concurrently, using barriers/metadata so application references remain valid during that work. It still needs CPU and free-space headroom to keep up. Allocation stalls and non-GC application waits can cause poor latency despite short individual pauses. On the JDK 25 baseline ZGC is generational; its older non-generational mode was removed in JDK 24.
 
 Serial, Parallel, G1 and ZGC balance throughput, pauses, CPU and footprint differently, with availability/defaults depending on runtime/platform. Choose from workload goals and evidence rather than a universal ranking. Changing collector, heap and application code together makes causal interpretation harder.
 

@@ -2,7 +2,7 @@
 title: "Static and instance initialization order"
 module: "objects"
 group: "Construction and encapsulation"
-summary: "Separate once-per-class initialization from once-per-object field, block and constructor work."
+summary: "Follow what runs once for a class and what runs again for each new object."
 order: 165
 version: "Java 8+"
 prerequisites: ["objects/constructors-and-access"]
@@ -14,9 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Distinguish making a class ready from constructing an object
 
-A static field belongs to a class. An instance field belongs to each object. Their initializers therefore solve different problems: establish shared class state once, and establish each new object's state separately. A block marked `static` is a static initializer. A bare block in the class body is an instance initializer; it is not a method and has no call syntax.
+**Initialization** gives fields their starting state. A field initializer is the expression attached to its declaration; an initializer block groups several initialization statements. These can participate in an object's construction even though they are not methods a caller invokes by name.
 
-Loading obtains a class definition. **Initialization** executes its required static initialization. These phases are distinct: merely mentioning a class in source, or obtaining its class literal, does not imply executing every static block. Creating an instance, invoking a declared static method, and reading/writing a declared nonconstant static field are ordinary initialization triggers. Reading a compile-time constant may not trigger its declaring class. The later class-loading lesson examines those boundaries in detail. [JLS class initialization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4.1)
+There are two lifetimes to distinguish. An **instance field** belongs to each object, while a **static field** belongs to the class. Instance initializers therefore run for each new object. Static initialization establishes the class's shared state on the use that requires it, and successful class initialization is reused for later objects of that runtime class.
+
+A block marked static is a **static initializer**. A bare block in the class body is an **instance initializer**. Follow their textual order alongside field initializers and constructor delegation. The question is not simply “Which line appears first in the file?” but “Is this work for the class, for a new object, or for a constructor body on that same object?”
 
 ## Trace two constructions and one class initialization
 
@@ -42,6 +44,12 @@ Each new object starts with default field values. Its instance field initializer
 Put required parameters, validation and the object's main state transition in a constructor. An instance block can share work across constructor paths, but delegation to one constructor often expresses that policy more directly. Keep static initialization small: blocking I/O or fallible external configuration there creates a difficult global initialization boundary.
 
 For inherited objects, superclass construction also participates. The inheritance lesson explains why a superclass constructor calling an overridable method can observe subclass fields before their initializers run. Do not memorize “all blocks before all constructors”: the enclosing class, superclass and delegation path matter. [JLS instance creation](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.5)
+
+## Class initialization is different from loading
+
+**Loading** makes a compiled class definition available to the runtime; **class initialization** executes its required static initialization. These are distinct phases. Merely mentioning a class in source or obtaining its class literal, such as Ticket.class, does not imply executing every static block. A class literal describes the type rather than constructing a Ticket instance.
+
+Creating an instance, invoking a declared static method, and reading/writing a declared nonconstant static field are ordinary initialization triggers. A compile-time constant is a value available to the compiler before execution, subject to the constant-variable rules. Reading one may not trigger its declaring class. Ticket's FIRST instead calls trace for its initializer, so final alone does not make that expression a compile-time constant. The later class-loading lesson develops these triggers and loader boundaries. [JLS class initialization](https://docs.oracle.com/javase/specs/jls/se25/html/jls-12.html#jls-12.4.1)
 
 ## Practice: move a declaration and predict the observation
 

@@ -13,11 +13,22 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Give one invocation a type relationship
 
-A generic method declares its own type parameter before its return type. In `static <T> T identity(T value)`, T connects the argument and result. Unlike a generic class's parameter, this T belongs to the method declaration and each invocation is type-checked in its own context.
+A utility may need to return the same kind of value it receives without belonging to a generic class. For example, assigning identity("Java") to a String should retain String, while identity(7) should retain Integer. Returning Object would discard that useful information.
+
+A **generic method** declares its own type parameter before the return type:
+
+```java
+public static <T> T identity(final T value) {
+    return value;
+}
+```
+
+The first T declares the parameter, the second names the result type, and the T beside value names the input type. In `String text = identity("Java")`, the argument and assignment context permit T = String. The method returns the supplied reference unchanged; there is no cast or conversion in its body. A separate call can choose Integer.
 
 <JavaExample file="GenericMethods.java" output={"Java\n7\nAda"} />
 
-Identity returns the exact reference supplied, including null. Assigning identity("Java") to String needs no cast. The explicit invocation `GenericMethods.<Integer>identity(7)` spells out the type argument; ordinary calls can usually omit it. Boxing supplies an Integer reference. The syntax puts the method type argument after the qualifier and before the method name.
+The explicit form `GenericMethods.<Integer>identity(7)` places the argument after the qualifier and before the method name. It is usually unnecessary when inference has enough information. The literal is boxed into Integer. The third line comes from first on a two-element String array; it reads position zero, "Ada".
+
 
 ## Preserve input/output information
 
@@ -26,6 +37,12 @@ First receives T[] and returns its first T component. A String[] therefore produ
 Compare returning Object instead: callers would need casts even when the array's element type is already known. A named type parameter is useful when multiple positions must share a relationship. An unbounded wildcard instead represents an unknown type; later API-boundary chapters explain when that is appropriate.
 
 ## Transform an input type into a different output type
+
+Now turn the array ["Java", "JVM"] into lengths [4, 3]. One type variable cannot express both roles precisely: the input is String and the output is Integer. `Transformation<F,T>` names an interface whose apply(F) method returns T. The named StringLength implementation supplies that behavior; lambdas are not needed here.
+
+The result uses `List<T>`, an ordered sequence. `ArrayList<T>` is its growable implementation: new creates an empty sequence, add appends one element, and printing the list shows its elements in order. No list lookup or internal representation is needed for this loop.
+
+For the first input, apply("Java") returns 4, then add stores that Integer. For the second, apply("JVM") returns 3 and add appends it. Only after those two steps does the method return the new list.
 
 <JavaExample file="GenericTransform.java" output={"[4, 3]\n[4, 3]\n[Java, JVM]"} />
 
@@ -55,7 +72,7 @@ Target context matters. String value = identity(null) can infer String. With var
 
 ## Inference combines constraints
 
-The compiler uses invocation arguments, declared bounds and the target context. It does not wait for later statements to decide what an earlier variable meant. Diamond syntax on constructors follows the same static principle. With `var` on Java 10+, removing an explicit assignment target can lead to a broader inferred type; the variable still has one static type.
+An invocation must satisfy its arguments, bounds and assignment target together. The compiler does not wait for later assignments to choose a different type. Constructor diamond and method inference both operate at compile time.
 
 A bound establishes operations the implementation may use. An unconstrained T supports Object's contract, not arbitrary methods that happen to exist on one caller's type. A method that calls doubleValue must declare an appropriate Number bound rather than relying on one successful Integer example.
 
@@ -72,5 +89,5 @@ A simple Object parameter can express that unconstrained print operation; a name
 
 ## Inference references
 
-- [Dev.java: generic methods](https://dev.java/learn/language/fp/generics/intro/)
-- [Dev.java: type inference](https://dev.java/learn/language/fp/generics/type-inference/)
+- [Java Tutorials: generic methods](https://docs.oracle.com/javase/tutorial/java/generics/methods.html)
+- [Java Tutorials: type inference](https://docs.oracle.com/javase/tutorial/java/generics/genTypeInference.html)

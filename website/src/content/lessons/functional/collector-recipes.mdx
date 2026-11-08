@@ -14,9 +14,9 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Build a result container without managing every insertion
 
-A reduction can produce one total. A collector can build a list, join text or group input into maps. collect accepts a description of the accumulation process; ordinary factories cover many tasks without requiring a custom collector.
+A word feed [java,jvm,java] can become a list, one joined String, or a map grouping words by length. A **collector** is a recipe for building such a result. Stream.collect runs that recipe; the Collectors utility class supplies ordinary recipes.
 
-Stream.collect also has a three-function mutable-reduction form. CollectorCatalog.concatenate supplies StringBuilder::new, an accumulator that appends one validated String, and a combiner that appends another partial builder. It returns AB for [A,B] and an empty String for empty input. Fresh supplier-owned state distinguishes this from mutating one shared reduce identity. StringBuilder's returned append value is discarded when adapting those operations to the required BiConsumer shapes.
+Start with words.stream().collect(Collectors.toList()), which materializes the three words in encounter order. To group, use groupingBy(String::length,TreeMap::new,toList()). The **classifier** computes each word's key: java→4, jvm→3, java→4. The map factory chooses sorted key storage; the **downstream collector** builds each key's list. The groups are 3=[jvm] and 4=[java,java].
 
 <JavaExample file="CollectorRecipes.java" output={"{3=[jvm], 4=[java, java]}\njava, jvm, java\n{java=2, jvm=1}\n{3=1, 4=2}"} />
 
@@ -88,6 +88,10 @@ A specific backing map's null allowance also does not automatically become a col
 Collectors.toList promises neither a particular implementation nor general mutability/thread safety. Stream.toList (16+) returns an unmodifiable list and can retain nulls. toUnmodifiableList (10+) rejects null elements. List.copyOf (10+) creates an unmodifiable reference snapshot and also rejects nulls. No one of these makes mutable elements deeply immutable.
 
 A grouping result can contain mutable nested containers. Making only the outer map unmodifiable still leaves those nested values mutable. If the API needs a detached immutable aggregate, finish into the domain value described in the custom collector chapter.
+
+## Supply fresh state with three-function collect
+
+Stream.collect also has a three-function mutable-reduction form. CollectorCatalog.concatenate supplies StringBuilder::new, an accumulator that appends one validated String, and a combiner that appends another partial builder. It returns AB for [A,B] and an empty String for empty input. Fresh supplier-owned state distinguishes this from mutating one shared reduce identity. StringBuilder's returned append value is discarded when adapting those operations to the required BiConsumer shapes.
 
 ## Worked exercise: map each group to lengths
 

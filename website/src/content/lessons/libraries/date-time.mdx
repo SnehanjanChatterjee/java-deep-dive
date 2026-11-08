@@ -14,9 +14,28 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Resolve a local label into an instant
 
-LocalDateTime contains calendar fields without an offset. OffsetDateTime adds a fixed offset; ZonedDateTime combines local fields with a regional zone's rules and a resolved offset. An offset records one UTC relationship, while a regional zone describes how that relationship changes over time.
+An appointment labelled 12:00 needs a place before it identifies a global event. A **UTC offset** states the difference from Coordinated Universal Time: at +05:30, local 12:00 corresponds to 06:30Z. A **regional time zone**, named by ZoneId such as Europe/Paris, supplies rules that may choose different offsets on different dates. **Daylight saving time (DST)** is one source of those changes.
+
+LocalDateTime holds the local date/time fields without an offset. OffsetDateTime adds an offset. ZonedDateTime also retains the regional zone and its resolved offset. For an ordinary date, local.atZone(zone) resolves those fields into a zoned value; toInstant obtains the global timeline point.
 
 A past recorded event and a recurring future “09:00 in this region” schedule require different models. An Instant can identify the event but lose the recurrence's local intention. A LocalDateTime alone cannot uniquely identify every past occurrence. Preserve the information the domain needs.
+
+## Preserve an instant or preserve local fields
+
+<JavaExample file="ZoneConversionLab.java" output={"same instant local=17:30\nsame local instant=2024-01-01T06:30:00Z\nsame instant=true\ninstant difference=330"} />
+
+At the fixed January 2024 instant, noon UTC is 17:30 in Asia/Kolkata. withZoneSameInstant preserves the Instant and changes the displayed local fields. withZoneSameLocal instead preserves the 12:00 wall-clock label while resolving it in the new region, producing 06:30Z. That is a different event 330 minutes earlier. These methods cannot be substituted merely because both return ZonedDateTime.
+
+For two zoned values, equals includes more than the instant; different zone representations can describe the same timeline point. Use an instant comparison or the intended timeline predicate when event identity is the question. Preserve region/local recurrence separately when the question is scheduling future local occurrences.
+
+<Diagram client:visible definition={"flowchart TD\n U[12:00 UTC on the chosen date] --> I[Same instant:17:30 Asia Kolkata]\n U --> L[Same local fields:12:00 Asia Kolkata]\n I --> A[12:00Z remains the event]\n L --> B[06:30Z is a different event]"} caption="Changing the displayed zone and moving a wall-clock appointment preserve different properties." />
+
+<details>
+<summary>What do the default and strict policies do with a nonexistent local time?</summary>
+
+The usual atZone conversion adjusts a gap forward under the region's transition rules. The supplied resolve method deliberately rejects it. An overlap can likewise be resolved by a documented default or explicitly selecting one occurrence. The API's default is not an application validation rule unless the domain adopts it. Test the chosen policy using a fixed historical transition and explicit region.
+
+</details>
 
 ## A local time can have zero, one or two valid offsets
 
@@ -27,6 +46,8 @@ A normal local label has one offset. A spring gap skips a range, so a label in i
 Convenience atZone normally adjusts a gap forward and chooses an overlap offset according to its documented rules. Those defaults are valid API behavior; an appointment/audit domain may require a different policy.
 
 ## Complete explicit resolution
+
+Build the stricter resolution rule before reading its implementation: ask ZoneRules for valid offsets, reject a zero-offset gap, accept the sole offset when unique, and select earlier/later or reject when two are available. ofStrict then checks the chosen local/offset/zone combination. The full program applies that rule to the two Paris overlap occurrences and a rejected gap:
 
 <JavaExample file="CoreTimeResolution.java" output={"3600\n12:00\n13:00\ngap rejected"} />
 
@@ -41,6 +62,8 @@ At noon on 30 March in Paris, plus Period.ofDays(1) preserves next-day noon. Add
 Month-end adjustments also belong to calendar semantics. A monthly billing rule is not inherently a 30-day elapsed interval. For elapsed measurements inside one process, System.nanoTime supports differences; wall clocks can be adjusted, and nanoTime is not an epoch timestamp to persist or compare across unrelated JVMs.
 
 ## Complete the next-local-date expiry exercise
+
+For a “valid until the next local date” policy, obtain now from the supplied Clock, interpret it in the requested ZoneId, take its LocalDate, add one calendar date, then resolve that date's start in the region. This is a sequence of calendar decisions, not an elapsed 24-hour addition. isExpired compares now with the resulting Instant deadline and treats equality as expired.
 
 <JavaExample file="ExpiryPolicy.java" output={"2024-03-31T22:00:00Z\n23\ntrue"} />
 
@@ -67,23 +90,6 @@ Time-zone data can evolve. Historical examples make the chosen rule/date explici
 **Can an ISO-looking String lack essential information?** Yes. A local date-time can parse correctly while omitting offset/region. Parsing syntax and resolving timeline meaning are separate steps.
 
 **Can one Clock support different regional policies?** Yes. Treat its instant as the source and convert with the explicitly requested region, as the complete expiry implementation does.
-
-## Preserve an instant or preserve local fields
-
-<JavaExample file="ZoneConversionLab.java" output={"same instant local=17:30\nsame local instant=2024-01-01T06:30:00Z\nsame instant=true\ninstant difference=330"} />
-
-At the fixed January 2024 instant, noon UTC is 17:30 in Asia/Kolkata. withZoneSameInstant preserves the Instant and changes the displayed local fields. withZoneSameLocal instead preserves the 12:00 wall-clock label while resolving it in the new region, producing 06:30Z. That is a different event 330 minutes earlier. These methods cannot be substituted merely because both return ZonedDateTime.
-
-For two zoned values, equals includes more than the instant; different zone representations can describe the same timeline point. Use an instant comparison or the intended timeline predicate when event identity is the question. Preserve region/local recurrence separately when the question is scheduling future local occurrences.
-
-<Diagram client:visible definition={"flowchart TD\n U[12:00 UTC on the chosen date] --> I[Same instant:17:30 Asia Kolkata]\n U --> L[Same local fields:12:00 Asia Kolkata]\n I --> A[12:00Z remains the event]\n L --> B[06:30Z is a different event]"} caption="Changing the displayed zone and moving a wall-clock appointment preserve different properties." />
-
-<details>
-<summary>What do the default and strict policies do with a nonexistent local time?</summary>
-
-The usual atZone conversion adjusts a gap forward under the region's transition rules. The supplied resolve method deliberately rejects it. An overlap can likewise be resolved by a documented default or explicitly selecting one occurrence. The API's default is not an application validation rule unless the domain adopts it. Test the chosen policy using a fixed historical transition and explicit region.
-
-</details>
 
 ## References
 

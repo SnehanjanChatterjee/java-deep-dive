@@ -15,11 +15,17 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Reuse an algorithm without changing its preconditions
 
-Collections.sort, reverse, binarySearch and copy operate on an existing List. They do not turn every Collection into a sortable sequence or supply missing positions. Choose an algorithm only after stating the receiver's order, supported operations and element relation.
+Suppose a list contains [4,1,3,1] and a new value 2 must be inserted in ascending order. We can reuse two static methods from the Collections utility class: sort establishes order, then binarySearch finds a matching position or tells us where a missing value belongs. The list remains a list and keeps both 1 values.
 
-<JavaExample file="CollectionAlgorithms.java" output={"[1, 1, 3, 4]\nmissing 2=-3\n[1, 1, 2, 3, 4]\n[1, 1, 4, 3, 2]\n[2, 1, 4, 3, 1]\n[2, 1, 4, 3, 1, 0]\n[2, 7, 4, 3, 9, 9]\nfrequency=1\ndisjoint=false\nmin/max=2/9\nsublist=-1\nshuffle preserves values=true"} />
+```java
+Collections.sort(values);                        // [1, 1, 3, 4]
+final int found = Collections.binarySearch(values, 2); // -3
+final int position = found >= 0 ? found : -found - 1;
+values.add(position, 2);                         // [1, 1, 2, 3, 4]
+```
 
-The program deliberately uses mutable ArrayLists. Its results depend on specified logical order, not an implementation's private array layout.
+The negative result is an encoding, not a valid list index. Work through its decoding below before running the complete catalog. These methods operate on an existing List and require its needed mutation operations; they do not create missing positions or automatically sort a Set.
+
 
 ## Sort a list under one comparison policy
 
@@ -60,6 +66,10 @@ The source follows this exact sequence:
 | swap indexes 0 and 4 | [2,1,4,3,1] |
 
 shuffle rearranges positions using a randomness source. It is not sorting and is not a security-sensitive random-choice protocol. The example supplies a Random explicitly, then sorts the result and checks that the values/multiplicities survived. It does not assert one portable shuffle layout as an API guarantee.
+
+<JavaExample file="CollectionAlgorithms.java" output={"[1, 1, 3, 4]\nmissing 2=-3\n[1, 1, 2, 3, 4]\n[1, 1, 4, 3, 2]\n[2, 1, 4, 3, 1]\n[2, 1, 4, 3, 1, 0]\n[2, 7, 4, 3, 9, 9]\nfrequency=1\ndisjoint=false\nmin/max=2/9\nsublist=-1\nshuffle preserves values=true"} />
+
+The program deliberately uses mutable ArrayLists. Its results depend on specified logical order, not an implementation's private array layout.
 
 ## Copy into positions that already exist
 

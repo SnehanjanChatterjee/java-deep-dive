@@ -13,6 +13,12 @@ import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
 <span id="concepts" aria-hidden="true"></span>
+## An API contract describes what callers may rely on
+
+An **application programming interface (API)** exposes operations to callers. Its **contract** includes accepted inputs, results, failures and relevant effects. An **invariant** is a rule preserved by valid state. **Refactoring** changes internal structure while preserving the required behavior.
+
+Tests help check that contract, but expectations must come from the requirement, not from copying the implementation. We will design one quote calculation, decide its units and numeric bounds, and write independent expectations. Once the behavior is clear, helper extraction, design principles and test doubles have concrete problems to solve.
+
 ## Design a quote calculation around its observable promise
 
 A shop needs to calculate a quote from line prices, quantities and a varying discount policy. The quote is a calculation result, not a payment instruction. Before introducing classes or design patterns, state the meaning and failure behavior that callers need.

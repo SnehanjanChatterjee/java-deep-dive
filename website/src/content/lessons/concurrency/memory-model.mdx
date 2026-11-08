@@ -5,7 +5,7 @@ group: "Memory model and visibility"
 summary: "Derive publication guarantees from familiar start, join and monitor operations before studying stronger mechanisms."
 order: 780
 version: "Java 8+"
-prerequisites: ["concurrency/shared-state"]
+prerequisites: ["concurrency/shared-state", "concurrency/intrinsic-lock-identity"]
 advanced: true
 ---
 
@@ -25,15 +25,19 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="atomic-access-is-narrower-than-atomic-behavior"></span>
 ## A correct final value needs both update and observation rules
 
-The counter lesson established two requirements. A monitor protects each complete increment, and join waits for the worker's completion. The Java Memory Model supplies the language rules for which writes another thread may observe and what ordering relationships constrain those observations. It explains why these protocols work across supported compilers and processors.
+The **Java Memory Model**, or **JMM**, is the part of the language specification that constrains which writes a shared-variable read may observe. Its purpose is to make a correct sharing protocol meaningful across different compilers and processors. The counter lesson already used two such operations: a common monitor protects an increment, and join observes a worker's completion.
 
-It is not a physical heap diagram or a claim that every thread owns a separate copy of every field. A call stack explains invocation ownership; the memory model explains permitted shared-memory observations.
+The key reasoning term is **happens-before**: an ordering relation between actions used to establish what later code can rely on. For example, a worker's actions happen-before an owner's actions after that owner successfully detects the worker's termination through join. This rule is stronger than noticing that a write seemed earlier on a clock.
+
+**Publication** means making data available to another thread through a protocol that establishes the required observation guarantees. Begin with the familiar one-writer result after join. We will draw its ordering chain before using the same reasoning for locks and later volatile fields.
+
+A call stack describes active method invocations; the memory model describes permitted observations of shared variables. It does not require a physical heap layout or give each thread a separate copy of every field.
 
 ## Start with one ordinary result after join
 
 <JavaExample file="JoinPublicationLesson.java" output={"42"} />
 
-The result field is ordinary, not volatile or atomic. There is one writer. Main does not read until join returns successfully. All worker actions happen-before the actions after that successful join, so the write of 42 is published to the subsequent read.
+The result is a plain int field, with no special sharing modifier or atomic-wrapper API. There is one writer. Main does not read until join returns successfully. The completed worker's write of 42 therefore precedes the subsequent read under the happens-before rule introduced above.
 
 Removing join changes two things: main might run before the write, and the program loses this termination-publication edge. Merely waiting a convenient number of milliseconds establishes neither requirement. Replacing the field with an atomic type alone would not wait for work to occur.
 
@@ -79,9 +83,9 @@ A race condition means correctness depends on uncontrolled relative timing. A **
 
 ## What correctly synchronized reasoning permits
 
-A correctly synchronized program has the JMM's sequential-consistency guarantee: it can be reasoned about through interleavings consistent with thread program order. Implementations can still optimize as long as required observations are preserved. Happens-before does not demand a literal machine instruction for every source expression.
+A correctly synchronized program has the JMM's **sequential-consistency** guarantee: its behavior can be reasoned about as interleaved actions that respect each thread's program order. Implementations can still optimize as long as required observations are preserved. Happens-before does not demand a literal machine instruction for every source expression.
 
-A data race removes this convenient guarantee. It does not make every imaginable behavior legal: intra-thread semantics and the model's other constraints still apply. Ordinary reference/most primitive reads and writes are individually atomic, while the specification permits some non-volatile long/double accesses to be treated as halves. None of those individual-access rules makes a compound operation atomic.
+A data race removes this convenient guarantee. It does not make every imaginable behavior legal: the meaning of statements within one thread and the model's other constraints still apply. Ordinary reference/most primitive reads and writes are individually atomic, while the specification permits some non-volatile long/double accesses to be treated as halves. None of those individual-access rules makes a compound operation atomic.
 
 The next chapter adds volatile publication to exchange an immutable snapshot before the writer terminates. Final fields have construction-specific initialization guarantees; they do not freeze mutable referents or protect later updates. Keep construction, publication and later mutation as separate boundaries.
 
@@ -93,7 +97,7 @@ Why is the ordinary result in `JoinPublicationLesson` correct? Identify one writ
 
 `SharedStateLesson.countSafely` is the complete repaired two-worker solution. Trace both the monitor's exclusion/publication and main's completion boundary. An output matching the expected value in one racy run proves neither contract.
 
-Actor/outcome tools such as jcstress can search for unexpected outcomes; failure to observe an outcome does not prove it forbidden. The advanced atomics chapter revisits a barrier-forced lost update after those coordination mechanisms are familiar.
+A concurrency outcome experiment runs small participant actions, often called actors, and records which results occur. Tools such as jcstress automate this search for unexpected outcomes; failure to observe an outcome does not prove it forbidden. The advanced atomics chapter revisits a barrier-forced lost update after those coordination mechanisms are familiar.
 
 <span id="references"></span>
 <span id="what-the-java-memory-model-defines"></span>

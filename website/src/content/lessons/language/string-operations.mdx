@@ -2,7 +2,7 @@
 title: "String search, slicing and comparison"
 module: "language"
 group: "Arrays and strings"
-summary: "Find text, extract half-open ranges, replace literal text and explain lexical comparison results."
+summary: "Find matching text, extract ranges and decide which String comes first in an ordering."
 order: 95
 version: "Java 8+"
 prerequisites: ["language/strings"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Choose an operation from the question
 
-To find where text occurs, use indexOf or lastIndexOf. To ask whether it occurs, use contains. To extract a range, use substring. To compare complete contents, use equals. To establish lexical order, use compareTo. These return different kinds of answers; a search index is neither a boolean nor an ordering result.
+A String's methods let a program inspect and transform text without editing the original value. Typical questions are “Where is this separator?”, “Which part lies between these boundaries?” and “Which of these names sorts first?” Choose the question before choosing the method, because the answers have different types.
+
+An **index** is a zero-based position. A **substring** is text extracted from a selected range of positions. A **comparison result** describes an ordering relationship. IndexOf/lastIndexOf return a matching start index or -1; contains returns a boolean; substring returns a String; equals returns a boolean for complete content equality; compareTo returns a negative, zero or positive int for lexical order.
+
+Begin with banana, whose six simple letters each occupy one indexed position. This makes the search and range arithmetic visible before the Unicode chapter examines symbols occupying more than one position. Keep each returned value: none of these methods reassigns the variable holding the original String.
 
 <JavaExample file="StringOperationsLesson.java" output={"b\n1\n3\n3\nana\n[]\n-1\na-b\n2\n-1\nfalse\ntrue\ntrue"} />
 
@@ -37,7 +41,7 @@ An immutable operation does not promise to allocate a new object every time. Som
 
 ## Interpret compareTo by sign
 
-CompareTo is lexical and case-sensitive. It compares UTF-16 units until the first difference; if one string is a prefix, length decides. In cat versus car, t minus r is two. In car versus cart, the shorter prefix sorts first and the result is minus one. In general, test negative, zero or positive rather than expecting exactly -1 or 1.
+**Lexical order** compares sequences from left to right, using the first differing unit rather than interpreting the whole text as a number. CompareTo is lexical and case-sensitive. It compares UTF-16 units until the first difference; if one string is a prefix, length decides. In cat versus car, t minus r is two. In car versus cart, the shorter prefix sorts first and the result is minus one. In general, test negative, zero or positive rather than expecting exactly -1 or 1.
 
 This is not numeric parsing: `"10".compareTo("2")` is negative because '1' precedes '2'. It is not a locale-sensitive dictionary order either. `equalsIgnoreCase` and compareToIgnoreCase also do not replace a language-specific Collator policy. Empty text is a legitimate value; null is absence and calling compareTo on null, or passing null to it, fails.
 

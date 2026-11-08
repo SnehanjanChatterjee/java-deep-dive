@@ -1,19 +1,23 @@
 ---
 title: "ThreadGroup and unsafe legacy thread control"
 module: "concurrency"
-group: "Lifecycle and interruption"
+group: "Liveness"
 summary: "Understand older grouping APIs without mistaking a membership hierarchy for task ownership or safe cancellation."
-order: 765
+order: 921
 version: "Java 8+; legacy control availability varies"
-prerequisites: ["concurrency/interrupt-status"]
-advanced: false
+prerequisites: ["concurrency/interrupt-status", "concurrency/intrinsic-lock-identity", "concurrency/deadlock-liveness"]
+advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 
 ## A group organizes Threads; it does not execute them
 
-Older Java examples place platform Threads in a ThreadGroup. Groups form a parent/child hierarchy and expose membership-oriented operations. Constructing a group creates no running execution. A group is not main, a scheduler, an executor or a completion result.
+A **ThreadGroup** is a named grouping object used by older Java APIs to organize platform Threads. A group can contain Threads and child groups, producing a membership tree. This is useful vocabulary when reading legacy code or interpreting group-related diagnostic output.
+
+Membership and execution remain separate. The program below creates one group, constructs two Thread objects as its members, then starts and joins those exact Thread handles. The group name answers where each worker belongs; the handles still control each worker's lifetime. Constructing the group itself starts no thread and creates no additional main execution.
+
+First follow that ordinary membership example. Group interruption and the hazards of old forced-control methods come afterward; they require a different argument about stopping work safely.
 
 <JavaExample file="LegacyThreadGroupLesson.java" output={"lesson-group\nlesson-group"} />
 
@@ -21,9 +25,19 @@ Both Threads are explicitly constructed in the same group. Their tasks record th
 
 The example retains the two handles because it owns two required lifetimes. It does not loop on `activeCount()` or assume an enumeration is a complete stable membership snapshot. Those APIs provide estimates/observations affected by concurrent thread creation and termination, rather than a result-collection protocol.
 
+## Group interruption is still only a request
+
+Group-level interruption can request interruption of member platform Threads under its documented scope. It does not join them, gather causes or guarantee they honor the request. Each task still needs the interruption protocol from the previous lesson, and an owner still needs completion accounting.
+
+An ExecutorService later supplies acceptance and task-result APIs over an owned service lifetime. Structured task scopes add different parent/child lifetime constraints. These facilities are not interchangeable simply because all concern multiple tasks.
+
+Modern virtual threads have special grouping/enumeration behavior; traditional group enumeration is not an inventory of all virtual task lifetimes. Keep that version-specific limitation beside diagnostic use, after understanding ordinary platform membership.
+
 ## Cooperative control preserves invariants
 
-Suppose a worker owns a monitor and is halfway through changing two related fields. Forcibly stopping at that arbitrary point can expose an invalid half-update. Suspending while retaining a needed monitor can prevent the very thread responsible for resuming it from acquiring that monitor.
+A **state invariant** is a rule that must remain true when other code uses some data, such as available plus reserved equalling a fixed capacity. A **lock** lets one thread temporarily exclude competing accesses while it changes that data; Java's built-in object locks are called monitors and are developed in the synchronization chapters.
+
+Suppose a worker holds such a monitor while changing two related fields. Forcibly stopping at an arbitrary instruction can expose an invalid half-update. Suspending while retaining the monitor can prevent the very thread responsible for resuming it from acquiring that monitor. These historical hazards explain why the earlier interruption protocol asks a task to leave at a boundary it understands.
 
 | Historical API idea | Problem | Deliberate replacement |
 | --- | --- | --- |
@@ -33,14 +47,6 @@ Suppose a worker owns a monitor and is halfway through changing two related fiel
 | enumerate a group until it looks empty | Membership/counts can change; no task result | Retain exact handles and observe completion |
 
 The lesson does not invoke these unsafe methods. Their deprecation, unsupported behavior or removal differs by JDK release; old source using them is not a portable modern cancellation recipe. Read the target API when maintaining legacy code rather than copying an old method catalog into new code.
-
-## Group interruption is still only a request
-
-Group-level interruption can request interruption of member platform Threads under its documented scope. It does not join them, gather causes or guarantee they honor the request. Each task still needs the interruption protocol from the previous lesson, and an owner still needs completion accounting.
-
-An ExecutorService later supplies acceptance and task-result APIs over an owned service lifetime. Structured task scopes add different parent/child lifetime constraints. These facilities are not interchangeable simply because all concern multiple tasks.
-
-Modern virtual threads have special grouping/enumeration behavior; traditional group enumeration is not an inventory of all virtual task lifetimes. Keep that version-specific limitation beside diagnostic use, after understanding ordinary platform membership.
 
 ## Exercise and interview questions
 

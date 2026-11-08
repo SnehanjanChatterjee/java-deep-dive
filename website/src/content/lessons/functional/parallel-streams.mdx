@@ -1,11 +1,11 @@
 ---
 title: "Parallel streams and partitioned reduction"
-module: "functional"
-group: "Parallel streams"
+module: "modern-concurrency"
+group: "Parallel data processing"
 summary: "Preserve reduction meaning across partitions, distinguish concurrent collectors from isolated state and interpret result/action order precisely."
-order: 620
+order: 1045
 version: "Java 8+"
-prerequisites: ["functional/collectors"]
+prerequisites: ["functional/collectors", "concurrency/forkjoin", "concurrency/memory-model"]
 advanced: true
 ---
 
@@ -14,7 +14,14 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Split work without changing the result meaning
 
-Parallel execution allows independent source partitions to be processed by different tasks. It does not change a stream into a thread-safe container. Begin with a lawful sequential reduction, then prove that splitting and combining preserves its meaning.
+A **parallel stream** can divide a source into **partitions**, pieces of the input, and evaluate them in multiple **tasks**, units of work that may overlap on execution threads. The purpose is to share independent computational work; the resulting value must still satisfy the sequential operation's contract.
+
+```java
+final int sequential = values.stream().mapToInt(Integer::intValue).sum();
+final int parallel = values.parallelStream().mapToInt(Integer::intValue).sum();
+```
+
+For [1,2,3,4], both results are 10. The parallel form does not make values or arbitrary captured objects thread-safe. Begin with independent callbacks and a valid reduction; then reason about how partial results combine.
 
 For [1,2,3,4], two illustrative partitions can produce totals 3 and 7, then combine to 10. A framework is free to split differently. Correctness must hold for all valid regroupings, including empty partial results, not just this drawing.
 
@@ -30,7 +37,7 @@ The previous purchase collector adds exact arithmetic and immutable finishing. I
 
 ## Preserve encounter-order semantics deliberately
 
-An ordered source can be processed out of callback order while retaining its required result order. forEach on a parallel stream does not promise encounter-order effects; forEachOrdered does, at an additional coordination cost. findFirst respects defined encounter order; findAny allows any eligible result. unordered relaxes an order requirement rather than randomly shuffling.
+An ordered source can be processed out of callback order while retaining its required result sequence. For example, mapping [1,2,3] to doubled values and collecting a list must yield [2,4,6] under the ordered contract even if the mapper for 3 finishes first. Terminal side-effect ordering is a different guarantee, developed below.
 
 Stateful operations such as sorted/distinct and ordered limit can require buffering or coordination. Spliterator splitting quality and properties constrain useful partitioning. A cheap operation over a small source can cost more to split, schedule and merge than to run sequentially.
 

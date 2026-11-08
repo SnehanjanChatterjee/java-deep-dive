@@ -21,15 +21,25 @@ import InterleavingLab from '../../../components/InterleavingLab.astro';
 <span id="interview-exercises-with-worked-reasoning"></span>
 ## A budget needs an indivisible decision and update
 
-A budget has three units remaining. Two callers each request two. A separate read/check followed by set can let both report success from the same old three. The invariant requires an indivisible validate-and-decrement, not just a visible read or individually atomic assignment.
+An **atomic variable**, such as AtomicInteger, supplies documented indivisible operations on one shared value. The operation needed here is **compare-and-set**, abbreviated **CAS**: replace the current value only if it matches an expected value, with comparison and replacement performed as one atomic transition.
 
-compareAndSet checks an expected value and installs a replacement as one atomic transition. If another caller changed the value, it returns false. The caller must reread and recompute; its earlier observation no longer authorizes a reservation.
+Why make the update conditional? A budget has three units remaining and two callers each request two. Both can read three and judge their request affordable. A separate check followed by set could let both report success. The invariant instead requires validation and subtraction to take effect together.
+
+Each attempt keeps two local values: the **expected** amount it observed, and a **candidate** remaining amount calculated from it. CAS succeeds only if the shared value still matches expected at the comparison. If it differs, CAS returns false without installing the candidate. This budget's loop rereads, rechecks whether the request fits and recalculates after such a failure.
+
+First follow the Budget method and its successful/too-large requests. The complete file also contains a reference-plus-version experiment for **ABA**, the history A→B→A that a value-only comparison cannot reveal. Its final false output is explained after the ordinary CAS loop and retry trace.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
 <span id="define-the-atomic-transition"></span>
 <span id="lost-update-versus-a-successful-retry"></span>
 ## Trace a successful transition and a rejected retry
+
+<JavaExample file="AtomicCounterLab.java" output={"true\nfalse\n1\nfalse"} />
+
+Budget validates nonnegative capacity and positive requests. tryReserve reads current remaining, rejects a request that does not fit, then attempts a nonnegative candidate. Since units do not exceed the observed nonnegative amount, subtraction cannot underflow. A successful CAS is the reservation's linearization point: its single taking-effect position relative to other reservations.
+
+The table now selects one legal contention schedule for tryReserve. It illustrates stale observations, rather than claiming the sequential main executed two callers concurrently.
 
 | Step | Caller A | Caller B | Remaining |
 | --- | --- | --- | --- |
@@ -38,10 +48,6 @@ compareAndSet checks an expected value and installs a replacement as one atomic 
 | 3 | CAS 3→1 succeeds | | 1 |
 | 4 | | CAS 3→1 fails | 1 |
 | 5 | | Reread 1 and reject request | 1 |
-
-<JavaExample file="AtomicCounterLab.java" output={"true\nfalse\n1\nfalse"} />
-
-Budget validates nonnegative capacity and positive requests. tryReserve reads current remaining, rejects a request that does not fit, then attempts a nonnegative candidate. Since units do not exceed the observed nonnegative amount, subtraction cannot underflow. A successful CAS is the reservation's linearization point: its single taking-effect position relative to other reservations.
 
 <Diagram client:visible definition={"flowchart TD\n R[Read remaining] --> F{Request fits?}\n F -->|no| N[Return false]\n F -->|yes| C[Calculate remaining minus units]\n C --> S{CAS succeeds?}\n S -->|yes| Y[Return true]\n S -->|no| R"} caption="Every retry uses a fresh observation and revalidates the request. An unsuccessful CAS does not reserve anything." />
 

@@ -30,6 +30,12 @@ import lookupSource from '../../../../../java-examples/benchmarks/src/main/java/
 <span id="performance-interview-practice"></span>
 <span id="additional-interview-questions"></span>
 <span id="solved-interview-and-debugging-practice"></span>
+## A benchmark measures a defined operation under a defined workload
+
+A **benchmark** is an experiment that measures the cost or capacity of a specified operation. A **microbenchmark** isolates a small operation, such as checking membership in a prepared collection. A **profiler** instead helps identify where a running application spends resources. Profiling helps choose what is worth benchmarking.
+
+The Java Microbenchmark Harness (**JMH**) runs controlled benchmark trials while addressing common JVM measurement problems. It cannot choose the right workload for us. We will define the input sizes, hit/miss cases and work included in one measurement, then read the harness configuration and results. Timing interpretation follows only after that operation is clear.
+
 ## Define what one measured operation includes
 
 “How do ArrayList.contains and HashSet.contains compare for a middle-position hit and a miss at sizes sixteen and 1024?” defines operations, inputs and cases. “Which collection is fastest?” leaves the required semantics and workload unspecified.
@@ -51,6 +57,8 @@ mvn clean package
 java -jar target/benchmarks.jar 'study.bench.LookupBenchmark.*'
 java -jar target/benchmarks.jar 'study.bench.LookupBenchmark.*' -prof gc
 ```
+
+In the source, `@Benchmark` marks the method representing one measured operation. `@State` declares the input holder and its sharing scope; `@Setup` prepares the containers outside that measured call. The size and scenario parameters vary the workload. Read the two contains methods first, then follow how setup supplies their data.
 
 The source shown below is read from the same canonical file packaged in the download:
 

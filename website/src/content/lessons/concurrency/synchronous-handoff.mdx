@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## No slot exists between producer and consumer
 
-An ArrayBlockingQueue of capacity one can hold one item even when no consumer is currently taking it. A SynchronousQueue has no internal element capacity, including no single slot. Each successful insertion matches a corresponding removal by another thread. A producer may wait for a consumer, or a consumer may wait for a producer.
+A **SynchronousQueue** transfers an element by matching one producer's insertion with another thread's removal. This matched transfer is a **handoff**. Either participant can arrive first and wait, but acceptance requires the peer operation; there is no intermediate stored queue slot.
 
-It implements the BlockingQueue API but its queue-inspection methods describe no stored collection. Size is always zero and remainingCapacity is zero. These observations do not mean no participant is waiting on a transfer.
+This is useful when a producer should meet a receiving consumer instead of leaving accepted work in a buffer. By comparison, an ArrayBlockingQueue of capacity one can accept one stored item while no consumer is taking it. Zero-buffer handoff and capacity-one storage therefore express different admission policies.
+
+The ordinary program first tries to offer a value with nobody receiving, then starts a consumer and performs a timed offer that can match its take. Follow the insertion result separately from the consumer's later processing. A successful transfer does not acknowledge that later processing completed.
+
+Although it implements BlockingQueue, inspection describes no stored collection: size and remainingCapacity are always zero. Participants can still be waiting with pending operations, and those waits can retain application state. Read zero as no buffered elements, rather than as no work or no waiting callers.
 
 ## Contrast refusal and successful transfer
 

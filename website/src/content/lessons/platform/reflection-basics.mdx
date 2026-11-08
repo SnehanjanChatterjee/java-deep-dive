@@ -12,7 +12,15 @@ advanced: true
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
+## Reflection represents program structure as data
+
+**Reflection** is the ability to inspect classes, constructors, methods and fields at runtime, and perform supported operations through objects representing those declarations. Class describes a runtime type, Constructor describes construction, and Method describes a method. They are metadata objects, not source text that the program recompiles.
+
+Suppose a configurable tool must call a named operation it did not select in its own source. Reflection lets it locate that declaration and invoke it. That flexibility introduces distinct lookup, access, argument and target-body failures. The example below performs each stage explicitly so those failures have a concrete meaning.
+
 ## Inspect a type when the source-level member is not fixed
+
+The example has a Sample class with a constructor, a greeting method and a parser. Follow four stages: obtain its Class object, find the constructor signature, construct a receiver, then find and invoke greet. After one successful call, change the lookup or argument to see which stage fails. This order separates discovering a declaration from actually running it.
 
 An ordinary call such as receiver.greet("Hello") names its member in source and is checked by the compiler. Reflection instead represents types and members as runtime objects. It is useful when a framework discovers a constructor or operation from configuration, but it moves some name, type and access failures to runtime. Prefer an ordinary interface call when the contract is already known.
 

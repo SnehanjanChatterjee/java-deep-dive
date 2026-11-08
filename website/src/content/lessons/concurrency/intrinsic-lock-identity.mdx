@@ -14,9 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Synchronized selects an object's monitor
 
-Every object has an associated monitor. `synchronized (guard)` first evaluates guard, acquires that particular object's monitor, executes the block, then releases the monitor on normal or exceptional exit. A null guard throws NullPointerException. The reference expression is a way to choose the monitor; it does not mean locking a variable name or recursively locking every field reachable from that object.
+A **monitor** is Java's built-in object lock. A thread acquires ownership before entering a synchronized region and releases ownership when leaving it. A competing thread using that same monitor waits, allowing the owner to complete the protected operation first.
 
-Two sections exclude each other only when they acquire the **same monitor**. Giving two different objects a field with the same name does not make those monitors the same.
+The counter repair used one Counter monitor for every increment. Now ask which object a method or block actually selects. Two regions protect a shared invariant together only when their callers follow the **same guard identity**, meaning the same particular object, rather than merely fields or variables with matching names.
+
+In `synchronized (guard)`, guard is a reference expression selecting the object whose monitor to acquire. The block executes with that ownership, then releases it on normal or exceptional exit. Synchronized methods are shorthand selecting either the receiver object or the class's Class object. Use the table to predict which identity the complete program will inspect.
 
 | Form | Selected monitor |
 | --- | --- |
@@ -32,7 +34,7 @@ Two sections exclude each other only when they acquire the **same monitor**. Giv
 
 `holdsReceiver()` is an instance synchronized method, so the current caller owns its receiver's monitor inside the body. Main then explicitly locks first and asks about second and the Class object. Both are false: owning first does not also acquire those other monitors.
 
-`holdsPrivateGuardOnly()` acquires the instance's private final guard and checks that this receiver's monitor was not acquired. `holdsClassOnly()` is static synchronized, so the selected monitor is IntrinsicLockLesson.class. These are direct ownership observations, without sleeps or contention timing.
+`holdsPrivateGuardOnly()` acquires the instance's private final guard and checks that this receiver's monitor was not acquired. `holdsClassMonitor()` is static synchronized, so the selected monitor is IntrinsicLockLesson.class. These are direct ownership observations, without sleeps or contention timing.
 
 Thread.holdsLock tests **the caller's** ownership of the supplied object's monitor. It is useful for this explanation or an assertion; it does not acquire the monitor, reserve future access or report which other thread owns it.
 
@@ -46,9 +48,11 @@ Conversely, static synchronization does not prevent another caller entering an i
 
 A private final Object is often a useful guard: callers cannot accidentally acquire it, and the field cannot be reassigned to a different monitor. Public receiver/class monitors can be acquired by outside code. String literals, cached boxed values and other widely shared objects can make unrelated code contend on an unexpectedly shared monitor. Use a deliberately owned guard.
 
+A null guard throws NullPointerException rather than selecting a monitor. Acquiring an object's monitor also does not recursively lock every object reachable from its fields. The reference chooses one lock; the application defines which accesses must use it.
+
 ## Reentrancy and automatic release
 
-Intrinsic monitors are reentrant. A caller already owning first can call another instance synchronized method on first; that execution does not wait for itself at the same monitor. Each nested acquisition still has a corresponding release. Another caller cannot enter until the ownership count reaches zero.
+**Reentrancy** means the current owner can acquire the same monitor again. A caller already owning first can call another instance synchronized method on first; that execution does not wait for itself at the same monitor. Each nested acquisition still has a corresponding release. Another caller cannot enter until the ownership count reaches zero.
 
 Leaving a synchronized region through an exception releases its monitor. It does not roll back mutations already performed. Validate and calculate fallible changes before publishing a partial multi-field update, or design a recovery policy. Sleeping inside the region retains ownership; the later wait lesson introduces the distinct operation that releases one selected monitor while waiting.
 

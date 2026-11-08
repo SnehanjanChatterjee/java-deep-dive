@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Describe work before choosing an execution
 
-`Runnable` describes one operation through `void run()`. It has no result return type and cannot declare an additional checked exception on that method. A `Thread` represents one thread lifetime and implements Runnable itself. These related types answer different questions: **what should run**, and **which execution will run it**.
+The first program supplied a small task with a lambda. A larger task may need a name, constructor arguments or helper methods. Its behavior can still be described separately from the Thread that will execute it. `Runnable` supplies that behavior contract: an object provides a run method, and some caller chooses when to invoke it.
 
-There are two traditional construction approaches. Override `run()` in a Thread subclass, or pass a Runnable to a Thread constructor. A named Runnable, an anonymous Runnable and a lambda are three ways to supply behavior through the second approach. None of these forms starts work merely by constructing an object. Calling `start()` requests the new execution; calling `run()` directly remains an ordinary call on the caller's stack.
+One choice is to define a **Thread subclass**: a class extending Thread and overriding its run method. The other is **composition**: construct an ordinary Runnable object and pass it to a Thread. In composition, the Thread uses the supplied object's behavior rather than requiring the task class to inherit its lifetime-control methods.
+
+A named Runnable class, an anonymous Runnable class and a lambda are three spellings of that supplied behavior. An **anonymous class** creates an implementation without giving the class a reusable source name. The lambda expresses the single operation more compactly. All four forms below still need start for an independent execution and join for the demonstrated completion observation.
+
+The mental model stays the same across the syntax: identify the object containing the behavior, identify the Thread whose lifetime is started, then join that same Thread before using its finished work.
 
 ## Run four complete forms
 
@@ -34,6 +38,8 @@ The example creates four threads and one four-element answer array. Each worker 
 `NamedWorker` invokes `super(name)` to name its Thread object. `NamedTask` holds the answer-array reference and writes index one when invoked. The anonymous class supplies a small unnamed implementation. The lambda supplies the same functional-interface behavior without the class declaration syntax. Its captured array reference is effectively final; the referenced array remains mutable.
 
 The four joins establish that every corresponding write happened before main inspects the answers. Four different array elements are different variables. If two workers instead updated the same ordinary element with read/modify/write, their construction style would provide no protection against a lost update.
+
+Runnable's method returns void and does not declare checked exceptions. Its implementations cannot add a new checked exception to that method's signature. Thread implements Runnable too, which is why a Thread subclass can override run; it does not make every Runnable object a started Thread.
 
 <Diagram client:visible definition={"flowchart LR\n R[Runnable object: behavior] --> T[Thread object: one lifetime]\n T --> S[start requests new execution]\n S --> I[invoke behavior run on that execution]\n J[Caller joins Thread] --> O[Observe its completed work]"} caption="A behavior can be supplied separately from its executing Thread. The start and join operations belong to the Thread lifetime." />
 

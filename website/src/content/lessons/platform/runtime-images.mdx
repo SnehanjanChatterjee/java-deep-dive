@@ -11,6 +11,12 @@ advanced: true
 
 import Diagram from '../../../components/Diagram.jsx';
 
+## A runtime image packages the Java runtime needed by an application
+
+A **runtime image** is a distribution of the Java runtime: its launcher, modules and supporting files. A **custom runtime image** includes a selected module graph rather than every component of a development JDK. The jlink tool builds such images; jdeps helps inspect static dependencies in compiled code.
+
+The application’s own JAR and its runtime are different artifacts. Here we use the two-module program from the preceding lesson, identify its required runtime modules and launch it with an image’s own java executable. This establishes what is being packaged before we investigate missing providers, dynamic dependencies or installers.
+
 ## Package the resolved runtime graph
 
 A full JDK contains tools and runtime modules that one application may not need. Jlink creates a custom runtime image from explicit root modules and their resolved dependencies. It packages the Java runtime for a chosen application graph; it does not turn every Java application into one portable native executable.

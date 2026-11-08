@@ -2,7 +2,7 @@
 title: "Conversions, wrappers and numeric boundaries"
 module: "language"
 group: "Conversions and numeric boundaries"
-summary: "Follow promotion, boxing and narrowing, including overflow, floating-point and null boundaries."
+summary: "Understand how numeric types affect calculations and what happens when a value cannot fit exactly."
 order: 130
 version: "Java 8+"
 prerequisites: ["language/variables-and-expressions", "language/methods-and-recursion"]
@@ -28,7 +28,23 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Determine the operation's type before computing
 
-Assigning an expression to long does not make its intermediate operations use long. `long total = 50_000 * 50_000;` multiplies two ints, overflows to -1794967296 and then widens that already incorrect result. `50_000L * 50_000` computes the intended 2500000000 using long arithmetic. Math.multiplyExact detects overflow instead of silently wrapping.
+A **conversion** changes a value from one Java type to another, for example when assigning an int to a long variable. It is needed because a calculation's operands, a method's parameters and the variable receiving its result may use different types. Conversion can preserve a value, approximate it or discard information; the type names alone are not a proof of exactness.
+
+Primitive numeric types have finite representations. The signed integral types store whole numbers with both signs; char stores a nonnegative UTF-16 unit. Floating-point types represent a range of binary approximations, together with special values. These are value formats, not measurements of the size of a containing object.
+
+| Type | Value format | A boundary to remember |
+| --- | --- | --- |
+| byte | Signed 8-bit integer | −128 through 127 |
+| short | Signed 16-bit integer | −32768 through 32767 |
+| int | Signed 32-bit integer | −2147483648 through 2147483647 |
+| long | Signed 64-bit integer | Larger whole-number range than int |
+| char | Unsigned 16-bit unit | 0 through 65535; not a complete model of every character |
+| float / double | 32-bit / 64-bit floating-point formats | Range and precision are separate limits |
+| boolean | true or false | Does not convert to or from a number |
+
+**Widening** is a permitted conversion to a broader type; **narrowing** usually requires an explicit cast such as `(byte) value`. **Numeric promotion** chooses the type used by an arithmetic operation. First determine that operation's type, then compute, then consider conversion into the receiving variable.
+
+For example, `long total = 50_000 * 50_000;` multiplies two ints, overflows to -1794967296 and only then widens the result. Overflow means the mathematical result lies outside the operation's representable range. `50_000L * 50_000` uses long arithmetic and produces 2500000000. Math.multiplyExact instead reports an overflow when the requested result must fit its integer type.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="trace-overflow-narrowing-and-boxing" aria-hidden="true"></span>
@@ -37,7 +53,7 @@ Assigning an expression to long does not make its intermediate operations use lo
 
 <JavaExample file="TypeConversions.java" output={"-2147483648\n-126\ntrue"} />
 
-Maximum int plus one wraps to minimum int. Narrowing 130 to byte keeps its low eight bits, interpreted as signed, producing -126. Two Integer references compare equal in value through equals regardless of whether their objects share identity.
+Maximum int plus one wraps to minimum int. Narrowing 130 to byte keeps its low eight bits, interpreted as signed, producing -126. The final output uses Integer, the object wrapper for an int value: its equals operation compares the wrapped values. Follow that separately in the boxing section after the primitive conversion rules.
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 <span id="promotion-precision-and-runtime-casts" aria-hidden="true"></span>
@@ -74,6 +90,16 @@ Integer, Long and other wrappers let primitive values participate in reference A
 
 Wrapper identity can depend on caching; use equals for values. A reference cast checks whether an existing object is compatible; `(Integer) anObject` does not parse a String into a number. `var` (Java 10+) infers a local's static type from its initializer; `var text = "hi"` remains String, and `var value = null` supplies no usable type.
 
+## Explain precision and special values with actual results
+
+<JavaExample file="NumericEdgesLesson.java" output={"66\nB\n16777216\nInfinity\n-Infinity\ntrue\ntrue\nfalse"} />
+
+Char 'A' promotes to int 65 before addition, so the first result is 66. The explicit cast of that result to char gives B. The float literal 16777217F rounds to a representable float value before the int cast, so the later cast cannot recover the lost unit. Widening a type's range is different from preserving every significant bit.
+
+Floating division by positive and negative zero yields infinities with different signs; zero divided by zero yields NaN, tested with isNaN. Primitive equality considers signed zeros equal, while Double.equals distinguishes them. For an interview prediction, name the operand types and the exact comparison operation before choosing an answer. Do not generalize integer divide-by-zero behavior to floating-point arithmetic.
+
+Parsing text, boxing an existing number and casting an object reference are three different operations. Continue with <a href={lessonUrl('learn/language/wrappers-and-boxing/')}>wrapper values and null boundaries</a> for parseInt/valueOf, cross-wrapper equals and explicit null policies. None of those operations makes ordinary floating point suitable for every decimal monetary requirement; the decimal-arithmetic lesson later defines that separate domain.
+
 <span id="common-mistakes" aria-hidden="true"></span>
 <span id="numeric-and-null-handling-pitfalls" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
@@ -90,17 +116,6 @@ Repair `long answer = 50_000 * 50_000` and explain why casting its result afterw
 Use `long answer = 50_000L * 50_000;` or cast an operand before multiplication. `(long) (50_000 * 50_000)` widens the overflowed int, so the lost high bits cannot be recovered. For a required int result, use Math.multiplyExact and handle a value outside that domain. Apply this reasoning order: operand types → promotion → operation → assignment conversion.
 
 </details>
-
-
-## Explain precision and special values with actual results
-
-<JavaExample file="NumericEdgesLesson.java" output={"66\nB\n16777216\nInfinity\n-Infinity\ntrue\ntrue\nfalse"} />
-
-Char 'A' promotes to int 65 before addition, so the first result is 66. The explicit cast of that result to char gives B. The float literal 16777217F rounds to a representable float value before the int cast, so the later cast cannot recover the lost unit. Widening a type's range is different from preserving every significant bit.
-
-Floating division by positive and negative zero yields infinities with different signs; zero divided by zero yields NaN, tested with isNaN. Primitive equality considers signed zeros equal, while Double.equals distinguishes them. For an interview prediction, name the operand types and the exact comparison operation before choosing an answer. Do not generalize integer divide-by-zero behavior to floating-point arithmetic.
-
-Parsing text, boxing an existing number and casting an object reference are three different operations. Continue with <a href={lessonUrl('learn/language/wrappers-and-boxing/')}>wrapper values and null boundaries</a> for parseInt/valueOf, cross-wrapper equals and explicit null policies. None of those operations makes ordinary floating point suitable for every decimal monetary requirement; the decimal-arithmetic lesson later defines that separate domain.
 
 <span id="references" aria-hidden="true"></span>
 <span id="type-system-references" aria-hidden="true"></span>

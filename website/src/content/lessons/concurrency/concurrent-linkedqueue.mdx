@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## An empty poll returns instead of waiting
 
-A queue can be thread-safe without offering a blocking take. ConcurrentLinkedQueue supplies a FIFO whose offer/poll operations do not acquire a shared blocking lock. Poll returns null when no item is available at that operation. The caller must choose what to do next: return to an event loop, await an external signal, or end a known batch. Accidentally busy-polling indefinitely wastes work.
+A **ConcurrentLinkedQueue** is an unbounded thread-safe first-in-first-out (FIFO) queue with endpoint operations that report their current outcome rather than waiting for a future item. Offer appends an element, poll removes and returns the oldest available element, and peek observes the head without removing it.
 
-It is unbounded and rejects null elements. There is no capacity constructor that changes it into a bounded BlockingQueue.
+Its useful distinction from a blocking take is the empty case: poll returns null when no element is available at that operation. The caller can end a known batch, return to other work or use a separate waiting protocol. An empty result is information about that operation, rather than a declaration that all producers have ended.
+
+The ordinary program follows A/B/C through those endpoints on one caller so every output can be predicted without a race. We then insert a competing consumer between peek and poll to show why observation does not reserve an item. Only after those contracts are clear will we study the nonblocking linked algorithm and its progress limits.
+
+The queue rejects null elements, allowing null to represent absence. It supplies no storage capacity bound or built-in wait-for-data method. An application needing either must choose the appropriate mechanism instead of busy-polling indefinitely or combining size with offer.
 
 ## Follow the endpoint API
 
@@ -36,7 +40,9 @@ For a multi-step application operation, use the value returned by the **claiming
 
 ## Trace logical removal before physical cleanup
 
-On the selected OpenJDK implementation, the linked algorithm belongs to the Michael–Scott family, adapted for garbage collection and extra removal operations. Offer CAS-links a new node. Poll can claim a live item by changing that node's item to null with CAS. Claiming membership and unlinking an old node are distinct operations.
+A **node** stores an element reference and a link to another node. **Logical removal** makes an element unavailable to future claims; **physical cleanup** later removes obsolete links/nodes from traversal paths. Those transitions can occur separately in a concurrent linked algorithm.
+
+On the selected OpenJDK implementation, the linked algorithm belongs to the Michael–Scott family, adapted for garbage collection and extra removal operations. It uses **compare-and-set (CAS)**, an atomic check that changes a location only if its expected value still matches. Offer CAS-links a new node. Poll can claim a live item by changing that node's item to null with CAS. Claiming membership and unlinking an old node are distinct operations.
 
 For one node containing A, two consumers can both reach it. If consumer one changes item from A to null successfully, consumer two's stale expected-A update cannot claim A again. It must continue/retry according to the representation. Head and tail pointers may lag; traversals can help repair/advance them. A physically reachable old node is not necessarily a live queue element.
 

@@ -1,8 +1,8 @@
 ---
-title: "Overloading and variable arguments"
+title: "Method overloading and compile-time selection"
 module: "language"
 group: "Conversions and numeric boundaries"
-summary: "Resolve overloads from declared types and compare fixed arguments, boxing and varargs."
+summary: "Share a method name across parameter lists and explain which method a call selects."
 order: 140
 version: "Java 8+"
 prerequisites: ["language/methods-and-recursion", "language/arrays", "language/types-and-conversions"]
@@ -14,7 +14,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Choose a signature at compile time
 
-Overloading gives methods the same name but different parameter lists. A method's return type alone cannot distinguish overloads. A simple useful pair might format one number or format a number with a width. The declared argument types decide which signature the compiler chooses; the runtime class of a reference argument does not start a new overload search.
+**Method overloading** lets related operations share a name while accepting different parameter lists. A formatter might accept just a number, or a number plus a display width. Each declaration is a distinct method; the compiler must select one at each call before the program runs.
+
+A **signature** distinguishes a method by its name and parameter types in the ordinary examples here. The return type alone cannot distinguish two overloads. A method is **applicable** when the supplied arguments can be used for its parameters under the permitted conversions. The compiler considers declared argument types, not a new search through their eventual runtime classes.
+
+The example deliberately gives three pick methods different labels so their selection is visible. One accepts long, one accepts the wrapper Integer, and one accepts `int...`, a variable-arity array parameter. First identify the argument expression's type; then follow the compiler's selection phases. The next lesson develops variable-arity calls and their array ownership separately.
 
 <JavaExample file="OverloadChoice.java" output={"long\nInteger\nvarargs"} />
 
@@ -22,7 +26,7 @@ Save as OverloadChoice.java, compile with javac and run with java. Output is lon
 
 ## Apply the first successful applicability phase
 
-For ordinary calls, first consider fixed-arity methods without boxing/unboxing. Next permit boxing/unboxing. Finally consider variable-arity invocation. Within the first successful phase, choose a most-specific applicable method.
+**Fixed arity** means using a declaration's fixed parameter list rather than packing separate trailing arguments into a varargs array. For ordinary calls, first consider fixed-arity methods without boxing/unboxing. Next permit boxing/unboxing. Finally consider variable-arity invocation. Within the first successful phase, choose a most-specific applicable method.
 
 For `pick(1)`, int widens to long in the first phase; boxing is unnecessary. An existing Integer reference matches Integer without unboxing. An empty argument list needs varargs, which supplies an empty int array. This is more reliable than a slogan about widening always beating boxing in every possible context.
 
@@ -32,7 +36,17 @@ For `pick(1)`, int widens to long in the first phase; boxing is unnecessary. An 
 
 An incoming varargs array can be caller-owned. Keeping it in object state can expose later mutations; copy when snapshot ownership is required. Generic varargs have additional erased-type restrictions, taught after generics. Do not introduce several unrelated varargs overloads merely to avoid choosing clear method names.
 
+## Reject signatures that only appear different
+
+Changing a parameter's name, a method's return type, its throws list or the presence of static alone does not create another overload with the same parameter types. `int read()` and `String read()` cannot coexist just because their callers want different result types. An array parameter and the corresponding varargs parameter also describe the same parameter type, so int[] and int... cannot distinguish two declarations.
+
+Keep overload sets conceptually consistent. Methods that accept unrelated reference types can make `call(null)` ambiguous even though each declaration works separately. A cast at the call site can select one, but an API with distinct descriptive names may communicate the intent better. Assignment of the call's result happens after overload selection; it is not a license to declare conflicting ordinary signatures.
+
+The focused <a href={lessonUrl('learn/language/varargs/')}>varargs lesson</a> gives complete zero-argument, explicit-array, null-array and snapshot examples. It follows overload selection so callers can distinguish convenience packing from ownership. Generic overloads and target-type inference add rules after generics; the declaration/type reasoning here remains the starting point.
+
 ## Practice: resolve a null call
+
+Object is the common base type of Java class instances; a String reference is a more specific kind of reference. This type relationship, developed in the object-model lessons, lets a String argument be accepted by an Object parameter. Null can instead be assigned to either reference type without identifying an object.
 
 Does `pick(null)` select Integer or int[]? What changes with overloads `show(Object)` and `show(String)`?
 
@@ -42,14 +56,6 @@ Does `pick(null)` select Integer or int[]? What changes with overloads `show(Obj
 Pick is ambiguous because Integer and int[] are unrelated reference types, both accept null, and neither is more specific. A cast communicates which contract the caller intends, without making dereferencing null safe. For show, String is more specific than Object and wins. Adding an unrelated overload can break recompilation even while existing class files continue to reference their originally chosen signature. Inheritance adds a separate runtime dispatch step; it is taught after classes and interfaces.
 
 </details>
-
-## Reject signatures that only appear different
-
-Changing a parameter's name, a method's return type, its throws list or the presence of static alone does not create another overload with the same parameter types. `int read()` and `String read()` cannot coexist just because their callers want different result types. An array parameter and the corresponding varargs parameter also describe the same parameter type, so int[] and int... cannot distinguish two declarations.
-
-Keep overload sets conceptually consistent. Methods that accept unrelated reference types can make `call(null)` ambiguous even though each declaration works separately. A cast at the call site can select one, but an API with distinct descriptive names may communicate the intent better. Assignment of the call's result happens after overload selection; it is not a license to declare conflicting ordinary signatures.
-
-The focused <a href={lessonUrl('learn/language/varargs/')}>varargs lesson</a> gives complete zero-argument, explicit-array, null-array and snapshot examples. It follows overload selection so callers can distinguish convenience packing from ownership. Generic overloads and target-type inference add rules after generics; the declaration/type reasoning here remains the starting point.
 
 ## Overload references
 

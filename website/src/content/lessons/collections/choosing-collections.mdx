@@ -40,9 +40,16 @@ This fragment needs imports for java.util.List and java.util.ArrayList inside a 
 
 ## Interpret a method result before reading printed output
 
-put on a map, add on a set and add on a list have different result meanings. A Set.add returning false means the value was already a member; it is not a generic insertion error. A List.add normally adds another position even if an equal value already exists. A Map.put can return an old value without changing cardinality.
+The list moves through [Mira], [Mira,Noor], [Mira,Noor,Mira], then [Mira,Ada,Mira], then [Ada,Mira]. Its **size** counts positions, including repeated values. set returns the old value but does not add a position; remove(Object) reports whether it removed one equal value. A list can therefore represent repeated visits or ordered work steps.
 
-A Queue also needs a declared removal policy. FIFO is common, but PriorityQueue selects by priority and a stack selects the last pushed value. Neither a Queue variable nor a printed element order proves FIFO. The <a href={lessonUrl('learn/collections/collection-operations/')}>shared-operation chapter</a> follows addAll, containsAll, removeAll, retainAll and toArray with concrete states.
+Other tasks need different contracts. A **set** represents unique membership, such as which names have appeared. A **map** associates a key with a value, such as each name with its latest score. Putting a value for an existing map key replaces that key's association rather than adding another key position.
+
+A **queue** keeps values waiting under a removal policy. **FIFO** means first in, first out, as in a checkout line; **LIFO** means last in, first out, as in a stack of undo actions. A **deque** (double-ended queue) exposes both ends, so the operations chosen by the caller can implement either policy. A priority queue instead selects by priority.
+
+**Encounter order** is the order in which a container presents elements during traversal. It can come from list positions, first insertion, or a comparison rule; some containers promise none. It is separate from whether duplicates are allowed.
+
+The <a href={lessonUrl('learn/collections/collection-operations/')}>next chapter</a> follows the shared addAll, containsAll, removeAll, retainAll and toArray operations one state at a time.
+
 
 ## Follow the interface hierarchy
 

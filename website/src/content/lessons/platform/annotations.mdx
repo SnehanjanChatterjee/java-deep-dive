@@ -12,9 +12,15 @@ advanced: true
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
+## An annotation describes a declaration or type use
+
+An **annotation** is structured metadata attached to a supported source location, such as a class or method. Metadata is information about the program: a label, an instruction to a compiler check, or configuration for a tool. Merely writing an annotation does not run application behavior.
+
+The @Override annotation is a familiar example: the compiler checks the declaration it marks. A custom annotation needs a consumer too. We will declare one label, read it through reflection and then ask where the metadata must be retained. Compile-time processing and runtime interpretation are separate consumers with different lifetimes.
+
 ## Attach metadata for a consumer to interpret
 
-An annotation supplies structured metadata. It does not execute an operation merely by appearing above a class or method. A consumer must read or process it: a compiler checks Override, a processor can generate source during compilation, and runtime code can inspect retained annotations.
+We will declare a Label annotation with a required text value and an optional priority. Worker carries a class label, and its work method carries a separate method label. The program queries each declaration through reflection, prints its label/priority, then asks whether a subclass automatically has the class label. This gives retention and inheritance concrete questions to answer.
 
 <JavaExample file="AnnotationBasicsDemo.java" output={"worker:2\noperation:1\ninherited=false"} />
 
@@ -32,7 +38,7 @@ CLASS is the default retention. @Target limits permitted annotation locations: t
 
 ## Separate declared metadata from inheritance
 
-Label is not itself marked @Inherited, so querying SpecializedWorker for the class label produces false. Adding @Inherited permits specific superclass-based class annotation lookup; it does not copy method annotations or annotations from implemented interfaces. GetDeclaredAnnotation asks only about the declaration itself, while getAnnotation can apply the relevant inheritance policy.
+Label is not itself marked @Inherited, so querying SpecializedWorker for the class label produces false. Adding @Inherited permits specific superclass-based class annotation lookup; it does not copy method annotations or annotations from implemented interfaces. getDeclaredAnnotation asks only about the declaration itself, while getAnnotation can apply the relevant inheritance policy.
 
 An inherited method can still be represented by its original Method declaration carrying its original annotation. That differs from an override automatically inheriting the annotation. A proxy often receives an interface Method, while implementation annotations may be on another declaration; choose which location owns the policy and find it explicitly.
 

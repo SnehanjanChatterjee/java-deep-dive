@@ -17,6 +17,22 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 A List of List of Integer is not a rectangular block of integer storage. The outer list stores references to row lists, and each row owns its own size and storage. Rows can have different lengths, be shared by several positions, or be absent until constructed. Generics describe the nested element type, not the dimensions.
 
+For a small seating grid, construct the row objects as well as the outer container. A capacity argument alone creates neither rows nor cells:
+
+```java
+final List<List<Integer>> grid = new ArrayList<>();
+final List<Integer> first = new ArrayList<>(Arrays.asList(0, 0, 0));
+final List<Integer> second = new ArrayList<>(Arrays.asList(0, 0, 0));
+grid.add(first);
+grid.add(second);
+grid.get(0).set(1, 17);  // [[0,17,0], [0,0,0]]
+grid.get(1).add(9);      // [[0,17,0], [0,0,0,9]]
+```
+
+Read `List<List<Integer>>` from outside inward: an ordered list whose elements are row-list references; each row holds Integer references. The two new row objects are independent even though their initial contents are equal. The complete program generalizes construction into matrix, then compares copy strategies and deliberate shared-row behavior.
+
+The complete file contains matrix and copyRows for this row exercise. Its freezeDistinctRows helper is an optional application after the Sets group, explained in the later set-of-sets section; it is not needed to construct or copy the grid.
+
 <JavaExample file="NestedCollections.java" output={"[[0, 17, 0], [0, 0, 0, 9]]\n[[5, 17, 0], [0, 0, 0, 9]]\n[[0, 17, 0], [0, 0, 0, 9]]\n[[8, 0], [8, 0]]\ndistinct frozen rows=[[A, B]]"} />
 
 matrix creates each row with a new ArrayList inside the loop. Its cells are Integer values, initialized to the declared number. The two row objects are independent. For r rows and c columns, construction uses O(r + rc) work/storage, counting row objects even when c is zero.
@@ -52,6 +68,8 @@ Collections.nCopies(2,sharedRow) repeats the same reference twice. Wrapping the 
 A useful identity check is `grid.get(0) == grid.get(1)`. It should be false when the design requires independent rows. Equality of row contents is a different question: two independent zero-filled rows can compare equal.
 
 ## A set of sets has membership semantics at both levels
+
+This extension uses HashSet and LinkedHashSet, taught in the Sets group. The row construction/copy model above is complete without it. Return to this section after hash membership to apply that ownership model to a container used as a set member.
 
 The final example builds two String sets with the same members in different encounter orders. They are equal as sets, so an outer set stores one distinct row membership. Outer Set uniqueness is not based on which row object was allocated or the order in which its inner values were inserted.
 

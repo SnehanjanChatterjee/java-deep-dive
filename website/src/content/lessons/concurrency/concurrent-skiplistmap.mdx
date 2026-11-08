@@ -14,9 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Concurrent lookup can also require order
 
-A scheduler stores jobs by deadline. It needs the greatest key at or before a query, a bounded range view, and removal of the first job. ConcurrentHashMap supplies exact-key operations without sorted neighbors. ConcurrentSkipListMap supplies concurrent NavigableMap-style operations under a comparison order.
+A **ConcurrentSkipListMap** is a map with comparison-ordered keys and operations designed for concurrent callers. **Navigation** means asking about positions in that order: the first key, the greatest key at or below a query, or the keys within a range. These are additional requirements beyond an exact-key hash lookup.
 
-Null keys and values are prohibited, even with a comparator able to order null. Comparison result zero defines key equivalence. Keep comparison consistent with equals when the ordinary Map equality contract is required, and do not mutate ordering fields while keys are stored.
+For example, a scheduler storing jobs by deadline may need the greatest deadline at or before a query and an atomic removal of the first job. A **backed range view** presents part of the same map, so later updates inside its bounds can appear through that view; it is not a separate copied map.
+
+Use numeric keys 10, 20 and 30 to learn these contracts first. FloorKey(25) asks for the greatest stored key no larger than 25. PollFirstEntry both obtains and removes the first mapping as one supported operation. A later section then explains the **skip list**, the ordered linked structure with shortcut levels used by this implementation.
 
 ## Trace a backed range and one claimed entry
 
@@ -26,13 +28,7 @@ The range includes 10 and excludes 30. It is backed by the map, so adding 20 aft
 
 Calling firstEntry and then remove separately would leave an interference interval. Polling one entry claims that mapping; it does not reserve an entire range or make several subsequent operations a transaction.
 
-## Base list and probabilistic index levels
-
-The implementation maintains an ordered linked base level and sparser index levels. Searches move right while indexed keys precede the target, then descend toward the base. Index placement is probabilistic, yielding expected average logarithmic core key operations under the skip-list model and bounded comparison cost. This is a different structural guarantee from a balanced tree's worst-case height; it is not a latency deadline under contention.
-
-<Diagram client:visible definition={"flowchart TD\n H[Search at index level] --> Q{Next key precedes query?}\n Q -->|yes| R[Move right]\n R --> Q\n Q -->|no| D[Descend toward base list]\n D --> B[Locate matching key or neighbor]\n B --> O[Return one operation outcome]"} caption="Index levels guide a search to ordered base membership. They do not create an immutable duplicate map." />
-
-Atomic link/value transitions coordinate updates. Logical marking can precede physical unlinking; traversals can help cleanup. The source supplies the marker/helping interference cases that a static layered drawing omits. Treat these details as implementation analysis rather than the public contract.
+Null keys and values are prohibited, even with a comparator able to order null. Comparison result zero defines key equivalence. Keep comparison consistent with equals when the ordinary Map equality contract is required, and do not mutate ordering fields while keys are stored.
 
 ## Separate a returned entry from a backed range view
 
@@ -47,6 +43,14 @@ The entry snapshot copies the key/value references, not the historical fields of
 Views/iterators are weakly consistent and can reflect concurrent changes. Entry objects returned by this class describe individual mapping snapshots and do not support setValue. Several independently obtained entries do not necessarily represent one coherent global version. A value object inside any entry can also remain mutable and shared.
 
 Ascending traversal is generally more efficient than descending traversal for this implementation, but choose the required semantics first and measure a representative workload. Neither sorted traversal nor concurrency establishes an atomic multi-key accounting operation.
+
+## Base list and probabilistic index levels
+
+The implementation maintains an ordered linked base level and sparser index levels. Searches move right while indexed keys precede the target, then descend toward the base. Index placement is probabilistic, yielding expected average logarithmic core key operations under the skip-list model and bounded comparison cost. This is a different structural guarantee from a balanced tree's worst-case height; it is not a latency deadline under contention.
+
+<Diagram client:visible definition={"flowchart TD\n H[Search at index level] --> Q{Next key precedes query?}\n Q -->|yes| R[Move right]\n R --> Q\n Q -->|no| D[Descend toward base list]\n D --> B[Locate matching key or neighbor]\n B --> O[Return one operation outcome]"} caption="Index levels guide a search to ordered base membership. They do not create an immutable duplicate map." />
+
+Atomic link/value transitions coordinate updates. Logical marking can precede physical unlinking; traversals can help cleanup. The source supplies the marker/helping interference cases that a static layered drawing omits. Treat these details as implementation analysis rather than the public contract.
 
 ## Exercise and complete reference solution
 

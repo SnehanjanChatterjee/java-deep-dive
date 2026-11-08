@@ -2,7 +2,7 @@
 title: "Abstract classes and shared algorithms"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Combine inherited state and implemented behavior with an explicit abstract step supplied by concrete subclasses."
+summary: "Share state and an algorithm while requiring concrete subclasses to provide a chosen step."
 order: 184
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "objects/constructors-and-access"]
@@ -14,9 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Share an invariant without pretending every base is complete
 
-An abstract class can represent a family whose common state and operations are meaningful, while some behavior depends on the concrete subtype. It cannot be directly instantiated. It can have fields, constructors, static members and implemented methods; an abstract method declares a required operation without a body.
+Two related classes may perform the same overall operation while differing in one step. An **abstract class** can declare that shared operation and state without pretending to provide a complete instance by itself. It cannot be instantiated directly; a **concrete subclass** completes the required behavior and is the class actually constructed.
 
-Here every Form has a non-null label and the same `label:content` formatting algorithm. TextForm stores text; CountForm stores a nonnegative number. The base owns the shared label and algorithm, while each concrete class supplies its content representation.
+An **abstract method** declares a required signature without a body. An implemented method has a body and can call such a required operation on the completed object's receiver. An abstract class can also have fields, constructors, static members and fully implemented methods. The abstraction marks an incomplete type for construction, not a ban on shared implementation.
+
+Here every Form has a non-null label and the same `label:content` formatting algorithm. TextForm stores text; CountForm stores a nonnegative number. The base owns the shared label and algorithm, while each concrete class supplies its content representation. The varying content operation is sometimes called a **hook**: one explicit extension point within the shared algorithm.
 
 <JavaExample file="AbstractTemplateLesson.java" output={"note:hello\nitems:3"} />
 

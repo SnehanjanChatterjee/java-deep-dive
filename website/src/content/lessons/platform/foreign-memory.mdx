@@ -12,13 +12,19 @@ advanced: true
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
+## Foreign memory is storage accessed outside ordinary Java object fields
+
+The **Foreign Function and Memory API (FFM)** provides supported access to memory regions and native functions outside ordinary Java object operations. Native storage is often outside the garbage-collected Java heap, so its location, representation and lifetime need an explicit model. The stable API begins in Java 22.
+
+A **memory segment** is a bounded view of storage. An **arena** owns the lifetime of certain allocations. A **layout** describes how values occupy bytes. We will allocate one int, write and read it while its owner is open, then observe why retaining a segment reference cannot authorize access after close. Native function calls follow only after those memory concepts.
+
 ## Give native storage an explicit owner
 
-The Foreign Function and Memory API separates a memory region from its lifetime and representation. A MemorySegment is a bounded view; an Arena controls the lifetime of native allocations; a ValueLayout describes how a value is represented and aligned. The stable API used here requires Java 22+, without preview flags.
+The first program needs only one int, not a native library. Create an arena, allocate a segment using the Java-int layout, store 42 at byte offset zero and read it before close. Keep the segment reference after leaving the owning block and attempt another read. That last operation demonstrates lifetime checking: the variable can still exist after permission to access its storage has ended.
 
 <JavaExample file="modern/ForeignMemoryDemo.java" output={"42\nclosed"} />
 
-Arena.ofConfined creates an explicitly closeable arena owned by the current thread. Allocate reserves storage for one int layout. Set writes 42 at byte offset zero, and get reads it while the arena remains open. Try-with-resources closes the arena. The retained segment reference still exists, but access is rejected because the storage lifetime ended. Reachability is not ownership permission.
+`Arena.ofConfined` creates an explicitly closeable arena owned by the current thread. `allocate` reserves storage for one int layout. `set` writes 42 at byte offset zero, and get reads it while the arena remains open. Try-with-resources closes the arena. The retained segment reference still exists, but access is rejected because the storage lifetime ended. Reachability is not ownership permission.
 
 ## Separate byte offsets from Java array indexes
 
@@ -37,6 +43,31 @@ Confined arenas restrict access and closing to their owner thread. Shared arenas
 Bounds, alignment, wrong-thread and closed-scope failures describe different violated contracts. Check them before involving a native library. A valid Java segment does not prove arbitrary native code uses the pointer safely.
 
 ## A foreign function adds an ABI contract
+
+The **Application Binary Interface (ABI)** specifies native data representations and how calls pass arguments/results on a particular platform. A **calling convention** is part of that contract, including how registers/stack positions are used. A **symbol** is a named native entity, such as an exported function, which a lookup resolves to an address.
+
+A **downcall** goes from Java to native code. An **upcall** lets native code invoke a Java callback through a generated entry point. These directions are separate from allocating memory or compiling ordinary Java bytecode with a JIT.
+
+### Derive a binding from a small native signature
+
+Suppose an owned native library exports this C function:
+
+```c
+int twice(int value) { return value * 2; }
+```
+
+This is a binding walkthrough, not an already installed native library. The native implementation, its built library and matching platform ABI must exist before invocation. For the chosen input 3, that C body computes 6; do not infer Java's overflow/exception rules for arbitrary C arithmetic.
+
+| Binding step | Information it establishes |
+| --- | --- |
+| Find symbol twice in the intended library | Obtain the native function address |
+| Obtain the linker's canonical C int layout | Use the ABI's representation of int |
+| FunctionDescriptor.of(cInt, cInt) | Describe one C int parameter and one C int result |
+| linker.downcallHandle(address, descriptor) | Create an invocation handle with the derived Java carrier types |
+| `(int) handle.invokeExact(3)` | Supply an int and request the matching int result |
+
+For this supported C-int mapping, the Java handle type is `(int)int`. The layout descriptor describes the native signature; MethodType describes the Java invocation shape. A matching-looking function name supplies neither of those type guarantees. Keep the library lookup's arena alive while calls can use its symbol addresses. [Native linker and canonical layouts](https://docs.oracle.com/en/java/javase/22/docs/api/java.base/java/lang/foreign/Linker.html), [symbol lookup lifetime](https://docs.oracle.com/en/java/javase/22/docs/api/java.base/java/lang/foreign/SymbolLookup.html)
+
 
 Linker connects a symbol and FunctionDescriptor to an invocable MethodHandle. A downcall must match the actual native return/argument layouts, calling convention and ownership. Native code can retain a pointer after the Java call returns; its arena must outlive the actual native use. An upcall similarly needs a callback lifetime and a defined exception policy.
 

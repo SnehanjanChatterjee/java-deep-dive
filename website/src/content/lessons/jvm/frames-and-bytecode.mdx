@@ -2,7 +2,7 @@
 title: "Method frames, local variables and bytecode"
 module: "runtime-foundations"
 group: "Frames and bytecode"
-summary: "Follow a method call from its arguments through stack operations to a returned value."
+summary: "Follow one familiar calculation through a method frame and the bytecode operations that produce its result."
 order: 270
 version: "Java 8+"
 prerequisites: ["jvm/stack-and-heap", "language/methods-and-recursion"]
@@ -16,7 +16,9 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## A call creates an execution frame
 
-A method invocation needs somewhere to keep its arguments, local variables and intermediate calculations. The JVM describes that state as a **frame**. Calling another method creates another frame on the calling thread's JVM stack. Returning completes that invocation and gives control, and possibly a result, back to its caller.
+A Java expression such as `value * 2` hides several execution steps: obtain the input, obtain two, multiply and return the result. **Bytecode** makes those steps explicit as instructions for the **Java Virtual Machine (JVM)**. Reading a small compiled method explains how source-level values become the inputs and results of individual operations.
+
+One method invocation's working state is a **frame**. It keeps parameters/local values and a temporary calculation stack. Calling another method creates another frame on the thread's JVM stack; returning completes that invocation and resumes the caller, possibly supplying a result. The thread's stack contains frames, while the operand stack **inside one frame** contains calculation values.
 
 An object and a frame have different lifetimes. A frame belongs to one invocation; an object can remain reachable after the method that created it returns. Two calls to the same method have independent local variables. Two threads can call the same method while sharing references to some of the same objects.
 
@@ -52,7 +54,9 @@ The number before each instruction is its bytecode offset, not a source line num
 
 ## Trace the local array and operand stack
 
-A frame contains a local-variable array and an operand stack. In this static method the first int argument occupies local slot 0. `iload_0` copies that int onto the operand stack. It does not remove or change the local.
+A **local-variable array** is the frame's indexed storage for parameters and local values. One indexed position is called a **slot**. An **operand** is an input value for an instruction; the **operand stack** holds such inputs and intermediate results in last-in-first-out order. Push adds a value to its top, and pop removes the top value. These are JVM execution structures, not java.util collection objects.
+
+In this static method the first int argument occupies local slot zero. `iload_0` means load the int from that slot, copying it onto the operand stack. `iconst_2` pushes int constant two; `imul` performs int multiplication; `ireturn` returns an int. The load does not remove or change the local.
 
 | After operation | Local slot 0 | Operand stack, bottom → top | Reason |
 | --- | --- | --- | --- |
@@ -76,6 +80,22 @@ Main waits for twice's result before it can pass that value to println. Returnin
 
 Local slots and the operand stack are parts of the JVM model, not measured memory addresses. The earlier stack-and-heap chapter separated these invocation values from object state. More advanced member-invocation instructions, verification and optimized physical frames are studied after class loading.
 
+## Preserve operand order for subtraction
+
+Multiplication is commutative, so reversing its operands can hide a tracing mistake. ExecutionFramesDemo also declares `difference(int left, int right)`, returning left minus right. Inspecting it with the same javap command yields loads of local zero and local one, followed by isub and ireturn.
+
+| Operation for difference(9, 4) | Locals | Operand stack, bottom → top |
+| --- | --- | --- |
+| Enter | left=9, right=4 | empty |
+| iload_0 | unchanged | 9 |
+| iload_1 | unchanged | 9, 4 |
+| isub | unchanged | 5 |
+| ireturn | invocation completes | caller receives 5 |
+
+Isub consumes the top right operand four and the earlier left operand nine, then computes nine minus four. It does not compute four minus nine merely because four is popped first. Reversing the arguments gives minus five in a different invocation. The matching tests cover both orders and ordinary int overflow; the main demonstration still prints six so the first trace remains unchanged. [JVMS isub](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.isub)
+
+An instance method also needs a receiver, conventionally in local slot zero, shifting its first explicit argument to later slots. A static method has no implicit receiver, as twice/difference here demonstrate. Long/double values occupy two local slots under the JVM model; a source variable name therefore is not a universal one-to-one physical slot map. Detailed slot reuse and optimized reconstruction follow in advanced bytecode linkage.
+
 ## Bytecode exercises and explained answers
 
 <details>
@@ -96,22 +116,6 @@ Ordinary Java int multiplication uses the specified wrapping integer behavior. F
 <span id="why-does-a-debugger-sometimes-show-fewer-locals-in-optimized-execution" aria-hidden="true"></span>
 
 Continue later with <a href={lessonUrl('learn/jvm/bytecode-linkage/')}>bytecode linkage and optimized execution</a> for invocation families, type verification, slot reuse and debugger reconstruction after optimization.
-
-## Preserve operand order for subtraction
-
-Multiplication is commutative, so reversing its operands can hide a tracing mistake. ExecutionFramesDemo also declares `difference(int left, int right)`, returning left minus right. Inspecting it with the same javap command yields loads of local zero and local one, followed by isub and ireturn.
-
-| Operation for difference(9, 4) | Locals | Operand stack, bottom → top |
-| --- | --- | --- |
-| Enter | left=9, right=4 | empty |
-| iload_0 | unchanged | 9 |
-| iload_1 | unchanged | 9, 4 |
-| isub | unchanged | 5 |
-| ireturn | invocation completes | caller receives 5 |
-
-Isub consumes the top right operand four and the earlier left operand nine, then computes nine minus four. It does not compute four minus nine merely because four is popped first. Reversing the arguments gives minus five in a different invocation. The matching tests cover both orders and ordinary int overflow; the main demonstration still prints six so the first trace remains unchanged. [JVMS isub](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-6.html#jvms-6.5.isub)
-
-An instance method also needs a receiver, conventionally in local slot zero, shifting its first explicit argument to later slots. A static method has no implicit receiver, as twice/difference here demonstrate. Long/double values occupy two local slots under the JVM model; a source variable name therefore is not a universal one-to-one physical slot map. Detailed slot reuse and optimized reconstruction follow in advanced bytecode linkage.
 
 ## References for execution semantics
 

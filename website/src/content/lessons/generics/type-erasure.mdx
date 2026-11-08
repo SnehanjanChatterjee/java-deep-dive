@@ -13,11 +13,25 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Keep a static type contract without a class per argument
 
-Ordinary Java generics are implemented using erasure. A type variable erases to its first bound, or Object if unbounded. `GenericBox<String>` and `GenericBox<Integer>` share one runtime class. Compiler-inserted casts preserve the expected typed reads; erasure does not mean boxing, casts and allocation have no cost.
+Earlier, `GenericBox<String>`.get returned String without a caller cast. What does the JVM actually execute? Java checks that relationship while compiling, then ordinarily represents an unbounded type parameter using Object in the class file. The compiler can insert a cast at the typed read. This translation is called **erasure**.
+
+Think of the two views side by side; the right side explains the translation, not source you should write instead:
+
+| Source-level relationship | Conceptual erased operation |
+| --- | --- |
+| T value in `GenericBox<T>` | Object storage when T is unbounded |
+| String text = box.get() | String text = (String) box.get() |
+| N extends Number | Number is the erased first bound |
+
+Ordinary parameterizations of the same declaration and defining loader share a runtime class. Erasure does not turn a String box into an untyped source API: the compiler still checks its normal writes. It also does not remove boxing, casts or allocation costs.
+
+## Preserve overriding when the parameter changes
+
+`Mapper<T>` declares T map(T value). With T = String, StringMapper implements String map(String). At the JVM level a method's **descriptor** records its parameter and return types; after erasure the interface expects Object-to-Object. To preserve the override, the compiler adds an adapter with that erased descriptor. This generated adapter is a **bridge**; **synthetic** marks that it was generated rather than declared in ordinary source.
 
 <JavaExample file="CoreErasureLab.java" output={"JAVA\n1\ntrue"} />
 
-`Mapper<T>` erases to an Object-to-Object method. StringMapper supplies String-to-String behavior. The compiler generates a synthetic **bridge** with the erased descriptor, adapting/casting the argument and delegating to the concrete implementation. The source's method inspection counts that bridge. Detailed reflection API use is optional here; javap can expose the same compiled fact:
+The first call produces JAVA through the interface. The next output counts the generated bridge; the final true compares the runtime classes of two ordinary ArrayList parameterizations. The small method-inspection loop reports a compiler artifact, not an extra data-processing step the application must implement. You can inspect it without learning reflection first:
 
 ```bash
 mkdir -p out
@@ -25,7 +39,8 @@ javac -d out CoreErasureLab.java
 javap -classpath out -c -p -v 'CoreErasureLab$StringMapper'
 ```
 
-Quote the nested binary name so a shell does not expand its dollar sign. Find ACC_BRIDGE, ACC_SYNTHETIC, the erased descriptor and the call to the String method. A raw caller can fail at a generated bridge cast before the handwritten body executes.
+Quote the nested binary name so the shell preserves $. Find ACC_BRIDGE and ACC_SYNTHETIC. The later descriptor table follows the adapter's cast and delegation one step at a time.
+
 
 ## Restrictions follow from the available representation
 
@@ -105,6 +120,6 @@ No. `List<?>` keeps an unknown but checked element relationship and prevents arb
 
 ## Erasure references
 
-- [Dev.java: erasure and bridges](https://dev.java/learn/language/fp/generics/type-erasure/)
-- [Dev.java: generic restrictions](https://dev.java/learn/language/fp/generics/restrictions/)
+- [Java Tutorials: erasure and bridges](https://docs.oracle.com/javase/tutorial/java/generics/erasure.html)
+- [Java Tutorials: generic restrictions](https://docs.oracle.com/javase/tutorial/java/generics/restrictions.html)
 - [JLS: reifiable types and heap pollution](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html)

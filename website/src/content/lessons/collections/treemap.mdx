@@ -16,12 +16,25 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 <span id="concepts"></span>
 ## Maintain sorted keys while supporting range queries
 
-A binary search tree locates keys by comparison, but ascending insertion can make it a chain. TreeMap provides the ordered Map/NavigableMap contract and maintains a red-black tree so its core key operations take O(log n) comparison steps. Start with its ordinary sorted lookup and navigation before studying the balancing mechanism.
+Suppose a table stores labels at thresholds 10,20,30. A request at 25 needs the nearest threshold at or below it, not only an exact match. TreeMap stores keys in comparison order and implements NavigableMap: the map interface for ordered endpoint, neighbor and range operations.
+
+The earlier BST supplied ordered search but could become a chain. TreeMap also maintains a balance rule, implemented by a red-black tree, so core operations take O(log n) comparison steps. Use its ordered API first; colors and rotations explain how the height bound is maintained later.
 
 Natural order or a supplied Comparator defines placement and comparison-zero membership. Values need not be comparable because only keys are ordered. A comparator is part of the map's meaning, not a display-only preference.
 
 <span id="worked-example"></span>
 ## Find neighbors and modify a range
+
+Create the map, put 30,10,20 in that order, then inspect keySet: traversal is [10,20,30] because key comparison defines order. floorKey(25) asks for the greatest key ≤ 25 and returns 20. ceilingKey(25) asks for the least key ≥ 25 and returns 30. They do not insert 25.
+
+```java
+final NavigableMap<Integer, String> thresholds = new TreeMap<>();
+thresholds.put(30, "high");
+thresholds.put(10, "low");
+thresholds.put(20, "middle");
+final Integer floor = thresholds.floorKey(25);     // 20
+final Integer ceiling = thresholds.ceilingKey(25); // 30
+```
 
 <JavaExample file="TreeMapExample.java" />
 

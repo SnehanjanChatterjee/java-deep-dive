@@ -2,7 +2,7 @@
 title: "Immutable values and defensive copies"
 module: "objects"
 group: "References and identity"
-summary: "Build values whose state remains stable through construction, alias control and defensive copies."
+summary: "Keep a value stable by controlling mutable inputs, outputs and subclass behavior."
 order: 220
 version: "Java 8+"
 prerequisites: ["objects/equality-and-immutability", "objects/array-ownership"]
@@ -14,7 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Keep the published value stable
 
-An immutable object's observable value does not change after construction. Final fields prevent reassignment of those fields, but a final array reference can still identify mutable components. A caller retaining an input array or receiving an internal array from an accessor can change the apparent value unless the boundary detaches it.
+An **immutable value** has the same observable meaning throughout its lifetime after construction. A route created with stops two and four should still report those stops later, even if the caller edits an array it used to build the route. Stable values simplify reasoning about equality, sharing and stored results because a reader cannot silently change another reader's value.
+
+The challenge is **alias control**. Final fields prevent reassignment of those fields, but a final array reference still identifies writable components. A caller may keep the input array or receive an internal array through an **accessor**, a method exposing stored information. Either path could allow an external write to change the route.
+
+A **defensive copy** detaches mutable state at such a boundary. Copy on input to prevent the original caller's later edits, and copy on output to prevent an accessor caller's edits. This is an ownership policy, independent of whether two route objects compare equal. Trace the two boundaries separately in the example.
 
 <JavaExample file="ImmutableRoute.java" output={"2\ntrue"} />
 
@@ -22,28 +26,11 @@ Construction clones the supplied primitive array. Changing input[0] afterward af
 
 ## Explain every ownership decision
 
-The class is final, fields are private/final and there is no mutator. The input null check declares that a route always owns an array. Empty routes are permitted. Input cloning establishes independent primitive components, and output cloning avoids leaking them. Equals uses Arrays.equals and hashCode uses Arrays.hashCode; ordinary array identity would not express route-value equality.
+The class is final, fields are private/final and there is no **mutator**, an operation for changing its stored value. The input null check declares that a route always owns an array. Empty routes are permitted. Input cloning establishes independent primitive components, and output cloning avoids leaking them. Equals uses Arrays.equals and hashCode uses Arrays.hashCode; ordinary array identity would not express route-value equality.
 
 <Diagram client:visible definition={"flowchart LR\n I[Caller input array] -->|copy| V[Private array]\n V -->|copy| O[Caller output array]\n I -. mutation stays here .-> I\n O -. mutation stays here .-> O"} caption="Two boundary copies protect the stored value from both incoming and outgoing aliases." />
 
 Each copy costs O(n) time and storage. Equals takes O(n) worst-case comparisons; hashing reads all n values. Do not advertise an accessor that copies an array as constant-cost. For nested mutable objects, a structural container copy may be insufficient; each element needs a policy, as the preceding matrix example showed.
-
-## Avoid overpromising deep immutability
-
-An unmodifiable view prevents writes through that view but can continue observing mutations through other aliases. A snapshot detaches container structure; mutable elements may still be shared. A copy constructor is ordinary code, not an automatic deep-copy guarantee. A retained mutable comparator or buffer can also invalidate a supposedly stable object.
-
-Avoid overridable normalization during construction. A cached hash is safe only while its represented equivalence relation stays stable and any sharing/publication requirements hold. Immutability simplifies concurrent use but does not justify leaking this during construction.
-
-## Practice: remove one copy and predict the failure
-
-What breaks if the constructor stores stops directly? What breaks if stops() returns the field directly?
-
-<details>
-<summary>Answer</summary>
-
-Without the input copy, the original caller can mutate the stored route after construction. Without the output copy, any accessor caller can mutate it. Keeping only one copy protects only one boundary. A zero-length input still needs a defined policy, although it has no mutable components to overwrite. The generics module later extends this design to a list of mutable Date elements and immutable modern time alternatives.
-
-</details>
 
 ## Prove stability from every available mutation path
 
@@ -58,6 +45,12 @@ It has an O(n) cost, but is required by this array-returning API's ownership pro
 
 </details>
 
+## Avoid overpromising deep immutability
+
+An unmodifiable view prevents writes through that view but can continue observing mutations through other aliases. A snapshot detaches container structure; mutable elements may still be shared. A copy constructor is ordinary code, not an automatic deep-copy guarantee. A retained mutable comparator or buffer can also invalidate a supposedly stable object.
+
+Avoid overridable normalization during construction. A cached hash is safe only while its represented equivalence relation stays stable and any sharing/publication requirements hold. Immutability simplifies concurrent use but does not justify leaking this during construction.
+
 ## Keep one shared instance only when the domain needs one
 
 A singleton-style API restricts ordinary construction and returns a class-wide shared instance. It solves an identity/ownership requirement, not immutability by itself. The eager form uses concepts already taught: a private constructor, a private static final field and a public static accessor. This source excerpt comes from ObjectOperationsLesson, whose full copy/clone demonstration appears after exceptions:
@@ -71,6 +64,17 @@ public static ObjectOperationsLesson instance() { return INSTANCE; }
 Class initialization establishes INSTANCE before the ordinary instance accessor use. Calls return copies of the same reference; the matching runnable demonstration compares two results as true. The class is final, so ordinary subclassing cannot introduce another construction path. The claim is about this runtime class and its ordinary API, not one universal object across separate JVM processes or distinct defining class loaders.
 
 If the shared instance exposes mutable state, that state needs the same invariants and concurrency policy as any other shared object. Do not replace dependencies with global singletons solely to avoid constructor parameters: tests and clients may need independently configured instances. Lazy initialization, concurrent publication, reflection and serialization boundaries require additional contracts; eager construction here avoids introducing unlearned double-checked locking as an introductory pattern.
+
+## Practice: remove one copy and predict the failure
+
+What breaks if the constructor stores stops directly? What breaks if stops() returns the field directly?
+
+<details>
+<summary>Answer</summary>
+
+Without the input copy, the original caller can mutate the stored route after construction. Without the output copy, any accessor caller can mutate it. Keeping only one copy protects only one boundary. A zero-length input still needs a defined policy, although it has no mutable components to overwrite. The generics module later extends this design to a list of mutable Date elements and immutable modern time alternatives.
+
+</details>
 
 ## Ownership references
 

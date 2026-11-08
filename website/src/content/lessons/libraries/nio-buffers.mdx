@@ -14,7 +14,9 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Put bytes into storage, then take them out
 
-A ByteBuffer combines byte storage with position, limit, capacity and an optional mark. A channel transfers bytes through a buffer. NIO is a family of APIs, not a promise that every operation is nonblocking.
+A **buffer** holds a batch of data between production and consumption. A **channel** transfers bytes between that storage and an I/O endpoint such as a file. Java's java.nio family was introduced as “New I/O” (NIO); the name does not mean every operation is nonblocking.
+
+ByteBuffer adds a cursor to byte storage so we can record which bytes have been written and which remain to be read. First store and retrieve one int; then use the same state changes repeatedly while copying a file.
 
 The invariant is `0 <= position <= limit <= capacity`. Capacity is fixed for that buffer. Position identifies the next relative read/write index; limit bounds the current usable range. Relative get/put advance position. Absolute operations use an explicit index without advancing it, while enforcing their relevant bounds.
 
@@ -32,11 +34,32 @@ flip sets limit to the old position and resets position to zero. clear resets po
 
 ## Run the simplest buffer round-trip
 
+```java
+final ByteBuffer buffer = ByteBuffer.allocate(4); // position 0, limit 4
+buffer.putInt(42); // position 4: bytes have been written
+buffer.flip();    // position 0, limit 4: now read those bytes
+final int value = buffer.getInt(); // 42; position 4
+```
+
+Allocation supplies fixed capacity. putInt advances past four bytes, so flip is the explicit transition from the written prefix to a readable range; it does not reverse the bytes. The complete program combines this round trip with the previously taught temporary-file pattern.
+
 <JavaExample file="FilesAndBuffers.java" output={"Mira\n42"} />
 
 The file half repeats the UTF-8 ownership pattern already learned. The buffer half allocates four bytes, writes int 42, flips, then reads that int. Without flip, a relative get starts at the current position rather than automatically rereading index zero.
 
 ## Complete a blocking channel copy
+
+The transfer loop has two nested responsibilities:
+
+```java
+while (source.read(buffer) != -1) {
+    buffer.flip();
+    while (buffer.hasRemaining()) { destination.write(buffer); }
+    buffer.clear();
+}
+```
+
+A read appends into the writable region. After flip, writes to the destination consume that readable region and advance position. Only when it is drained do we clear for the next read. This example is restricted to blocking file-channel usage; zero-progress handling for other channel configurations is discussed next.
 
 <JavaExample file="ChannelCopyLab.java" output={"copied 5 bytes\nhello"} />
 

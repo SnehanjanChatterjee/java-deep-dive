@@ -2,7 +2,7 @@
 title: "Sealed alternatives and pattern matching"
 module: "objects"
 group: "Nested and domain types"
-summary: "Represent permitted alternatives and use patterns to inspect a value and handle its cases."
+summary: "Represent permitted alternatives as types and inspect a result safely with patterns."
 order: 250
 version: "Java 21+"
 prerequisites: ["objects/modern-type-modeling", "objects/inheritance-and-composition"]
@@ -13,17 +13,38 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Model alternatives with different data
 
-A single outcome object containing a boolean and several nullable fields can represent contradictions: successful with an error, failed with a success value, or neither. A sealed family can express a closed set of alternatives, each with only its appropriate data. Constructors then validate each alternative locally.
+A result can be a success carrying a value or a failure carrying a message. Putting a boolean and both nullable payloads into one class permits contradictory combinations: successful with an error, failed with a success value, or neither. A family of different types can instead give each outcome only its appropriate data.
 
-<JavaExample file="modern/ModernTypesDemo.java" output={"value=42\nerror=missing\nrejected"} />
+A **sealed class or interface** restricts its direct subtypes to a permitted family. Here Result permits Success and Failure. A **pattern** tests an object's type/structure and can name the matched data for use in a branch. These are separate tools: sealing controls which alternatives exist; patterns inspect a particular value; a switch selects behavior for its matched case.
 
-Result permits Success and Failure. A Success carries a nonnegative int; constructing -1 throws before any describe call. Failure carries a String message; this particular teaching type permits null, so a stricter domain would validate it explicitly. The switch chooses behavior for an already constructed result; it does not perform constructor validation.
+Start with the type-family and simple pattern-scoping rules. Then follow the complete result program, where constructor checks establish each alternative's local invariant before a pattern switch describes it.
 
 ## Read sealing independently of pattern syntax
 
 Sealed classes/interfaces restrict direct permitted subtypes. Each direct subtype must be final, sealed or non-sealed; records are implicitly final. Permitted types must belong to the same named module, or the same package in an unnamed module. A non-sealed branch intentionally allows further extension beneath that branch.
 
 Sealing became final in Java 17. The record patterns and pattern switch in this complete example require Java 21 or later, with no preview flags. A plain instanceof type pattern can bind a compatible value to a scoped local; a record pattern additionally deconstructs through the record component API.
+
+## Learn flow scoping before deconstruction
+
+A **type pattern**, such as `String text`, tests whether a value is a non-null instance of the named type and introduces a variable for the successful path. A **record pattern** additionally inspects the declared record components, such as the int inside Success. A variable introduced by a pattern is available only where control flow proves the match succeeded.
+
+`if (value instanceof String text && !text.isEmpty())` makes text available on the right of && because that operand runs only after the match succeeds. Replacing && with || does not provide that guarantee: the right operand can run when the match failed. A pattern variable's scope follows proven matching paths, not just the nearest pair of braces.
+
+After `if (!(value instanceof String text)) { return; }`, following statements can use text because every path reaching them matched. Null never matches that instanceof pattern. This guard style gives a safe typed local without an unchecked cast; it does not accept null as empty text or make arbitrary OR branches safe. [JLS pattern-variable scope](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3.2)
+
+<details>
+<summary>Does a sealed root mean every descendant is final?</summary>
+
+No. A permitted direct subtype may be non-sealed, intentionally opening that branch to further descendants. A root's closed list concerns its direct permitted types; inspect each branch's declaration before asserting a finite set of concrete leaf classes. Exhaustive handling can cover an open branch with a type pattern for that branch, rather than enumerating every possible future descendant.
+
+</details>
+
+## Trace a sealed result and its pattern switch
+
+<JavaExample file="modern/ModernTypesDemo.java" output={"value=42\nerror=missing\nrejected"} />
+
+Result permits Success and Failure. A Success carries a nonnegative int; constructing -1 throws before any describe call. Failure carries a String message; this particular teaching type permits null, so a stricter domain would validate it explicitly. The switch chooses behavior for an already constructed result; it does not perform constructor validation.
 
 ## Explain exhaustiveness, dominance and null separately
 
@@ -47,19 +68,6 @@ Pending carries a nonnegative retry delay. What must change beyond adding a reco
 <summary>Answer</summary>
 
 Permit Pending at the sealed root, validate its delay in its constructor and add an unguarded Pending branch to every exhaustive switch during recompilation. Decide separately whether describe accepts null. Do not encode infrastructure failure as Missing or Pending merely to keep the model small: alternatives should preserve the actual outcome contract. A retry delay value does not itself authorize retrying a side-effecting operation.
-
-</details>
-
-## Learn flow scoping before deconstruction
-
-`if (value instanceof String text && !text.isEmpty())` makes text available on the right of && because that operand runs only after the match succeeds. Replacing && with || does not provide that guarantee: the right operand can run when the match failed. A pattern variable's scope follows proven matching paths, not just the nearest pair of braces.
-
-After `if (!(value instanceof String text)) { return; }`, following statements can use text because every path reaching them matched. Null never matches that instanceof pattern. This guard style gives a safe typed local without an unchecked cast; it does not accept null as empty text or make arbitrary OR branches safe. [JLS pattern-variable scope](https://docs.oracle.com/javase/specs/jls/se25/html/jls-6.html#jls-6.3.2)
-
-<details>
-<summary>Does a sealed root mean every descendant is final?</summary>
-
-No. A permitted direct subtype may be non-sealed, intentionally opening that branch to further descendants. A root's closed list concerns its direct permitted types; inspect each branch's declaration before asserting a finite set of concrete leaf classes. Exhaustive handling can cover an open branch with a type pattern for that branch, rather than enumerating every possible future descendant.
 
 </details>
 

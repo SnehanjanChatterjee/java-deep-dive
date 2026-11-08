@@ -2,7 +2,7 @@
 title: "Local and anonymous classes"
 module: "objects"
 group: "Nested and domain types"
-summary: "Build small scoped implementations and explain captured values, enclosing receivers and object lifetime."
+summary: "Create small implementations inside an operation and retain the surrounding values they need."
 order: 235
 version: "Java 8+"
 prerequisites: ["objects/nested-and-enums", "objects/interfaces"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Keep an implementation near the operation that needs it
 
-A member class is declared in another type's body. A **local class** is declared in a block, such as a method body, and has a name usable within its scope. An **anonymous class** is declared by a class-instance creation expression without its own source name. Both are useful for small implementations that need nearby context. Learn their ordinary object behavior before replacing suitable implementations with lambdas.
+An operation sometimes needs a small implementation useful only there—for example, a Message that combines the operation's prefix with its owning object's name. Giving that helper a broad top-level role can obscure why it exists. Local and anonymous classes let its definition stay beside the operation that creates it.
+
+A **member class** is declared in another type's body. A **local class** is declared within a block, such as a method body, and has a name available in that scope. An **anonymous class** is declared inside a new expression without its own source name. Both create ordinary objects with identity, fields and instance methods; an interface can expose the result without exposing the helper's local name.
+
+Such an implementation can **capture** a surrounding local value: retain access to its value after the creating call returns. Captured locals must obey the final/effectively-final rule explained below. The source compares a named local implementation with an unnamed implementation, then distinguishes their own this from the enclosing object's this. No lambda syntax is needed.
 
 <JavaExample file="LocalAnonymousLesson.java" output={"Hello Ada\nHello Ada:inner"} />
 

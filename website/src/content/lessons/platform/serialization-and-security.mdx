@@ -28,6 +28,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="additional-interview-questions" aria-hidden="true"></span>
 <span id="coding-exercise" aria-hidden="true"></span>
 
+## Serialization converts structured state into a representation
+
+**Serialization** encodes structured data into a representation that can be stored or transmitted. **Deserialization** reconstructs data from that representation. Native Java object serialization is one particular binary protocol, implemented through ObjectOutputStream and ObjectInputStream; it is different from formats such as JSON.
+
+An object graph contains both values and reference relationships. Two people may share one Address object, so restoring identical field text is not enough to describe whether sharing was preserved. We will serialize a small known graph, compare original and restored identities, and then study omitted fields, constructors, stream handles and reconstruction hooks.
+
 ## Represent an object graph as bytes
 
 Native Java serialization writes a graph of objects, rather than only copying a top-level object's field text. Serializable is a marker interface enabling that protocol. ObjectOutputStream traverses eligible fields and records references using handles; repeated references can remain shared in the reconstructed graph.
@@ -41,7 +47,7 @@ The example below creates its bytes locally from a known graph. It is an observa
 
 <JavaExample file="SerializationGraphLesson.java" output={"same original=false\nshared address=true\nKolkata\nsession=null"} />
 
-Two original Person objects refer to one Address. Copy writes their Person[] root, closes the output stream, then reads one root back from those bytes. The restored person is a new object, so it is not identical to the original. Within the restored graph both people still share the same reconstructed Address. Its city remains Kolkata.
+Two original Person objects refer to one Address. `copy` writes their Person[] root, closes the output stream, then reads one root back from those bytes. The restored person is a new object, so it is not identical to the original. Within the restored graph both people still share the same reconstructed Address. Its city remains Kolkata.
 
 <Diagram client:visible definition={"flowchart LR\n A[Original person 1] --> O[Original shared address]\n B[Original person 2] --> O\n A -. write then read .-> C[Restored person 1]\n B -. write then read .-> D[Restored person 2]\n C --> N[Restored shared address]\n D --> N"} caption="Reconstruction creates new ordinary object identities while preserving internal graph sharing." />
 

@@ -2,7 +2,7 @@
 title: "Code-point string algorithms with ordered maps"
 module: "collections"
 group: "Implementation practice"
-summary: "Use ordered counting to solve Unicode-aware frequency and uniqueness problems."
+summary: "Reverse code points, count occurrences and find the first point that appears only once."
 order: 540
 version: "Java 8+"
 prerequisites: ["collections/linkedhashmap", "language/arrays-strings-unicode", "reliability/exception-contracts"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Solve the declared text problem
 
-Reversal and first-unique search need an explicit text unit. These algorithms operate on Unicode **code points**, preserving supplementary surrogate pairs. They do not promise grapheme-cluster editing, normalization or case-insensitive equivalence. The ordered map preserves first appearance so a second traversal can select the first unique point.
+Two common text problems ask for a reversed sequence and the first value occurring only once. In swiss, s occurs three times, while w and i each occur once; the **first unique** result is w because it appears earlier. Reversal asks a different question: visit the sequence from its end and construct the opposite order.
+
+An **algorithm** is a definite sequence of steps solving a declared problem. Here the text unit is a Unicode **code point**, as introduced in the Unicode lesson. Reversing points preserves valid supplementary surrogate pairs; it does not promise to keep an entire grapheme cluster, such as a letter plus a combining accent, together. Normalization and case-insensitive equivalence are separate requirements.
+
+For first-unique search, use the already learned LinkedHashMap as a **frequency table**: code point → occurrence count. Its insertion order preserves first appearance. Count once, then inspect that order for the first count of one. OptionalInt represents the possible absence of such a result; its small API is explained below before using an absent value.
 
 <JavaExample file="StringInterviewAlgorithms.java" output={"true\ntrue\nfalse"} />
 
@@ -33,17 +37,6 @@ OptionalInt represents either one int or no int. OptionalInt.of(point) wraps a f
 
 In main, swiss has a unique w, so getAsInt is valid. Aabb has none, so isPresent prints false. Empty input also has no unique point. Returning -1 instead could be a documented code-point sentinel, but a result type communicates absence explicitly and prevents accidental treatment as an ordinary code point.
 
-## Practice: preserve grapheme clusters?
-
-Will reversing code points keep a combining accent attached to its base letter? Why not use a HashMap and return its first entry with count one?
-
-<details>
-<summary>Answers</summary>
-
-No: grapheme clusters may contain several code points, and reversing their order changes that cluster. A grapheme-aware editor needs segmentation under its required text rules. HashMap has no first-appearance iteration guarantee, so its first unique entry need not be the first unique point in the input. Keep LinkedHashMap or perform a second traversal of the original code points against the counts.
-
-</details>
-
 ## Dry-run supplementary reversal and ordered counting
 
 For A😀B, the reverse loop begins at exclusive offset four. CodePointBefore(4) reads B and moves end to three. The next read obtains the full emoji from the surrogate pair and moves end to one. The final read obtains A and moves end to zero. Appending a point, rather than casting it to char, preserves its two-unit encoding. Empty input enters no iteration; null fails before length is read.
@@ -60,6 +53,17 @@ This policy differs from Java 8 trim, which uses its documented small-code-unit 
 <summary>Would recursive reverse(input.substring(0, n-1)) be an equivalent solution?</summary>
 
 Not with a char-at-a-time boundary: it can split surrogate pairs. It also creates nested invocations and, on typical current substring implementations, repeatedly copies prefixes, producing quadratic total copied work. The iterative code-point solution uses one builder and states its grapheme limitation explicitly. Neither method becomes a normalization algorithm merely because it handles supplementary points.
+
+</details>
+
+## Practice: preserve grapheme clusters?
+
+Will reversing code points keep a combining accent attached to its base letter? Why not use a HashMap and return its first entry with count one?
+
+<details>
+<summary>Answers</summary>
+
+No: grapheme clusters may contain several code points, and reversing their order changes that cluster. A grapheme-aware editor needs segmentation under its required text rules. HashMap has no first-appearance iteration guarantee, so its first unique entry need not be the first unique point in the input. Keep LinkedHashMap or perform a second traversal of the original code points against the counts.
 
 </details>
 

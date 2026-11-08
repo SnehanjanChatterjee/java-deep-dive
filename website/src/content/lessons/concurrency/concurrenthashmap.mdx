@@ -21,9 +21,13 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="source-reading-and-interview-follow-ups"></span>
 ## Thread-safe calls can still lose a frequency update
 
-Two callers both read count zero from a shared map, each calculate one, and each put one. The map can correctly perform all four individual calls while the composed increment loses an update. Choose an operation that represents the whole per-key change.
+A **ConcurrentHashMap** stores key/value mappings with operations designed for concurrent callers. A **per-key atomic update** combines a decision and change for one mapping into an indivisible operation. This is useful when threads update independent counts, cached entries or other mappings without making every map action part of one global transaction.
 
-ConcurrentHashMap supplies merge, compute, putIfAbsent and conditional replace/remove. It rejects null keys and values, letting a null retrieval mean absence. It is useful for shared independent mappings, not arbitrary transactions across keys and counters.
+Suppose java currently maps to zero. Two callers can each get zero, calculate one and put one. All four individual calls can meet their own thread-safety contracts while the composed increment loses an update. As with the earlier Counter, the whole read/compute/write must be expressed as one supported operation.
+
+Merge provides that operation for the frequency example. `merge("java", 1, Integer::sum)` installs one when absent; otherwise its addition function combines the existing count with one atomically for that key. Follow two completed workers making these updates before examining other conditional methods or the underlying hash-table bins.
+
+The map also supplies compute, putIfAbsent and conditional replace/remove. It rejects null keys and values, allowing a null retrieval to mean absence. Those contracts still concern individual supported operations: an invariant spanning several keys needs a larger shared protocol.
 
 <span id="concurrenthashmap-guarantees-are-per-operation-and-key"></span>
 ## Implement per-key counting
@@ -62,7 +66,7 @@ The local calls array is confined to this experiment; it is not an example of an
 
 ## Bins, publication and resizing
 
-On the selected OpenJDK implementation, an ordinary empty-bin update can CAS-install a node. An occupied ordinary bin coordinates updates around its head after checking the observed bin still belongs to that table slot. Tree bins use additional coordination. Reads normally follow published node references without acquiring the same update lock; user hashCode/equals can still introduce their own blocking/cost.
+A **bin** is the table position and associated nodes used for keys routed to that hash location. On the selected OpenJDK implementation, an ordinary empty-bin update can install a node using **compare-and-set (CAS)**: change the shared slot only if it still contains the expected value, with the check and change as one atomic action. An occupied ordinary bin coordinates updates around its head after checking the observed bin still belongs to that table slot. Tree bins use additional coordination. Reads normally follow published node references without acquiring the same update lock; user hashCode/equals can still introduce their own blocking/cost.
 
 <Diagram client:visible definition={"flowchart TD\n P[Per-key put] --> B{Observed bin}\n B -->|empty| C[CAS-install node or retry]\n B -->|ordinary occupied| L[Coordinate, validate bin and update]\n B -->|forwarding node| N[Follow/help replacement-table transfer]\n L --> R[Publish supported mapping update]\n C --> R"} caption="This is a conceptual subset of modern update paths, not a replacement for the full JDK table/resize algorithm." />
 
@@ -74,7 +78,7 @@ The fixed Segment-array architecture describes older implementations. Concurrenc
 
 Publishing an ArrayList value through the map does not protect later list.add calls. A map of LongAdder values can suit contended statistics, but sum during updates is not one exact linearizable admission decision. An invariant spanning keys needs a common lock or atomically replaced combined state followed consistently by every participant.
 
-CAS and ABA are developed in the atomics chapter: a conditional update does not make unrelated fields one transaction, and retry computations must avoid repeatable external side effects. A consistently used synchronized map wrapper can be correct, with its documented complete traversal/compound-operation locking protocol.
+The atomics chapter develops CAS loops and **ABA**, the history where a value changes A→B→A so an equality test alone cannot reveal the intermediate change. A conditional update does not make unrelated fields one transaction, and retry computations must avoid repeatable external side effects. A consistently used synchronized map wrapper can be correct, with its documented complete traversal/compound-operation locking protocol.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>

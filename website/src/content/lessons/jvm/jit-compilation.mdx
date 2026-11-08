@@ -16,6 +16,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="common-benchmark-distortions"></span>
 <span id="runtime-memory-and-safepoints"></span>
 <span id="interview-questions-with-worked-answers"></span>
+## From bytecode to native instructions
+
+A **just-in-time compiler (JIT)** translates suitable code into the host machine’s native instructions while the application runs. An **interpreter** executes bytecode through the VM’s interpreter machinery. A JVM implementation can use both execution strategies. This runtime compilation is different from javac producing class files before launch.
+
+Repeated execution supplies information about frequently used methods, loops and receiver types. An optimizing compiler can use that information to remove unnecessary work while preserving program behavior. We will first calculate a small method’s result, then examine compilation records. Only afterward will we reason about inlining, escape analysis and rebuilding execution state when an optimized assumption stops applying.
+
 ## The same bytecode can execute through different paths
 
 The frame chapter followed arguments and operand operations. A JVM can interpret that bytecode, collect execution profiles, and compile suitable frequently executed methods/loops into machine code. Optimization changes implementation work while preserving the required values, exceptions and synchronization behavior.
@@ -46,10 +52,14 @@ If the compiler can see through the local calls, inlining exposes the constructo
 <span id="inspect-compilation-without-making-timing-claims"></span>
 ## Capture compilation and inlining records
 
-For a controlled HotSpot investigation, compile the source, then run:
+**Inlining** lets an optimizing compiler incorporate an eligible called method’s work into its caller’s compiled code. This exposes values and control flow across the original call boundary; it does not change which Java method the source selected. A **compilation tier** is an execution/optimization level in the selected HotSpot configuration. These terms describe compiler decisions, not application thread priorities.
+
+For this investigation, use the selected modern HotSpot JDK for the diagnostic launcher and target Java 8 class files when compiling. The `--release 8` flag keeps that target consistent with the older-target translation discussed in the excerpt. With an actual JDK 8 compiler, omit `--release 8`, which that compiler does not support. Compilation IDs, offsets and synthetic-member details can differ with the compiler build.
+
+Compile the source, then run:
 
 ```bash
-javac -d out CoreHotLoop.java
+javac --release 8 -d out CoreHotLoop.java
 java -Xbatch -XX:+UnlockDiagnosticVMOptions -XX:+PrintCompilation -XX:+PrintInlining -XX:CompileCommand=compileonly,CoreHotLoop::localScore -XX:CompileCommand=quiet -cp out CoreHotLoop
 ```
 

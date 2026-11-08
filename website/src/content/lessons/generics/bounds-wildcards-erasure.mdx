@@ -63,13 +63,24 @@ These are type permissions. An unmodifiable implementation may still reject add.
 
 ## Read copy, max and capture as separate algorithms
 
+Start with the copy requirement: a source of Integer values should fill a destination accepting Number values. A signature demanding `List<Number>` for both would reject the Integer source. Give the transfer a named T, read from a source that produces T, and append to a destination that consumes T:
+
+```java
+public static <T> void copy(
+        final List<? super T> destination,
+        final List<? extends T> source)
+```
+
+For this call T can be Integer. Reading produces an Integer; a Number destination accepts it. The mnemonic **PECS** means **producer extends, consumer super**. It records this direction of data flow; it does not promise that a particular list supports mutation.
+
+The complete program also finds a maximum and swaps two positions. Before reading max, recall that `Comparable<X>` supplies compareTo(X): a negative result means smaller, zero means equivalent in this ordering, and a positive result means greater. Integer implements this contract, so comparing 1 to 3 gives a negative result. Number itself has no compareTo method.
+
 <JavaExample file="GenericAlgorithms.java" output={"[3, 1, 2]\n3\n[3, 1, 2]"} />
 
-Copy reads T values from `List<? extends T>` and appends them to `List<? super T>`. It does not overwrite destination positions or make a transactional snapshot: mutation can be partially complete if an add fails. The source loop performs O(n) visits; total cost depends on the destination's add operation. This source consistently puts destination first.
+Main begins with [2,1,3]. swap(0,2) changes it to [3,1,2]; copy appends those references into an initially empty Number list. max seeds best with 3, keeps it when visiting 1 and 2, and returns 3. These are three independent algorithms, not three required steps in every generic operation.
 
-Max rejects empty input, seeds best from the first non-null element and compares each remaining value. Its bound `T extends Comparable<? super T>` permits comparison inherited from a compatible supertype. It uses O(n) comparisons and O(1) auxiliary storage. Number alone would not establish an ordering operation. An intersection such as `T extends Number & Comparable<T>` combines capabilities, with a class bound first.
+Copy appends rather than overwriting. Its source visits are O(n); destination add determines the remaining cost. A failed add may leave earlier appends in place. Max rejects empty/null input and null elements, performs O(n) comparisons and uses O(1) auxiliary space. Swap names its otherwise unknown element type in a helper, developed below.
 
-Swap accepts `List<?>` but cannot name its unknown element type directly. SwapCaptured introduces one T for that particular captured list, allowing a value read as T to be written back as T. Two independent wildcards need not represent the same unknown type. The helper preserves the relationship without an unchecked cast.
 
 ## Dry-run the source and destination views
 
@@ -131,6 +142,6 @@ The runtime-representation chapter builds on these relationships to explain eras
 
 ## Bounds references
 
-- [Dev.java: wildcards and capture](https://dev.java/learn/language/fp/generics/wildcards/)
+- [Java Tutorials: wildcards and capture](https://docs.oracle.com/javase/tutorial/java/generics/wildcards.html)
 - [List operations](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/List.html)
 - [Collections.max generic contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Collections.html)

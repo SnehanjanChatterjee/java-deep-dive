@@ -16,9 +16,20 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 <span id="concepts"></span>
 ## Queues, stacks and circular storage
 
-A deque permits insertion and removal at both ends. ArrayDeque implements it using a resizable circular array. It can express a FIFO queue or LIFO stack without a linked node for every element. It rejects nulls and does not provide synchronized shared access.
+A **deque**, or double-ended queue, lets a caller insert, examine and remove at either end. For waiting jobs, use **FIFO (first in, first out)**: offerLast("A"), offerLast("B"), then pollFirst returns A and leaves B. For undo actions use **LIFO (last in, first out)**: push("first"), push("second"), then pop returns second.
+
+ArrayDeque supplies these operations with automatically growing array storage. It rejects null elements and is not synchronized. Its circular layout explains efficient endpoint operations later; no physical-array knowledge is needed to use this first queue.
 
 For FIFO, add/offer at the last end and remove/poll at the first. For LIFO, push/pop use the first end. A deque's end-operation contract is different from a List's indexed-access contract. Prefer explicit endpoint method names when the algorithm mixes both roles.
+
+<span id="worked-example"></span>
+## Queue and stack examples
+
+<JavaExample file="ArrayDequeExample.java" />
+
+Removing from the first end returns A. Adding C at the last preserves the logical sequence `[B, C]`. Push inserts top at the first end and pop removes that same value. Poll on the empty deque returns null. The implementation's null prohibition makes that empty sentinel unambiguous.
+
+The array need not store logical elements contiguously from slot zero. Iteration follows logical head-to-tail order even when the physical storage wraps. Printing this tiny sequence demonstrates the API, not a promise about array capacity or exact physical indexes.
 
 ## Choose failure behavior as well as the endpoint
 
@@ -30,15 +41,6 @@ For FIFO, add/offer at the last end and remove/poll at the first. For LIFO, push
 | Stack at first | push / pop | offerFirst / pollFirst for explicit sentinel policy |
 
 On an empty deque, remove/get throw NoSuchElementException while poll/peek return null. ArrayDeque rejects null elements, so that sentinel is unambiguous. offer can report capacity rejection for a bounded Queue implementation; an ordinary resizable ArrayDeque is not a fixed-capacity blocking queue.
-
-<span id="worked-example"></span>
-## Queue and stack examples
-
-<JavaExample file="ArrayDequeExample.java" />
-
-Removing from the first end returns A. Adding C at the last preserves the logical sequence `[B, C]`. Push inserts top at the first end and pop removes that same value. Poll on the empty deque returns null. The implementation's null prohibition makes that empty sentinel unambiguous.
-
-The array need not store logical elements contiguously from slot zero. Iteration follows logical head-to-tail order even when the physical storage wraps. Printing this tiny sequence demonstrates the API, not a promise about array capacity or exact physical indexes.
 
 ## Separate construction, endpoint operations and searches
 

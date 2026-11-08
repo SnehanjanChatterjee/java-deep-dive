@@ -5,7 +5,7 @@ group: "Class loading and initialization"
 summary: "Follow ordinary class use through definition, verification and static initialization before loader identity and failure cases."
 order: 1080
 version: "Java 8+"
-prerequisites: ["jvm/frames-and-bytecode", "objects/classes-and-instances"]
+prerequisites: ["jvm/frames-and-bytecode", "objects/classes-and-instances", "reliability/exception-flow"]
 advanced: true
 ---
 
@@ -20,6 +20,12 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="can-a-static-final-field-be-read-without-initializing-its-class"></span>
 <span id="additional-interview-questions"></span>
 <span id="solved-interview-and-debugging-practice"></span>
+## Class loading turns a binary definition into a usable runtime type
+
+A **class loader** is the runtime facility that finds a class’s binary definition and makes that type available to the JVM. A class file describes a type; loading it is different from constructing an object of that type. One loaded Account class can support thousands of Account objects.
+
+The JVM then links the definition: it checks structural constraints, prepares class-level storage and resolves required symbolic references. Initialization executes the required static initializers. These are separate stages, so a class can be loaded without its static blocks having run. We will first observe that distinction in one ordinary program, then examine loader identity and initialization failures.
+
 ## Using a class and initializing its state are different events
 
 A compiled program names classes, fields and methods in its class file. Before executing a relevant operation, the runtime needs a definition of the named type and must enforce the class-file/linking rules. Static initialization is another step: it runs the class-level initializers that establish static state when an active use requires them.
@@ -62,6 +68,8 @@ Constructing an instance, invoking an appropriate declared static method or acce
 <span id="investigate-class-initialization-in-java"></span>
 <span id="class-loading-interview-practice"></span>
 ## Run loading without initialization and inspect a failed class
+
+`Class.forName(name, false, loader)` requests a runtime definition without requesting its initialization. The boolean flag is the important difference from an active field use. The experiment first reads a constant, explicitly loads the definition, then reads a method-computed static value. A second class deliberately fails its initializer: compare the first failed active use with a later one, rather than assuming initialization is retried like an ordinary method.
 
 <JavaExample file="CoreInitializationLab.java" output={"7\nloaded without initialization\ninitialized\n42\nfirst initialization failure\nlater erroneous class"} />
 

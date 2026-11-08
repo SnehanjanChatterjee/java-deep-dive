@@ -14,13 +14,19 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## A program can make progress on several activities
 
-Suppose a report generator waits for a file while another part of the program answers a user action. One sequential execution cannot continue past a blocking file call until that call returns. A second thread can continue a different activity during that wait. That overlap is the reason to introduce concurrency; adding threads is useful only when the activities and their ownership are clear.
+A **process** is a running instance of a program, with resources managed by the operating system. Starting `java` launches a Java Virtual Machine, or **JVM**, in a process. A **thread** is one ordered path of execution inside that process: it records which instruction to execute next and which method calls have not yet returned.
 
-A **process** is a running application with resources managed by the operating system. Starting `java` starts a JVM process. A **thread** is one execution within that process: it has a current instruction and a stack of method calls. The application normally enters `main` on a thread already created by the runtime. Calling another method extends that thread's call stack; it does not create another thread.
+The application normally enters `main` on a thread already created by the runtime. If main calls `buildReport`, main's thread now executes that method. Another method call continues the same path; it does not create an additional thread.
+
+Why introduce another path? Suppose reading a file must wait for input. That call is **blocking**: its caller cannot continue past the call until it returns. A second thread can answer a user action during the wait. The activities can make progress over overlapping lifetimes; this is **concurrency**. We will distinguish it from simultaneous execution on separate processors below.
+
+The design question comes before the API: what can proceed independently, and what data must those activities share? Threads allow overlap, while the program remains responsible for coordinating shared changes.
 
 ## Trace two stacks referring to one object
 
-Imagine main calls `buildReport`, which calls `readFile`. Its stack records those unfinished calls. A worker can simultaneously have `run`, `refreshView` and `render` on its own stack. Returning from `render` resumes the worker's caller; it does not return into main's `readFile` invocation.
+A **call stack** records one thread's unfinished method calls. Each active call has a **frame** holding its parameters, local variables and the information needed to return to its caller. Calling a method adds a frame; returning removes that call's frame.
+
+Imagine main calls `buildReport`, which calls `readFile`. Its stack records those unfinished calls. A **worker** is an additional thread doing application work; it can have `run`, `refreshView` and `render` on its own stack. The next lesson explains the conventional run entry method. Returning from render resumes the worker's caller; it does not return into main's readFile invocation.
 
 <Diagram client:visible definition={"flowchart TD\n P[JVM process] --> M[Main thread: main → buildReport → readFile]\n P --> W[Worker: run → refreshView → render]\n M --> O[One shared Report object]\n W --> O"} caption="Each execution has its own call stack. Both executions can hold references to the same object; the drawing is a conceptual model rather than a physical heap layout." />
 
@@ -34,7 +40,7 @@ With one available processor, a scheduler can run some of A, then some of B, the
 
 | Situation | What a second thread may accomplish | Remaining limit |
 | --- | --- | --- |
-| A waits for a supported I/O operation | B can do independent work | The device/service still has finite capacity |
+| A waits for an input/output (I/O) operation | B can do independent work | The device/service still has finite capacity |
 | A and B both calculate continuously | Work may use multiple processors | Thread count does not create processors |
 | A and B update the same mutable object | Both can access the object | A coordination policy is required |
 
@@ -50,9 +56,9 @@ A machine does not need two processor cores to have two live threads. For exampl
 | 2 | Worker | Calculate a local intermediate value |
 | 3 | Main | Perform independent work |
 | 4 | Worker | Finish its calculation and return |
-| 5 | Main | Join returns after detecting termination |
+| 5 | Main | Receives confirmation that the worker ended |
 
-This is one legal illustrative schedule, not a fixed time-slice duration or a promise that every runnable thread gets the next turn. A single core still needs synchronization when operations interleave on shared state. Two CPU-bound calculations also do not automatically finish sooner merely because they use two Threads. Blocking work can benefit from overlapping waits, while actual speed depends on the workload and available resources. [Java's execution and synchronization model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html)
+The next lesson uses join to obtain that completion confirmation. This table is one legal illustrative schedule, not a fixed time-slice duration or a promise that every eligible thread gets the next turn. A single core still needs coordination when operations interleave on shared state. **CPU-bound** work mostly performs processor calculations; two such calculations do not automatically finish sooner merely because they use two Threads. Blocking work can benefit from overlapping waits, while actual speed depends on the workload and available resources. [Java's execution and synchronization model](https://docs.oracle.com/javase/specs/jls/se8/html/jls-17.html)
 
 ## Exercise: identify ownership before starting threads
 

@@ -11,6 +11,7 @@ advanced: false
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 <span id="concepts"></span>
 <span id="mechanics-and-tradeoffs"></span>
@@ -22,9 +23,11 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="interview-questions-with-worked-answers"></span>
 ## Ask what must become true before a thread continues
 
-A lock answers who may access protected state now. Other coordination problems need a different question: have all results arrived, has every participant finished this phase, or is capacity available for one more resource user? An API name alone does not establish that it represents the required condition.
+A **coordination utility** is a library object that remembers progress or available capacity and lets callers wait for a specified condition. It saves an application from writing every state counter and guarded-wait loop itself. A lock controls access to protected data; these utilities answer questions such as when enough work is finished or when another resource user may enter.
 
-Consider two report workers and a service with two connections. Main may need both report results; workers may synchronize at repeated calculation phases; each service call may need one connection. Those are three distinct protocols, even when the same program uses all of them.
+Consider two report workers and a service with two connections. Main needs one completion **signal** from each worker before combining results. A repeated calculation instead needs a **phase**, one round that every participant must finish before the next begins. A service call needs a **permit**, one unit of permission to use limited capacity, then returns it after use.
+
+These are different kinds of remembered state. A one-way count can stay at zero forever after completion. A reusable barrier needs a new **generation**, or round, each time its participants meet. A changing participant set also needs **registration**, explicit accounting for who is expected to arrive. Use those questions to understand the comparison rather than choosing by an unfamiliar class name.
 
 <span id="choose-the-question-being-synchronized"></span>
 ## Choose the smallest matching contract
@@ -32,9 +35,10 @@ Consider two report workers and a service with two connections. Main may need bo
 | Required condition | Utility | State change that permits progress |
 | --- | --- | --- |
 | N one-time signals have occurred | CountDownLatch | Count reaches zero and stays there |
-| Every fixed participant reached this round | CyclicBarrier | Current generation trips; a new one begins |
+| Every fixed participant reached this round | CyclicBarrier | Last required arrival completes the round; a new round begins |
 | The currently registered participants reached a phase | Phaser | Phase advances as registrations/arrivals permit |
 | One of a fixed number of resource slots is available | Semaphore | Successful acquisition consumes a permit |
+| Two participants have each brought a value to swap | Exchanger | A matched pair receives each other's value |
 
 The following chapters teach each through a complete program. A comparison table is useful only after you can state the underlying predicate. A semaphore does not collect results. A latch does not limit how many calls run simultaneously. A barrier does not create missing executor workers.
 
@@ -58,9 +62,9 @@ If the task throws after acquiring, releasing the permit remains necessary. If i
 
 ## Avoid a dependency that cannot be scheduled
 
-With two workers and a barrier requiring three tasks, the first two tasks can occupy the pool while the third stays queued. The barrier cannot advance because no worker is available for that third participant. Increasing a wait timeout does not create execution capacity.
+Every required arrival needs a path that can actually make progress. Before adding a waiting utility, identify the work that will satisfy its condition and any resource that work needs. **Liveness** asks whether useful progress eventually occurs; remembering a condition alone does not establish it.
 
-Likewise, a worker retaining the only permit while waiting for a child that needs the same permit creates a resource dependency. Draw the work and resources together. Coordination utilities do not remove liveness reasoning.
+The <a href={lessonUrl('learn/concurrency/thread-pool-internals/') + '#avoid-a-dependency-that-cannot-be-scheduled'}>pool-admission chapter works through missing-worker and retained-permit cycles</a> after worker queues have been taught. The following utility chapters first isolate each ordinary state protocol.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
@@ -76,7 +80,7 @@ Use a latch initialized to four for the one-time signals, a two-party barrier fo
 
 </details>
 
-Study the complete solutions in the next four chapters, then revisit their shared machinery in AQS. No custom synchronizer is needed to use these library contracts correctly.
+Study the complete solutions in the following focused chapters, then revisit their shared waiting machinery in the advanced synchronizer-internals chapter. No custom synchronizer is needed to use these library contracts correctly.
 
 <span id="references"></span>
 ## Primary references

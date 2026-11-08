@@ -2,7 +2,7 @@
 title: "Sorted arrays and binary-search boundaries"
 module: "language"
 group: "Arrays and strings"
-summary: "Trace sorted ranges, midpoint decisions and insertion positions for present and absent values."
+summary: "Use a sorted array to find values and insertion positions by repeatedly narrowing the search."
 order: 120
 version: "Java 8+"
 prerequisites: ["language/arrays", "language/methods-and-recursion"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## State the sorted-input precondition
 
-A linear search examines components in order and works without sorting. Binary search discards half the remaining positions after each comparison, which is sound only when the range is sorted under the same ordering as the search. Arrays.binarySearch does not first verify or establish that precondition.
+**Searching** means finding whether a target value occurs and, when needed, where it occurs. A **linear search** checks positions one at a time and works on an unsorted array. A **binary search** uses an already sorted range to rule out roughly half of the remaining positions after each comparison.
+
+For `{2,4,4,7}`, nondecreasing order means each value is at least its predecessor; duplicates are allowed. If an inspected value is below five, every earlier value is also below five, so those positions can be discarded. That inference would be invalid in an unsorted array. Sortedness under the same comparison rule is the algorithm's **precondition**, a requirement the caller must establish before searching.
+
+Two useful results are a matching index and an **insertion boundary**, the position where a value can be inserted without breaking order. Lower bound asks for the first position with value at least the target; upper bound asks for the first position strictly greater. These boundaries remain meaningful when the target is absent. Arrays.binarySearch uses its own documented result encoding and does not first verify or establish sorting.
 
 <JavaExample file="ArraySearch.java" output={"1\n-4\n3"} />
 
@@ -32,7 +36,15 @@ For target 4 in `{2,4,4,7}`:
 | 0 | 1 | 0 | 2 is below target: low = 1 |
 | 1 | 1 | — | Return 1 |
 
-`low + (high-low)/2` avoids overflowing low+high. Every branch shrinks the interval, establishing termination. Empty input returns zero without a read. The method rejects null and trusts the sortedness contract; checking sortedness on every call would add O(n) work. Its search uses O(log n) reads and O(1) auxiliary storage. Sorting's cost is separate.
+`low + (high-low)/2` avoids overflowing low+high. Every branch shrinks the interval, establishing termination. Empty input returns zero without a read. The method rejects null and trusts the sortedness contract; checking sortedness on every call would add O(n) work. Repeated halving makes the number of search steps grow logarithmically, written O(log n), rather than proportionally to all n components. Only a bounded set of index variables is retained, giving O(1) auxiliary storage. Sorting's cost is separate.
+
+## Find the end of an equal range without a linear scan
+
+UpperBound in the canonical ArraySearch source returns the first position **strictly greater** than target. Its structure matches lowerBound, but it advances low when the inspected value is less than **or equal to** target. Consequently, all values before low are at most target, while values at or after high are greater.
+
+For `{2,4,4,7}` and target four, upperBound first inspects index two and moves low to three; index three holds seven, so high becomes three and the result is three. Lower bound is one. The half-open equal range is `[1,3)`, its occurrence count is `upper-lower`, and its last matching index is upper minus one only when that count is positive. For absent five, both bounds are three and count is zero; returning upper minus one unconditionally would invent a match.
+
+Both methods trust the same sorted-input contract, reject null and allow empty arrays. Each does O(log n) reads and O(1) auxiliary work. Two logarithmic searches remain logarithmic; checking sortedness or scanning backward across duplicates adds different work. The tests cover all-equal arrays, absent endpoints and extreme ints without subtracting target from a value, avoiding a comparison overflow.
 
 ## Practice: test actual membership
 
@@ -44,14 +56,6 @@ Does lowerBound alone prove that target is present?
 No. After `int index = lowerBound(values, target);`, membership requires `index < values.length && values[index] == target`. The short-circuit condition protects the possible length result. For target 5, lower bound is 3 but values[3] is 7, so membership is false. Scanning backward from an arbitrary matching binarySearch result can become linear with many duplicates; lower bound preserves logarithmic first-position search.
 
 </details>
-
-## Find the end of an equal range without a linear scan
-
-UpperBound in the canonical ArraySearch source returns the first position **strictly greater** than target. Its structure matches lowerBound, but it advances low when the inspected value is less than **or equal to** target. Consequently, all values before low are at most target, while values at or after high are greater.
-
-For `{2,4,4,7}` and target four, upperBound first inspects index two and moves low to three; index three holds seven, so high becomes three and the result is three. Lower bound is one. The half-open equal range is `[1,3)`, its occurrence count is `upper-lower`, and its last matching index is upper minus one only when that count is positive. For absent five, both bounds are three and count is zero; returning upper minus one unconditionally would invent a match.
-
-Both methods trust the same sorted-input contract, reject null and allow empty arrays. Each does O(log n) reads and O(1) auxiliary work. Two logarithmic searches remain logarithmic; checking sortedness or scanning backward across duplicates adds different work. The tests cover all-equal arrays, absent endpoints and extreme ints without subtracting target from a value, avoiding a comparison overflow.
 
 ## Search references
 

@@ -14,13 +14,17 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Join waits in the caller
 
-When main executes `worker.join()`, **main** waits for worker to terminate. Worker does not pause because another thread joined it. Starting A then B makes both eligible independently. Starting A, joining A, then starting B deliberately prevents B's execution from overlapping A's lifetime.
+Suppose main needs a value produced by a worker. Main must wait for the worker's **completion**, meaning its started execution has ended, before treating that work as finished. `worker.join()` provides that completion wait: main is the calling thread and worker is the target whose lifetime it observes.
 
-The method name does not mean moving a worker onto main's stack or merging two Thread objects. It is a completion wait. Main can join two already-started workers in either order without dictating which worker finished first.
+While main waits, worker can continue calculating. When the target ends, main can return from join and use the completed result. Joining does not move the worker's method calls onto main's stack. Main can also join two already-started workers in either order without choosing which worker finishes first.
+
+Sleep and yield solve different scheduling questions. Sleep asks the current thread to pause for a delay; yield offers a hint that the current thread could let another eligible thread run. They supply neither the target-specific completion event nor the result-observation guarantee of a successful join. Start with the join timeline, then compare those weaker scheduling operations below.
 
 <Diagram client:visible definition={"sequenceDiagram\n participant M as Main\n participant W as Worker\n M->>W: start\n W->>W: calculate result\n M->>M: join waits in Main\n W-->>M: termination detected by join\n M->>M: read completed result"} caption="The caller waits for the target. The target remains free to make progress while the caller is waiting." />
 
 ## Joining before start does not reserve a future completion
+
+The usual sequence is start, then join, as in the first-thread program. Now change that order deliberately. In the output, NEW means constructed but unstarted; TERMINATED means the started execution has ended. Both are stable boundaries for this experiment.
 
 <JavaExample file="JoinSchedulingLesson.java" output={"after early join=NEW, answer=0\nafter started join=TERMINATED, answer=42"} />
 
@@ -29,6 +33,8 @@ The first join returns because the target has not been started and is not alive.
 Only after `start()` does this Thread have a running lifetime to await. The second join detects its termination, after which the ordinary result write can be observed. The array is a small result holder, not a signal main polls while worker is changing it. The later memory-model lesson derives why successful completion observation publishes the write.
 
 ## A timeout ends a wait, not the target
+
+A **timeout** limits how long the caller is willing to wait on this operation. It does not set a deadline by which another thread must finish.
 
 `worker.join(milliseconds)` may return because the target terminated **or** the waiting allowance expired. Inspect `worker.isAlive()` before interpreting a timed return as termination. A zero timeout means an unbounded join in this overload. Negative milliseconds are invalid.
 

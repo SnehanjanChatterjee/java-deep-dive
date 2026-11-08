@@ -2,7 +2,7 @@
 title: "Decisions, loops and execution traces"
 module: "language"
 group: "Decisions and loops"
-summary: "Choose branches and follow initialization, conditions, updates and loop termination."
+summary: "Choose which statements run, repeat work and trace when a loop stops."
 order: 50
 version: "Java 8+"
 prerequisites: ["language/variables-and-expressions"]
@@ -14,7 +14,11 @@ import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
 
 ## Choose which statements run
 
-An if statement executes its body only when its boolean condition is true. An else supplies the other path. An else-if chain stops at its first true condition: a score of 76 satisfies `score >= 50`, so the example prints pass and skips retry. Braces make the controlled block explicit.
+So far, statements have run once from top to bottom. **Control flow** describes which statement runs next. A decision selects a path; a loop repeats a path. These let a program respond to its values instead of requiring a separately written statement for every possible input.
+
+A **condition** is a boolean expression. An `if` statement runs its body—the controlled statement or brace block—only when its condition is true. An `else` supplies the alternative. In an else-if chain, the first true condition selects its body and skips the later alternatives. A score of 76 therefore reaches the pass branch in the example.
+
+The same program then repeats additions and countdowns. Each pass through a loop body is an **iteration**. First follow the decision, then use the tables below to follow each loop's starting value, condition, body and update. A **dry run** means tracking those values by hand in execution order.
 
 <JavaExample file="BranchAndLoopLesson.java" output={"pass\n10\n3\n2\n1\n1"} />
 
@@ -56,6 +60,23 @@ do {
 
 `break` exits the nearest loop or switch. `continue` skips the remainder of the current loop body; a for loop still performs its update before testing again. A nested loop has its own iterations: do not assume its inner break exits both loops. Labeled branching exists, but extracting a clear method is often easier to read.
 
+## Dry-run nested break and continue targets
+
+A **nested loop** is a loop inside another loop's body. The inner loop completes its own sequence for each outer iteration unless a branch leaves it. Naming the outer and inner values separately—row and column here—makes their two progressions visible.
+
+<JavaExample file="LoopControlLesson.java" output={"1:1\n1:3\n2:1\nafter loops"} />
+
+For row one, column one prints. Column two executes continue, which skips the print and performs the inner for update. Column three prints. Column four executes the unlabelled break, exiting only the inner loop; the outer loop proceeds to row two. That row prints column one and skips column two. At row two/column three, `break rows` leaves the labeled outer loop, so row three never begins. The statement after both loops still runs.
+
+A label names a statement; it does not create another thread or make a jump to arbitrary source text. Use it sparingly when the exit target would otherwise be unclear. In a while loop, a continue before an update can prevent progress. When debugging a loop, trace the condition and next update on **every** path, not only the path that printed output.
+
+<details>
+<summary>Why is an accidental semicolon after for(...) particularly misleading?</summary>
+
+It supplies an empty loop body. A following brace block is then a separate statement executed after that empty loop finishes. The source may compile while performing none of the intended repeated work. Braces and indentation help readers, but the language follows actual statements rather than indentation.
+
+</details>
+
 ## Practice: repair a boundary and explain its effect
 
 Change `number <= 4` to `number < 4`. What total is printed? How would you print only even numbers from 1 through 6?
@@ -75,21 +96,6 @@ for (int number = 1; number <= 6; number++) {
 ```
 
 Output is 2, 4, 6 on separate lines. The continue skips printing odd numbers, but the for update still advances. A `while` variant must ensure every path advances, including a continue path. Increasing the sum loop's upper limit increases its number of body executions proportionally. The complexity lesson later formalizes this growth.
-
-</details>
-
-## Dry-run nested break and continue targets
-
-<JavaExample file="LoopControlLesson.java" output={"1:1\n1:3\n2:1\nafter loops"} />
-
-For row one, column one prints. Column two executes continue, which skips the print and performs the inner for update. Column three prints. Column four executes the unlabelled break, exiting only the inner loop; the outer loop proceeds to row two. That row prints column one and skips column two. At row two/column three, `break rows` leaves the labeled outer loop, so row three never begins. The statement after both loops still runs.
-
-A label names a statement; it does not create another thread or make a jump to arbitrary source text. Use it sparingly when the exit target would otherwise be unclear. In a while loop, a continue before an update can prevent progress. When debugging a loop, trace the condition and next update on **every** path, not only the path that printed output.
-
-<details>
-<summary>Why is an accidental semicolon after for(...) particularly misleading?</summary>
-
-It supplies an empty loop body. A following brace block is then a separate statement executed after that empty loop finishes. The source may compile while performing none of the intended repeated work. Braces and indentation help readers, but the language follows actual statements rather than indentation.
 
 </details>
 

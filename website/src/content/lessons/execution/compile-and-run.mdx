@@ -27,9 +27,13 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Give the computer one instruction
 
-A program is a set of instructions. Our first program writes a line to the terminal. Java source is text in a `.java` file; a compiler checks it and produces a `.class` file that the Java virtual machine (JVM) can execute. The JDK supplies both the compiler, `javac`, and the launcher, `java`.
+Java is a programming language: a way to write instructions that a computer can carry out. A **program** is the resulting set of instructions. Start with one visible action—displaying a greeting—so that saving a file, checking the instructions and running them have an observable result.
 
-Install a JDK, rather than only a runtime. Open a terminal and run `java -version` and `javac -version`. Both must be available and should select the intended JDK. If a command is missing, follow the JDK installation instructions linked below to configure the executable search path. An editor saves source text; a terminal runs commands. An IDE combines these tools but still needs a selected JDK.
+The text you write is **source code**. Save Java source in a file ending in `.java`. A **compiler** checks that source and translates it into a form the Java runtime can execute; a **launcher** starts that execution. Here the compiler command is `javac` and the launcher command is `java`. They perform different jobs, so editing a file is not the same as running a program.
+
+Install a **Java Development Kit (JDK)**, which supplies both commands and the runtime they need. The runtime includes the **Java Virtual Machine (JVM)**, the software that executes compiled Java instructions, and the standard Java libraries. The next lesson follows that execution machinery; this lesson concentrates on getting one complete program to run.
+
+Use a plain text editor to save source, and a **terminal** to type commands. An **integrated development environment (IDE)** combines an editor, compilation and launch tools in one application, but still needs a selected JDK. Open a terminal and run `java -version` and `javac -version`. Both should select the intended installation. If either command is missing, use the installation reference below to configure the executable search path—the directories the terminal searches for commands.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="compile-launch-and-inspect-a-class" aria-hidden="true"></span>
@@ -55,7 +59,7 @@ The first command creates `HelloJava.class`. The second names the class to launc
 
 ## Read the source from the outside inward
 
-`class HelloJava` names a class, a container for Java members. `public` makes the class accessible; the public class name and source filename must agree. `final` prevents subclassing; inheritance is taught later. Braces delimit bodies. The `/** ... */` text is a documentation comment and does not run.
+`class HelloJava` declares a named container for Java operations and, in later examples, data. An operation declared inside a class is a **method**. `public` makes this class accessible; the public class name and source filename must agree. `final` prevents subclassing, meaning another class extending this one; inheritance is taught later. Braces delimit bodies. The `/** ... */` text is a documentation comment and does not run.
 
 `main` is the entry method used here. Its `String[] args` parameter receives command-line arguments; leave this conventional declaration intact while learning the statements inside it. `static` allows the launcher to call this method without constructing a HelloJava object. `void` means the method returns no value.
 

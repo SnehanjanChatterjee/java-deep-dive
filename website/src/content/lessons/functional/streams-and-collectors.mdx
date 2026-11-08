@@ -21,7 +21,25 @@ A loop can select long words and normalize them. A stream pipeline expresses the
 <span id="worked-example" aria-hidden="true"></span>
 ## Translate a loop into a pipeline
 
-<JavaExample file="StreamFoundationsLab.java" output={"[JAVA, JVM]\n[JAVA, JVM]\n[A, B, C]\n4"} />
+For input java,a,jvm, this loop keeps words of length at least three and uppercases the retained values:
+
+```java
+final List<String> result = new ArrayList<>();
+for (final String word : words) {
+    if (word.length() >= 3) {
+        result.add(word.toUpperCase(Locale.ROOT));
+    }
+}
+```
+
+Now name its responsibilities. words.stream() supplies a **source** of String elements. filter(word -> word.length() >= 3) keeps java and jvm. map(word -> word.toUpperCase(Locale.ROOT)) produces JAVA and JVM. collect(Collectors.toList()) is a **terminal operation** requesting a list result; toList is the collector recipe that gathers values into that result. The dedicated collectors chapters later explain its contract and machinery.
+
+```java
+final List<String> result = words.stream()
+        .filter(word -> word.length() >= 3)
+        .map(word -> word.toUpperCase(Locale.ROOT))
+        .collect(Collectors.toList());
+```
 
 The loop visits java, a, jvm; rejects a because its length is below three; transforms the survivors; and appends JAVA/JVM to a result. The pipeline uses the same steps: words.stream supplies String elements, filter keeps matching Strings, map transforms each String, and collect materializes a List. The intermediate element type remains String here; mapping String::length instead would produce Stream&lt;Integer&gt;.
 
@@ -40,7 +58,9 @@ The initial pipeline has these relationships:
 
 Replacing map with String::length would change the intermediate type to Integer. A predicate after that map receives a number, not the original text. A method reference must fit the type at its actual stage, which is why writing the stages' types helps diagnose a fluent chain.
 
-Streams do not automatically copy or sandbox mutable elements. A callback changing an object's fields can change what an input alias observes. Non-interference/statelessness rules and the application's ownership model still apply; “does not mutate source membership by itself” is not a guarantee that arbitrary callback code has no effects.
+Streams do not automatically copy or sandbox mutable elements. A callback changing an object's fields can change what an input alias observes. A non-interfering callback does not change the source in a way that disrupts traversal; a stateless callback does not depend on changing state from other invocations. These rules and the application's ownership model still apply; “does not mutate source membership by itself” is not a guarantee that arbitrary callback code has no effects.
+
+<JavaExample file="StreamFoundationsLab.java" output={"[JAVA, JVM]\n[JAVA, JVM]\n[A, B, C]\n4"} />
 
 ## Obtain a source deliberately
 
@@ -88,13 +108,13 @@ Do not mutate the source while traversing it or reuse a consumed stream. Encount
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
 ## Worked questions
 
-**Why might count skip peek?** If exact size is known and the skipped stage cannot change the answer, the implementation can omit traversal. A source's Spliterator exposes properties such as ORDERED, SIZED, SUBSIZED, DISTINCT, SORTED, NONNULL, IMMUTABLE and CONCURRENT. Mapping can invalidate sorted/distinct knowledge; filtering generally loses exact size. These are actual properties, not decorations to invent.
+**Why might count skip peek?** If exact size is known and the skipped stage cannot change the answer, the implementation can omit traversal. A source's Spliterator is a traversal cursor that can also split off work; it exposes properties such as ORDERED, SIZED, SUBSIZED, DISTINCT, SORTED, NONNULL, IMMUTABLE and CONCURRENT. Mapping can invalidate sorted/distinct knowledge; filtering generally loses exact size. These are actual properties, not decorations to invent.
 
 **What changes with a primitive stream?** mapToInt produces IntStream with primitive arithmetic/terminal methods. It avoids a boxed result contract, but int sum can still overflow. The reduction chapter separates arithmetic policy from pipeline spelling.
 
 ## Follow the focused operation chapters
 
-The complete operation sequence now continues through intermediate mapping/state/slicing, source and terminal result contracts, version-labelled prefix/multi-emission APIs, reductions, ordinary collector recipes, downstream adapters, custom collectors and parallel/gatherer reasoning.
+The operation sequence continues through intermediate mapping/state/slicing, source and terminal result contracts, version-labelled prefix/multi-emission APIs, reductions, ordinary collector recipes, downstream adapters, custom collectors and parallel/gatherer reasoning.
 
 These are separate questions. filter does not choose a result container; collect does. sorted is not equality-based deduplication; distinct is. limit does not close a resource; its owner still must. Source encounter order is not the timing of every parallel callback. The following chapters supply the full method families and runnable counterexamples instead of hiding them inside one advanced custom-collector program.
 

@@ -11,7 +11,15 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 
+## Confidentiality, integrity and authenticity are different properties
+
+**Confidentiality** concerns keeping data hidden from unintended readers. **Integrity** concerns detecting unauthorized changes. **Authenticity** concerns the relationship between a message and a trusted sender or key holder. Authorization is a separate decision about which operation that identity may perform.
+
+Java’s cryptography APIs offer mechanisms for these properties. A digest summarizes bytes; a message authentication code (**MAC**) uses a shared secret; a digital signature uses a private signing key and a public verification key. We will follow a signature over one message before studying why valid cryptography still needs an established trust relationship and application policy.
+
 ## Name the guarantee before choosing an API
+
+A **cryptographic key** is a value used by a cryptographic operation. With a MAC, sender and verifier share a secret key. With a signature, the signer keeps a private key and the verifier uses its corresponding public key. The public key still needs a trusted connection to the intended identity; merely obtaining a key does not establish whose it is.
 
 An unkeyed digest summarizes bytes. It detects changes only when the expected digest comes from a trusted source; replacing both data and digest defeats a naive integrity check. A MAC authenticates with a shared secret. A signature lets a private-key holder sign and a public-key holder verify. Encryption addresses confidentiality; authenticated encryption additionally checks integrity and has its own next chapter.
 
@@ -21,7 +29,7 @@ These guarantees are different from input validity and authorization. An integer
 
 ## Follow initialization, bytes and verification
 
-The example generates one ephemeral RSA key pair. The private key initializes the signer; update supplies UTF-8 message bytes; sign returns a signature. The public key initializes a verifier. Updating it with the original bytes and verifying the signature yields true. Reinitializing and updating with changed bytes yields false.
+The example uses RSA, an asymmetric cryptographic algorithm, through the standard Signature API. An **ephemeral** key pair is created for this demonstration and is not persisted. The program generates one such RSA key pair. The private key initializes the signer; update supplies UTF-8 message bytes; sign returns a signature. The public key initializes a verifier. Updating it with the original bytes and verifying the signature yields true. Reinitializing and updating with changed bytes yields false.
 
 The program prints neither keys nor random signature bytes. Its reproducible output describes verification behavior, rather than a fixed signature encoding. Signature objects have operation state; initialize the intended operation and feed the intended bytes in order. Use explicit algorithm names and standard providers rather than inventing a message-transformation scheme.
 
@@ -29,7 +37,7 @@ The program prints neither keys nor random signature bytes. Its reproducible out
 
 A successful verification proves a mathematical relationship to the supplied public key. It does not by itself establish who owns that key, whether it is authorized for this message or whether the operation may be replayed. A protocol must establish key trust, message context, freshness and the intended operation separately.
 
-TLS illustrates the same identity distinction: certificate-chain validation and hostname verification establish different necessary aspects of the expected peer. Disabling either to remove an error loses the intended identity guarantee. A truststore defines trusted peer material; an identity keystore holds identity keys/certificates. Merely parsing a certificate does not establish trust.
+**Transport Layer Security (TLS)** protects a network connection under a peer-authentication protocol. It illustrates the same identity distinction: certificate-chain validation and hostname verification establish different necessary aspects of the expected peer. Disabling either to remove an error loses the intended identity guarantee. A truststore defines trusted peer material; an identity keystore holds identity keys/certificates. Merely parsing a certificate does not establish trust.
 
 ## Validate and authorize independently
 

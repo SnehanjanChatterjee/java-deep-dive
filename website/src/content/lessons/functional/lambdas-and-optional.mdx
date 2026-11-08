@@ -20,13 +20,35 @@ A method can receive data such as a String. It can also receive an object whose 
 <span id="worked-example" aria-hidden="true"></span>
 ## Derive the lambda from its interface method
 
+Start with the operation we want to vary: accept text containing exactly three UTF-16 code units. The interface names a method for that decision:
+
+```java
+@FunctionalInterface
+interface TextRule {
+    boolean accepts(String text);
+}
+```
+
+A named class ThreeLetters implements TextRule and defines accepts as returning text.length() == 3. To use it, create the object and call its method through the interface:
+
+```java
+final TextRule named = new ThreeLetters();
+final boolean accepted = named.accepts("cat"); // true
+```
+
+A **lambda expression** supplies that same functional-method implementation without another named class. Derive the expression from the target interface: accepts has one String parameter and a boolean result.
+
+```java
+final TextRule explicit = (String text) -> { return text.length() == 3; };
+final TextRule concise = text -> text.length() == 3;
+```
+
+The arrow separates parameters from implementation. Because the target type already supplies String, the second form omits it. A single returned expression can omit braces and return. Invocation is still concise.accepts("cat"), not a new universal function-call operator.
+
 <JavaExample file="FunctionalInterfacesLab.java" output={"true\ntrue\ntrue\ntrue"} />
 
-TextRule declares `boolean accepts(String text)`. The named ThreeLetters implementation overrides that method. A variable of type TextRule invokes it with `named.accepts("cat")`; the result is true. A lambda supplies the same method implementation without declaring another named class.
+Predict each line: the named rule accepts cat; the anonymous rule accepts cat; the explicit lambda accepts dog; the concise rule rejects Java because its length is four. rejects is a default method that negates accepts. A default implementation does not add a second abstract requirement, so TextRule remains functional. Null is outside this rule's contract and fails when length is read.
 
-Derive it in three steps. The target type is TextRule. Its abstract method accepts one String and returns boolean. Copy those parameters and write the body after the arrow: `(String text) -> { return text.length() == 3; }`. The compiler already knows the parameter type, so it can be omitted. A single returned expression can omit braces and return: `text -> text.length() == 3`.
-
-A lambda is still invoked through its interface method, here accepts. It is not called with a new universal function-call operator. rejects is a default method implemented by the interface; it delegates to accepts and does not create a second abstract requirement. The final output is true because Java has four UTF-16 code units. The example intentionally measures String.length, not human-perceived characters.
 
 ## Compare a named class, an anonymous class and a lambda
 
@@ -79,7 +101,7 @@ System.out.println(longEnough.test("Java")); // true
 
 minimum is a captured local value. It must be final or effectively final: a local assigned once without the final keyword is also eligible. Reassigning it after capture is rejected. A captured final List reference can still point to a mutable list; local reassignment and referent mutation are different operations.
 
-Lambda this means the enclosing receiver. An anonymous class has its own this. Capturing a receiver can retain its object graph if a callback is stored in a long-lived listener collection. Fields are not subject to the same local-capture rule; shared mutable state still needs an appropriate access protocol.
+Capturing an enclosing receiver can retain its object graph when a callback is stored in a long-lived listener collection. Fields follow their own mutation/access protocol rather than the local-variable capture rule; the method-reference chapter makes receiver evaluation observable.
 
 ## Distinguish binding a local value from sharing mutable state
 

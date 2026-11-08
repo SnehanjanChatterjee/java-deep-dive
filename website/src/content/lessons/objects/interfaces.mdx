@@ -2,7 +2,7 @@
 title: "Interfaces and named implementations"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Declare a capability and invoke named implementations before introducing interchangeable strategies."
+summary: "Describe an operation independently of the class implementing it, then supply named implementations."
 order: 170
 version: "Java 8+"
 prerequisites: ["objects/constructors-and-access"]
@@ -14,7 +14,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Depend on an operation rather than one concrete class
 
-An interface declares a capability that callers can use. Pricing promises an `int apply(int amount)` operation. A class implementing Pricing must provide that operation publicly. A variable declared Pricing can refer to any compatible implementation; callers use the promised operations without depending on the implementation class's private details.
+A checkout needs to ask how a price is calculated, but it should not have to know every pricing class's storage or algorithm. An **interface** is a reference type declaring a capability other code can depend on. Its **contract** describes the operations and behavior callers may request. An **implementation** supplies the code that fulfills those operations.
+
+`interface Pricing` declares `int apply(int amount)`: receive an int amount and return an int result. This declaration states the method's shape without a body. `class DiscountPricing implements Pricing` supplies the public method body. Implements declares the type relationship; Java checks that a concrete implementation provides the required operation.
+
+The caller can hold the object through a variable declared Pricing and request apply. It creates an actual DiscountPricing object, not an extra interface object. This separates the capability visible to the caller from the particular class doing the work, allowing a different pricing implementation to be supplied without rewriting Checkout.
 
 <JavaExample file="CompositionExample.java" output={"90"} />
 
@@ -24,9 +28,22 @@ This intentionally small policy has no currency, rounding or lower-bound contrac
 
 ## Interface types describe what callers may ask
 
-The declared type determines available methods at a source call. An interface-typed reference does not acquire every extra method declared by its concrete implementation. At runtime, an instance invocation reaches the implementation on the actual object. This dispatch enables one Checkout implementation to work with multiple Pricing classes.
+The declared type determines available methods at a source call. An interface-typed reference does not acquire every extra method declared by its concrete implementation. At runtime, an instance invocation reaches the implementation on the actual object. This **dispatch** selects the implementing behavior. Using one contract with different implementations is a form of **polymorphism**: callers use the common operation while behavior can vary with the actual object.
 
 A class may implement several interfaces but extend only one class. An abstract class can hold state and partial implementation; an interface often suits a capability shared by otherwise unrelated classes. Neither automatically creates a useful abstraction. Choose the smallest contract the callers actually need.
+
+## Separate a contract from inherited implementation
+
+Pricing's declaration has no method body, so the implementing class supplies it. An interface can extend other interfaces, and a class can implement several independent capabilities. Implementing a public interface operation with package access is illegal: callers must be able to rely on the promised public operation. A class that leaves an abstract obligation unimplemented must itself be abstract.
+
+Abstraction is deciding the operations a client depends on; encapsulation is controlling how a type's state and implementation are accessed. They cooperate, but neither is a percentage of hidden code. An abstract class can have constructors, per-object state and implemented methods alongside abstract methods; the <a href={lessonUrl('learn/objects/abstract-classes/')}>shared-algorithm lesson</a> develops a complete example. An interface cannot provide per-instance fields or a constructor; its default methods can provide behavior after the contract is understood. The <a href={lessonUrl('learn/objects/interface-contracts/')}>interface categories and default-conflict lesson</a> works through marker types, functional shape and inherited defaults using named classes.
+
+<details>
+<summary>Does Pricing pricing = new DiscountPricing() create both a Pricing and a DiscountPricing object?</summary>
+
+It creates one DiscountPricing object and stores its reference in a variable declared Pricing. Interface typing changes what operations the source may request, not the object's number or concrete identity. Checkout retains another copy of that reference, allowing its total operation to delegate to the same collaborator.
+
+</details>
 
 ## Practice: add regular pricing without changing Checkout
 
@@ -44,19 +61,6 @@ static final class RegularPricing implements Pricing {
 ```
 
 Use `new Checkout(new RegularPricing()).total(100)`, which returns 100. Checkout's code is unchanged because it invokes the Pricing contract. The supplied collaborator varies. Constructing DiscountPricing inside total would hard-code that choice and make substitution harder. Lambda notation can express some one-method interfaces later; it is not needed to understand this model.
-
-</details>
-
-## Separate a contract from inherited implementation
-
-Pricing's declaration has no method body, so the implementing class supplies it. An interface can extend other interfaces, and a class can implement several independent capabilities. Implementing a public interface operation with package access is illegal: callers must be able to rely on the promised public operation. A class that leaves an abstract obligation unimplemented must itself be abstract.
-
-Abstraction is deciding the operations a client depends on; encapsulation is controlling how a type's state and implementation are accessed. They cooperate, but neither is a percentage of hidden code. An abstract class can have constructors, per-object state and implemented methods alongside abstract methods; the <a href={lessonUrl('learn/objects/abstract-classes/')}>shared-algorithm lesson</a> develops a complete example. An interface cannot provide per-instance fields or a constructor; its default methods can provide behavior after the contract is understood. The <a href={lessonUrl('learn/objects/interface-contracts/')}>interface categories and default-conflict lesson</a> works through marker types, functional shape and inherited defaults using named classes.
-
-<details>
-<summary>Does Pricing pricing = new DiscountPricing() create both a Pricing and a DiscountPricing object?</summary>
-
-It creates one DiscountPricing object and stores its reference in a variable declared Pricing. Interface typing changes what operations the source may request, not the object's number or concrete identity. Checkout retains another copy of that reference, allowing its total operation to delegate to the same collaborator.
 
 </details>
 

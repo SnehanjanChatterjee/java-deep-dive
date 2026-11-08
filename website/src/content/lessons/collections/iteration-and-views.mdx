@@ -14,7 +14,9 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Visit every element without knowing storage
 
-A caller can traverse an ArrayList or LinkedList using the same enhanced-for statement. Iterable makes that possible: it supplies an Iterator, which remembers the current traversal state. An iterator is separate from the collection; two iterators can be at different positions in the same sequence.
+To print every name, the caller needs a way to visit elements one after another without knowing how ArrayList stores them. This visit is a **traversal**. Iterable is an interface meaning “can provide a traversal”; its iterator() method returns an Iterator. That separate object is a **cursor**: it remembers where this particular traversal has reached. Two cursors can visit the same collection independently.
+
+Assume names contains [Mira,Noor]. The enhanced-for below asks the container for a cursor, visits Mira then Noor, and stops.
 
 ```java
 for (final String name : names) {
@@ -42,7 +44,9 @@ For [Al, Mira], the initial cursor is before Al. First next returns Al; the next
 
 <JavaExample file="CollectionIteration.java" output={"Mira\nNoor\n[Ada, Noor]\n[Mira]"} />
 
-removeShortNames calls next before testing each name. If the name is short, iterator.remove deletes that last-returned element. The iterator updates its own traversal bookkeeping. It does not require the caller to decrement a numeric index. Null names are outside this example's input contract; they would fail the length access.
+Read the first two outputs as traversal after short-name removal leaves [Mira,Noor]. The same program later demonstrates a live range and a detached copy, producing [Ada,Noor] and [Mira]; those lines are explained in the view section.
+
+The removal helper has a separate job: delete names shorter than a specified minimum while visiting the list. With [Al,Mira,Bo] and minimum three, next returns Al and remove deletes it, next returns Mira and keeps it, and next returns Bo and removes it. The remaining list is [Mira]. removeShortNames calls next before testing each name. If the name is short, iterator.remove deletes that last-returned element. The iterator updates its own traversal bookkeeping. It does not require the caller to decrement a numeric index. Null names are outside this example's input contract; they would fail the length access.
 
 | Last action | Is iterator.remove legal? | Meaning |
 | --- | --- | --- |
@@ -52,6 +56,22 @@ removeShortNames calls next before testing each name. If the name is short, iter
 | Iterator does not support removal | No | UnsupportedOperationException |
 
 Removing directly through the list during enhanced-for can invalidate the hidden iterator. Best-effort fail-fast detection may then throw ConcurrentModificationException, including in a single thread. It is a debugging aid, not synchronization and not a guaranteed race detector. Snapshot and weakly consistent iterators have different contracts in the concurrency module.
+
+## Views, copies and fixed-size containers
+
+In the program, `view = names.subList(0, 1)` has indexes relative to that range. `view.set(0, "Ada")` replaces the same backing element, so names changes. The previously created copy keeps Mira. Both containers would still share mutable element objects if the elements were mutable.
+
+| Construction | What can change through it? | Does later source mutation remain visible? |
+| --- | --- | --- |
+| `Arrays.asList(array)` | Elements can be replaced; size cannot change | Yes: array-backed |
+| `Collections.unmodifiableList(list)` | Wrapper mutators are rejected | Yes: live backing list |
+| `new ArrayList<>(list)` | Independent mutable container | No structural connection |
+| `List.of(...)` — 9+ | Unmodifiable; rejects nulls | No external source container |
+| `List.copyOf(list)` — 10+ | Unmodifiable reference snapshot; rejects nulls | Later source changes are not reflected |
+
+Unmodifiable means the collection API does not permit mutation through that reference. Deep immutability additionally requires stable reachable state. Structural parent mutations outside the subList protocol can invalidate the view; retaining a small view can also retain a much larger backing structure. Copy a range when independent lifetime is required.
+
+Map keySet/values/entrySet are backed views. Supported removal through one removes mappings from the map. A values view can contain repeated equal values because distinct keys may map to the same value. Do not confuse a Map.Entry with an independent immutable snapshot.
 
 ## Implement Iterable without making the container its own cursor
 
@@ -75,22 +95,6 @@ Iterator also has forEachRemaining from Java 8. It supplies remaining values to 
 <JavaExample file="IntRangeTest.java" />
 
 For an end bound Integer.MAX_VALUE, the final eligible value is MAX_VALUE−1. Advancing it reaches the excluded bound and stops without another increment. Including MAX_VALUE in an int-based half-open range would require a different representation, such as a wider bound or explicit exhausted flag; computing MAX_VALUE+1 in int would overflow.
-
-## Views, copies and fixed-size containers
-
-In the program, `view = names.subList(0, 1)` has indexes relative to that range. `view.set(0, "Ada")` replaces the same backing element, so names changes. The previously created copy keeps Mira. Both containers would still share mutable element objects if the elements were mutable.
-
-| Construction | What can change through it? | Does later source mutation remain visible? |
-| --- | --- | --- |
-| `Arrays.asList(array)` | Elements can be replaced; size cannot change | Yes: array-backed |
-| `Collections.unmodifiableList(list)` | Wrapper mutators are rejected | Yes: live backing list |
-| `new ArrayList<>(list)` | Independent mutable container | No structural connection |
-| `List.of(...)` — 9+ | Unmodifiable; rejects nulls | No external source container |
-| `List.copyOf(list)` — 10+ | Unmodifiable reference snapshot; rejects nulls | Later source changes are not reflected |
-
-Unmodifiable means the collection API does not permit mutation through that reference. Deep immutability additionally requires stable reachable state. Structural parent mutations outside the subList protocol can invalidate the view; retaining a small view can also retain a much larger backing structure. Copy a range when independent lifetime is required.
-
-Map keySet/values/entrySet are backed views. Supported removal through one removes mappings from the map. A values view can contain repeated equal values because distinct keys may map to the same value. Do not confuse a Map.Entry with an independent immutable snapshot.
 
 ## Name the actual iteration guarantee
 

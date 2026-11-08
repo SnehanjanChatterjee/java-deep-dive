@@ -2,7 +2,7 @@
 title: "String values and mutable text construction"
 module: "language"
 group: "Arrays and strings"
-summary: "Compare immutable strings, inspect characters and build text with a mutable buffer."
+summary: "Work with text values, compare contents and assemble a result without changing existing Strings."
 order: 90
 version: "Java 8+"
 prerequisites: ["language/arrays"]
@@ -15,7 +15,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## A String operation returns text
 
-A String represents immutable text. Once constructed, that String's contents cannot change. Calling trim, replace or substring returns a result; it does not update the variable or mutate the receiver. `String cleaned = original.trim();` stores the returned reference separately.
+**String** is Java's type for a sequence of text, such as a name, message or identifier. A literal such as `"Java"` supplies a String value. Empty text, `""`, is still a real value with length zero; null means no String object is present. A char such as `'J'` holds one text unit, while a String can hold a sequence of them.
+
+Strings are **immutable**: an existing String object's text does not change after construction. A variable can be reassigned to another String, but that is a change to the variable's reference, not an edit to the old text. Consequently, an operation such as trim returns the resulting text instead of updating the receiver—the object before the dot in the call.
+
+In `String cleaned = original.trim();`, original supplies the input object, trim computes the requested result, and cleaned stores the returned reference. The complete program first follows this return-value rule, then compares text and builds a longer result using an explicitly mutable helper.
 
 <JavaExample file="StringBasics.java" output={"8\nJava\ntrue\n1, 2, 3\n1, 2, 3!"} />
 
@@ -25,36 +29,17 @@ Original has two spaces, four letters and two spaces, so its length is eight. Cl
 
 `==` asks whether references identify the same object. `equals` asks whether String contents agree. The separately constructed `new String("Java")` has matching contents, so equals returns true. Use `"Java".equals(candidate)` when null should simply compare unequal; choose an explicit rejection policy when null is invalid input.
 
-Literals and compile-time constant concatenations are interned. `intern()` obtains a canonical reference. These identity facts explain some output puzzles, but do not justify using `==` for application text equality. A runtime concatenation need not share the literal's identity.
-
 ## Build a result incrementally
 
-The loop appends 1, 2 and 3 to a locally owned StringBuilder. It appends a separator **before** every value after the first, preventing a trailing comma. ToString creates a String result. Appending an exclamation afterward changes the builder but not that already produced snapshot.
+A **StringBuilder** holds editable text while a result is being assembled. Its append operation adds text to the same builder; toString obtains an immutable String value representing its current contents. This is useful when a loop contributes one piece at a time.
+
+The loop appends 1, 2 and 3 to a locally owned StringBuilder. It appends a separator **before** every value after the first, preventing a trailing comma. ToString creates a String result, a **snapshot** of the text at that moment. Appending an exclamation afterward changes the builder but not that already produced snapshot.
 
 Repeatedly concatenating an ever-growing String inside a loop can repeatedly copy the accumulated text. A builder expresses one mutable construction process. A small fixed `+` expression is readable and compilers can optimize it; replacing every concatenation is unnecessary. Builders are not thread-safe. StringBuffer synchronizes individual operations, but that alone does not make a multi-operation protocol atomic.
 
-## Practice: repair a discarded result
-
-Why does `String name = " ada "; name.trim();` leave name padded? Produce the trimmed text without changing its capitalization.
-
-<details>
-<summary>Answer</summary>
-
-Use `name = name.trim();`. The original call's returned value was discarded. Strings did not become mutable: assignment only redirects name to the result. `final String name` would prohibit this reassignment, so use a separate final cleaned variable instead. To join values, apply the separator rule from the example rather than deleting an assumed last comma after the loop; the latter breaks for empty input.
-
-</details>
-
-String indexes count UTF-16 code units. For simple ASCII text these align with familiar characters; arbitrary international text requires the Unicode chapter's more careful model.
-
-## Separate mutable construction from the final value
-
-StringBuilder keeps a mutable sequence while an algorithm assembles output; toString provides the immutable text value. A StringBuffer also provides mutable text with synchronized operations. Neither builder type uses String's content-equality contract for ordinary equals comparisons: compare their String results when content equality is intended. Synchronizing a single method does not define a transaction across several calls.
-
-String's immutability is an API promise about observable text, not a promise that its representation is always a char array. Modern HotSpot can use compact internal storage while preserving UTF-16 indexing. Do not teach pool versus heap as two different kinds of Java String object: both literal and explicitly constructed Strings are objects, and interning concerns canonical references. [String API and implementation freedom](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html)
-
-Before Unicode traversal, work through <a href={lessonUrl('learn/language/string-operations/')}>search, slicing and comparison</a>. It gives complete indexOf/substring/compareTo traces, empty-range boundaries and literal replacement rules. Strings with equal visible text may still differ in normalization or code-point sequence; choosing application equality is separate from guessing where a String is stored.
-
 ## Construct text from characters or encoded bytes
+
+A constructor is an operation used by new to initialize an object. String supplies constructors accepting existing text, arrays of char values and encoded bytes. The char-array forms use array indexing already learned. A **charset**, or character encoding, specifies how bytes represent text; the byte-array part uses **UTF-8**, the 8-bit Unicode Transformation Format. The Unicode lesson following String operations separates code units, code points and bytes in detail.
 
 <JavaExample file="StringConstructionLab.java" output={"from chars=Java\nslice=av\nfrom bytes=text\nlength=0, reserved=true\nbuilt=Lia!\nbuilder=!a\nzero fill=true\nsnapshot=Lia!\ncase ordering=0\ncase equal=true\nbuffer=xy"} />
 
@@ -62,7 +47,7 @@ The char-array constructor copies the supplied contents. Changing input[0] after
 
 | Construction | Input meaning | Important boundary |
 | --- | --- | --- |
-| A string literal | Source text with canonical literal identity | Still compare application values by contents |
+| A string literal | Text written directly in a quoted Java literal | Still compare application values by contents |
 | new String(existingString) | A new String object with the same text | It is unnecessary for ordinary immutable-value sharing |
 | new String(characters) | Copy character-array contents | Later source-array edits do not mutate the String |
 | new String(characters, offset, count) | Copy a selected character range | Validate offset and count, not an exclusive end |
@@ -94,6 +79,33 @@ Most corresponding methods exist on StringBuffer with its synchronized-operation
 ## Case-insensitive comparison has a defined scope
 
 The complete program prints zero for compareToIgnoreCase and true for equalsIgnoreCase on JAVA versus java. These methods ignore case under their specified character comparison rules; they are not locale-sensitive dictionary collation or complete Unicode normalization. A nonzero compare result supplies an ordering sign, not a universal exact value of 1 or −1. Choose domain-specific normalization or a Collator when that is the actual requirement.
+
+## Separate mutable construction from the final value
+
+StringBuilder keeps a mutable sequence while an algorithm assembles output; toString provides the immutable text value. A StringBuffer also provides mutable text with synchronized operations. Neither builder type uses String's content-equality contract for ordinary equals comparisons: compare their String results when content equality is intended. Synchronizing a single method does not define a transaction across several calls.
+
+String's immutability is an API promise about observable text, not a promise that its representation is always a char array. Modern HotSpot can use compact internal storage while preserving UTF-16 indexing. Do not teach pool versus heap as two different kinds of Java String object: both literal and explicitly constructed Strings are objects, and interning concerns canonical references. [String API and implementation freedom](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/String.html)
+
+## Literal identity and interned text
+
+Equal text can be held by different String objects. **Interning** chooses a canonical representative: a shared reference for a particular text value. String literals and compile-time constant concatenations use interned references, and intern() obtains the canonical reference for its receiver's text.
+
+This explains why some equal literals also satisfy `==`, while an explicitly constructed String can have equal text and a different identity. A runtime concatenation need not share the literal's identity. Application text comparisons should use their declared content policy, rather than depending on how a String was constructed or whether a canonical reference was reused.
+
+## Practice: repair a discarded result
+
+Why does `String name = " ada "; name.trim();` leave name padded? Produce the trimmed text without changing its capitalization.
+
+<details>
+<summary>Answer</summary>
+
+Use `name = name.trim();`. The original call's returned value was discarded. Strings did not become mutable: assignment only redirects name to the result. `final String name` would prohibit this reassignment, so use a separate final cleaned variable instead. To join values, apply the separator rule from the example rather than deleting an assumed last comma after the loop; the latter breaks for empty input.
+
+</details>
+
+String indexes count code units in UTF-16, the 16-bit Unicode Transformation Format: fixed-width pieces of its text representation. For basic ASCII text—the American Standard Code for Information Interchange, containing simple Latin letters, digits and control values—these align with individual characters. Arbitrary international text requires the Unicode chapter's more careful model.
+
+Before Unicode traversal, work through <a href={lessonUrl('learn/language/string-operations/')}>search, slicing and comparison</a>. It gives complete indexOf/substring/compareTo traces, empty-range boundaries and literal replacement rules. Strings with equal visible text may still differ in normalization or code-point sequence; choosing application equality is separate from guessing where a String is stored.
 
 ## String references
 

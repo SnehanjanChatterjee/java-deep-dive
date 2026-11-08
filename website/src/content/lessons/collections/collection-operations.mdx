@@ -15,11 +15,26 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Operate through the smallest useful contract
 
-A method that only needs membership, removal and traversal can accept Collection rather than requiring ArrayList. The caller keeps the implementation choice; the method states only the operations it needs. Collection is an interface. Collections, with a final s, is a utility class containing static algorithms and wrappers. An ArrayList is an object that implements List and Collection; it is not an instance of Collections.
+Imagine combining two guest lists, checking whether required guests are present, and removing cancelled names. A **bulk operation** processes values from another collection in one call. We can use `Collection<String>` when we need membership, addition and removal without needing indexed positions.
+
+Collection is the interface; Collections, with an s, is a utility class of static methods. The concrete ArrayList used here implements List and Collection and allows repeated names. This distinction matters when reading Collection.addAll versus Collections.sort.
+
+First follow only the guest-list changes:
+
+```java
+final Collection<String> names = new ArrayList<>();
+final boolean added = names.addAll(Arrays.asList("A", "B", "A", "C"));
+final boolean present = names.containsAll(Arrays.asList("A", "A", "B"));
+final boolean removed = names.removeAll(Collections.singleton("A"));
+names.retainAll(Arrays.asList("B", "missing"));
+```
+
+After addAll, names is [A,B,A,C] and added is true. containsAll asks whether each requested value is a member, so present is true; it does not use up occurrences. removeAll deletes both A positions, leaving [B,C], and reports a change. retainAll keeps B and removes C; it never inserts missing.
 
 <JavaExample file="CollectionBulkMethods.java" output={"true\ntrue\ntrue\n[B, C]\n[B]\ntrue:[B, null, tail]\nreserved size=0\ntrue"} />
 
-The variable names is declared Collection of String. Its implementation permits duplicates and mutation. addAll appends A,B,A,C and reports true because the collection changed. containsAll([A,A,B]) reports true even though the argument repeats A: it asks about membership, not matching multiplicities.
+The first five lines display that sequence. The later lines examine an array conversion and an empty reserved-capacity list; their contracts are developed below. The program uses ArrayList's encounter order for these printed states, not a promise that every Collection is ordered.
+
 
 ## Distinguish single removal from bulk membership removal
 

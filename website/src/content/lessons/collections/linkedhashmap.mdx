@@ -16,18 +16,26 @@ import CollectionTrace from '../../../components/CollectionTrace.astro';
 <span id="concepts"></span>
 ## Hash lookup with encounter order
 
-LinkedHashMap combines hash-based key lookup with a defined encounter order. The default order is insertion order; a special constructor selects access order. Choose it when predictable traversal matters without requiring sorted keys. The order is maintained by links, not by sorting a HashMap after each operation.
+A report may need fast lookup by key while preserving the order its rows first arrived. HashMap does not promise that traversal order. LinkedHashMap does: its default **insertion order** keeps the first position of each still-present key. Replacing a value does not move the key, while removing then reinserting records a new arrival.
 
-Like HashMap, it permits null keys/values and is not synchronized. Ordered traversal does not mean stable snapshots, immutable values or concurrent reads. In access-order mode, a lookup can change ordering state.
+Use a second mode for a different problem, remembering which cached entry was used most recently. **Access order** moves a successfully accessed entry to the recent end. Neither mode sorts keys alphabetically or numerically.
 
 <span id="worked-example"></span>
 ## Insertion-order and access-order examples
 
+Follow two small maps separately. In the default map, put A then B, then replace A's value: keys stay [A,B]. In the access-order map, start A,B,C, then get(A): keys become [B,C,A]. A is the same mapping in a new encounter position.
+
+```java
+final Map<String, Integer> insertion = new LinkedHashMap<>();
+final Map<String, Integer> access = new LinkedHashMap<>(16, 0.75f, true);
+```
+
+The last true selects access order; 16 and 0.75f are storage sizing inputs inherited from the hash-table model. They are not a limit on live entries. Null keys/values are permitted as in HashMap.
+
 <JavaExample file="LinkedHashMapExample.java" />
 
-Replacing A in the insertion-ordered map keeps the order `[A, B]`. In access-order mode, reading A moves it to the recent end, producing `[B, C, A]`. containsKey(B) does not generate an access, so the order remains `[B, C, A]`.
+containsKey(B) observes membership without refreshing access order, so the second map remains [B,C,A]. The next section identifies exactly which operations move a retained entry; the following link model explains how the movement occurs.
 
-The distinction matters when evaluating eviction. A map can contain a key without that membership test refreshing its recency. Not every read-like API has the same order effect; use the selected JDK's documented access-generating methods rather than guessing based on method names.
 
 ## Trace access-generating operations precisely
 
@@ -76,7 +84,7 @@ Encounter-order traversal follows the linked entries rather than scanning empty 
 
 ### An access is defined by the contract
 
-Operations such as get, put, compute and merge can count as accesses in an access-ordered map under their documented conditions. Collection-view traversal and containsKey do not generally refresh recency. Replacing an insertion-order mapping is not the same as deleting then reinserting it. Check the selected JDK's access rules instead of classifying methods by whether their names sound read-only.
+The access matrix above defines which operations request movement. The important implementation consequence is that an access-order get can write order links even when it only reads the stored value.
 
 The implementation can avoid relinking an entry already at the recent end. That optimization does not justify treating cache gets as harmless shared reads: another get can move a different entry and modify order links/bookkeeping. Correct concurrency must cover all participating accesses and updates.
 

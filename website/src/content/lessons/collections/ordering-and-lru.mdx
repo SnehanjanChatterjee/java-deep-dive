@@ -28,7 +28,9 @@ These rules describe a nonconcurrent, count-bounded teaching cache. They do not 
 
 ## Trace access, replacement and eviction
 
-Read each order from least recent on the left to most recent on the right. Capacity is two:
+Construct `LinkedLruCache<String,Integer>` with capacity two. put("A",1) stores an association, get("A") returns 1 and refreshes its recency, and get("missing") returns null without adding anything. The type arguments have the same key/value roles as Map.
+
+Read each order below from least recent on the left to most recent on the right. Capacity is two:
 
 | Operation | Result | Recency after operation | Why |
 | --- | --- | --- | --- |
@@ -63,10 +65,6 @@ These are stronger requirements than making the map itself thread-safe. Replacin
 
 ## Complete single-file Java implementation
 
-<JavaExample file="LinkedLruCache.java" output={"1\nnull\n3\n2"} />
-
-The file contains the cache, a nested static Node and a deterministic main demonstration. It uses a built-in HashMap as the permitted lookup index and implements its own recency list; it does not extend LinkedHashMap. If the task also forbids library map storage, implement the preceding hash table as the index under that additional constraint. The list and eviction invariants remain the same.
-
 ### Constructor and node representation
 
 The constructor rejects capacity below one, stores the bound, and connects the two sentinels. Each real node holds a stable key reference, mutable value, previous and next. Static nesting avoids an unnecessary outer-instance reference. A final key reference does not make equality-related state inside the key immutable; key identity must remain stable during membership.
@@ -86,6 +84,10 @@ For a new key, create one node, add it to the index and append it. Only this bra
 `unlink` makes the previous node skip forward to the successor, and the successor skip backward to the predecessor. `append` fills the detached node's two links, joins the previous recent node to it and updates tail's previous link. Reuse these helpers instead of maintaining slightly different pointer logic in get and put.
 
 The helpers take a known live node under the class's private invariant. They are not public APIs accepting arbitrary null, sentinel or already-corrupted nodes. Validation of public inputs and preservation of the internal invariant are separate responsibilities.
+
+<JavaExample file="LinkedLruCache.java" output={"1\nnull\n3\n2"} />
+
+The file contains the cache, a nested static Node and a deterministic main demonstration. It uses a built-in HashMap as the permitted lookup index and implements its own recency list; it does not extend LinkedHashMap. If the task also forbids library map storage, implement the preceding hash table as the index under that additional constraint. The list and eviction invariants remain the same.
 
 ## Capacity-one and repeated-update proofs
 

@@ -1,17 +1,23 @@
 ---
-title: "Runtime memory and object reachability"
+title: "Reachability analysis and reference strengths"
 module: "jvm"
 group: "Runtime memory"
 summary: "Distinguish invocation state, shared objects and the paths that keep objects alive."
 order: 1100
 version: "Java 8+"
-prerequisites: ["jvm/frames-and-bytecode", "objects/equality-and-immutability"]
-advanced: false
+prerequisites: ["jvm/frames-and-bytecode", "objects/equality-and-immutability", "collections/iteration-and-views"]
+advanced: true
 ---
 
 import JavaExample from '../../../components/JavaExample.astro';
 import ConceptAnimation from '../../../components/ConceptAnimation.jsx';
 import Diagram from '../../../components/Diagram.jsx';
+
+## Reachability determines which objects are still usable
+
+**Runtime memory** is the storage used while a program executes: method-invocation state, objects and arrays, class-related structures and implementation-specific runtime storage. The early JVM lessons introduced these areas. Here we study a more precise question: which objects are still reachable, and why?
+
+An object is **reachable** when a continuing computation can access it through the relevant reference paths. A collector starts from runtime roots and follows those paths. A reference variable and its object are different things: removing one variable or container entry need not remove every path to the object. We will draw those paths first, then implement a graph walk using the collection APIs already learned.
 
 ## Separate a variable from the object it identifies
 
@@ -38,6 +44,8 @@ Start with a list that reaches A and B. Store a second reference to A in `alias`
 A **root** is a starting point from which a collector establishes reachability. The actual roots depend on VM execution state and include categories such as live thread references, relevant class/static state and native handles. The drawing chooses a small root set to explain the rule; it does not inspect a real process's roots or assign physical addresses to objects.
 
 ## Implement a tracing walk over an explicit graph
+
+Build a model in which each Node is one object and each outgoing edge is a strong reference. Start with supplied roots, keep a queue of discovered nodes, and record which object identities were already visited. Identity means the same Node object, not a matching display name. Visiting each identity once prevents a cycle from causing an endless walk. The program computes reachability in this supplied model; it does not inspect the host JVM’s actual heap.
 
 <JavaExample file="ReachabilityWalkDemo.java" output={"[list, A, B]\n[list, A, B]\n[list, B]\n[C, D]"} />
 

@@ -19,11 +19,17 @@ import ThreadingVisuals from '../../../components/ThreadingVisuals.jsx';
 <span id="interview-questions-with-worked-reasoning"></span>
 ## Correct individual updates can still wait forever
 
-A transfer must update two account balances while both accounts are protected. Transfer A→B locks A then B. An opposing transfer B→A locks B then A. If the first owns A while the second owns B, each waits for what the other retains. Each synchronized update can follow its exclusion rule while neither operation progresses.
+**Safety** means a forbidden state does not occur, such as an invalid account balance. **Liveness** asks whether an operation can eventually make useful progress. A program can protect each update correctly yet leave its workers unable to finish.
 
-Safety says a forbidden state does not occur, such as a negative balance. Liveness concerns eventual progress. A locking policy needs both arguments; simply adding synchronized does not prove them.
+A **deadlock** is a closed waiting dependency: each participant needs something that another participant in the cycle retains, and none can make the required next step. For two-account transfers, both balances need protection while the debit and credit occur together. That creates a need to acquire two monitors.
+
+Now let transfer A→B acquire A then B while an opposing transfer B→A acquires B then A. If the first owns A and the second owns B, each requests what the other retains. The problem is the acquisition order, rather than arithmetic or a missing synchronized keyword.
+
+We will draw that unsafe dependency without launching an indefinitely deadlocked program, then run the repaired transfer implementation. A stable common lock order removes this account-only cycle while preserving the protected balance update.
 
 ## Draw a wait-for graph before changing locks
+
+A **wait-for graph** follows a waiting execution to the resource it needs, then to the execution retaining that resource. Continue following those dependencies. Returning to the starting execution exposes the cycle. The drawing below labels both the retained accounts and the next requested accounts.
 
 <Diagram client:visible definition={"flowchart TD\n T1[Thread 1 owns account A] --> B[Needs account B]\n B --> T2[Thread 2 owns account B]\n T2 --> A[Needs account A]\n A --> T1"} caption="Opposing lock acquisition order creates a dependency cycle. Waiting duration is a symptom; the cycle explains the blocked progress." />
 
@@ -68,7 +74,7 @@ List **all** acquisitions in a path, including callbacks, blocking I/O and task-
 
 Starvation means one operation repeatedly fails to obtain service while others progress. Livelock means participants keep reacting without completing, such as two synchronized retry loops that repeatedly release and try again together.
 
-Timed tryLock can let an operation abandon acquisition, but it must release every lock it did acquire. Aggressive opposing retries can livelock. Backoff can reduce synchronized retries; it does not supply a universal progress proof. Carry one monotonic overall budget across multiple acquisition attempts rather than granting each the full timeout again.
+Timed tryLock can let an operation abandon acquisition, but it must release every lock it did acquire. Aggressive opposing retries can livelock. **Backoff**, delaying or adapting retry attempts, can reduce repeated collisions; it does not supply a universal progress proof. Carry one monotonic overall budget across multiple acquisition attempts rather than granting each the full timeout again.
 
 A timeout says what the owner stopped waiting for, not that remote effects rolled back or unrelated work terminated. Resource ownership and task lifetime still matter.
 

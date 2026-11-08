@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Readers need consistency but need not exclude each other
 
-A catalog is updated occasionally and copied frequently. Two threads copying it do not change its state, so they may share read ownership. An update needs exclusive write ownership so no reader copies a partially changed representation. ReentrantReadWriteLock represents those two modes under one coordination protocol.
+A **read/write lock** has two coordinated ownership modes. Several callers may hold read mode together while observing protected state. Write mode excludes competing readers and writers while one caller changes that state. ReentrantReadWriteLock provides the paired modes under one protocol, rather than as two unrelated locks.
 
-This can help sufficiently substantial read-dominated work. It can also add overhead or delay writers. First verify that the read path actually does not mutate the protected invariant; an access-order cache get can relink recency and therefore is not read-only.
+Consider a catalog copied frequently and updated occasionally. Copying its entries is read-only work, so several copies can proceed together. Inserting a new entry requires exclusive write ownership so no copy observes a partially changed representation. Every catalog access must still use its appropriate mode.
+
+The returned **snapshot** needs a separate ownership decision. A lock protects the copying interval; a separately allocated map keeps the returned membership stable after that lock is released. The first program returns an unmodifiable copy with immutable String values, making both boundaries visible.
+
+Sharing read ownership can help sufficiently substantial read-dominated work, but it also adds overhead and can delay writers. First learn the copied-catalog contract before choosing this mechanism as a performance optimization.
 
 ## Implement a copied catalog snapshot
 
@@ -26,9 +30,13 @@ Put validates key/value, acquires the write lock, mutates the TreeMap and unlock
 
 The earlier snapshot contains only java even after the catalog gains jvm. That is because it owns a separate map, not because a read lock remains attached to the returned value. Returning the mutable internal map would let callers bypass the whole protocol after unlock. UnmodifiableMap alone would also be insufficient if it wrapped the same mutable backing map; copying is essential here.
 
+Classify a read by its effect, rather than its method name. An access-order cache get can relink recency and therefore mutate its representation. Such an operation does not qualify for shared read ownership merely because it returns a value.
+
 <Diagram client:visible definition={"flowchart TD\n R1[Reader one] --> R[Shared read ownership]\n R2[Reader two] --> R\n R --> C[Copy stable map while writer excluded]\n W[Writer] --> E[Exclusive write ownership]\n C --> S[Return independently owned snapshot]"} caption="Read locks coordinate the copy interval. The returned snapshot remains stable because it has separate storage." />
 
 ## Retain observation while downgrading
+
+**Downgrading** means moving from exclusive write ownership to shared read ownership while continuously retaining protection. Acquire read mode before releasing write mode, so another writer has no intervening opportunity to replace the value being observed.
 
 <JavaExample file="ReadWriteDowngradeLesson.java" output={"value=42\ncaller released=true"} />
 
@@ -42,9 +50,9 @@ The example is a complete small ownership trace rather than a performance test o
 
 An owning writer can acquire the read lock before releasing the write lock, downgrading while retaining protected observation. That supports a transition from mutation to a read-only phase without an unprotected gap.
 
-Holding a read lock and waiting for write ownership is an upgrade hazard. A competing reader may do the same, leaving both retaining reads that prevent a writer. Release/reacquire with a fresh predicate check or design another atomic transition. Never assume read ownership reserves the state until an eventual write acquisition.
+An **upgrade** would move from read-only ownership to write ownership. ReentrantReadWriteLock does not support acquiring write mode while retaining only read ownership; even that caller's own read hold prevents the write acquisition. Competing readers attempting the same thing can leave both waiting while retaining their reads. Release/reacquire with a fresh predicate check or design another atomic transition. Read ownership does not reserve the state until an eventual write acquisition.
 
-Fair construction changes documented lock acquisition policy under contention; it is not operating-system fairness, a latency SLA or protection from unrelated lock cycles. Each method still needs the correct interruptible/timed acquisition policy and finally release.
+Fair construction changes documented lock acquisition policy under contention; it is not operating-system fairness, a fixed latency guarantee or protection from unrelated lock cycles. Each method still needs the correct interruptible/timed acquisition policy and finally release.
 
 ## Exercise and complete reference solution
 

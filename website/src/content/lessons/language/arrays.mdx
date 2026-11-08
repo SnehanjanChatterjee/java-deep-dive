@@ -2,7 +2,7 @@
 title: "Array creation, indexing and traversal"
 module: "language"
 group: "Arrays and strings"
-summary: "Create, index, traverse and copy fixed-size arrays while reasoning about bounds and empty inputs."
+summary: "Store a sequence of values, access positions safely and visit or copy their contents."
 order: 80
 version: "Java 8+"
 prerequisites: ["language/methods-and-recursion"]
@@ -13,17 +13,27 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Keep several values under one name
 
-An array is an object containing a fixed number of components of one component type. `int[] scores = {4, 7, 4};` creates three components. Their indexes are 0, 1 and 2. `scores.length` is 3; the largest valid index is length minus one. Length is a field, so it has no parentheses.
+A variable such as score holds one value. When several scores belong together, an **array** gives them one ordered, fixed-length container. Its stored positions are called **components** or elements, and every component has the declared component type. An **index** selects one position, starting at zero.
+
+`int[] scores = {4, 7, 4};` declares an array variable and creates three int components. Square brackets after int mean “array of int”; square brackets after scores select a component, such as `scores[1]` for seven. Its indexes are zero, one and two. `scores.length` is three, so the last valid index is length minus one. Length is a field, a stored property accessed without method-call parentheses.
+
+An array is an **object**, a created runtime container with its own identity. The variable holds a **reference** identifying that array. This distinction matters when copying: another variable can identify the same container without making new components. Begin by following creation, one indexed access and traversal; then compare aliases with independent copies.
 
 `new int[2]` creates two zero-initialized components. Reference arrays initialize to null, and boolean arrays to false. An empty array has length zero and no valid index. Reading or writing an index outside the valid range throws ArrayIndexOutOfBoundsException. Access through a null array reference throws NullPointerException: null and an empty array are different states.
 
 <JavaExample file="ArrayBasics.java" output={"4\n0\n15\n0\n4"} />
 
+## Distinguish declaration, length and allocated elements
+
+`int[] values;` declares a variable without an array. `values = new int[0]` gives it a real empty array. A negative requested length fails with NegativeArraySizeException; zero is allowed. A brace initializer can be used in a declaration, but later assignment needs an array creation expression such as `values = new int[] {1, 2}`. Fixed length does not mean fixed contents.
+
+An array of references similarly allocates reference components, not every referenced object. After `String[] names = new String[2]`, both components are null. This distinction will matter when the object lessons construct arrays of mutable objects. An enhanced-for loop copies each visited component value into its loop variable; rebinding that local does not replace the array's stored reference.
+
 ## Trace a sum and a first-match search
 
 Sum starts total at zero and reads each component once. For scores, the successive totals are 4, 11 and 15. At loop entry, total contains the sum of indexes before index. The condition `index < values.length` prevents reading index 3. The helper uses exact addition so an overflowing int total is rejected instead of wrapped.
 
-FirstIndexOf returns immediately when it finds a match. At index zero, 4 equals the target, so the result is zero even though another 4 exists later. When no match exists, return -1 only after the loop. This sentinel is safe because valid indexes are nonnegative. For an empty array, sum is zero and search returns -1 without accessing any component. Both methods reject null explicitly.
+FirstIndexOf returns immediately when it finds a match. At index zero, 4 equals the target, so the result is zero even though another 4 exists later. When no match exists, return -1 only after the loop. This **sentinel** is a special result representing absence, distinguishable from every valid nonnegative index. For an empty array, sum is zero and search returns -1 without accessing any component. Both methods use Objects.requireNonNull to reject a missing array before reading it; the Objects utility supplies that explicit input check.
 
 An enhanced for loop is useful when you need values rather than indexes:
 
@@ -34,13 +44,25 @@ for (final int score : scores) {
 }
 ```
 
-It visits components in index order. Assigning the local score would not change the stored component; use indexed assignment when replacement is intended.
+It visits components in index order. The loop variable is final here, preventing its reassignment. If it were not final, assigning that local would still not change the stored component; use indexed assignment when replacement is intended.
 
 ## Copying creates a different array
 
 Assigning `int[] alias = scores;` copies the reference, so writes through alias affect scores. `Arrays.copyOf(scores, scores.length)` creates a distinct primitive array and copies its values. After copy[0] becomes 9, scores[0] is still 4. A final array variable cannot be rebound but its components remain writable. Arrays do not grow: creating a larger copy produces a different array, while other aliases still identify the original.
 
 Two-dimensional arrays are arrays of row references, rather than one guaranteed rectangular block. `new int[2][]` creates two initially null row references. `new int[2][3]` also creates each row. Ragged rows may have different lengths. Object-array covariance and shallow nested copies are revisited after references and inheritance.
+
+## Copy a range safely even when it overlaps
+
+<JavaExample file="ArrayCopyLesson.java" output={"[1, 1, 2, 3]\n[1, 1, 2, 3, 0, 0]\nfalse"} />
+
+System.arraycopy receives source array, source start, destination array, destination start and component count. Here it copies original indexes zero through two into indexes one through three of the **same** array. Its overlap contract preserves the original source values during the copy. A naive left-to-right assignment loop would overwrite source components before reading them and could produce all ones.
+
+Arrays.copyOf then allocates six int components, copies the four existing values and supplies zeros for the added components. The original length stays four and identity comparison is false. Copy length, offsets and bounds are independent inputs: do not confuse “copy three components” with “last copied index is three.” [System.arraycopy contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#arraycopy(java.lang.Object,int,java.lang.Object,int,int))
+
+## Process command-line arguments after learning arrays
+
+In main, args is an array supplied by the launcher. `java Example red blue` supplies two components, red and blue; the class name and launcher options are not application arguments. Test args.length before reading args[0]. An enhanced-for loop can print every supplied argument, including none, without indexing an empty array. Arguments arrive as text; numeric parsing and console input have explicit failure policies in the reliability module.
 
 ## Practice: count matches
 
@@ -65,24 +87,6 @@ static int count(final int[] values, final int target) {
 The complete ArrayBasics source supplies the Objects import. For `{4,7,4}` and target 4 the result is 2; an empty array returns 0. Each component is visited once: O(n) time, meaning work grows proportionally with the array length n. O(1) auxiliary storage means the extra working state stays bounded as the array grows. The complexity lesson later compares these cost models in detail. Ordinary array equals compares identity; use Arrays.equals for one-dimensional contents. It does not turn nested mutable row references into a deep copy.
 
 </details>
-
-## Distinguish declaration, length and allocated elements
-
-`int[] values;` declares a variable without an array. `values = new int[0]` gives it a real empty array. A negative requested length fails with NegativeArraySizeException; zero is allowed. A brace initializer can be used in a declaration, but later assignment needs an array creation expression such as `values = new int[] {1, 2}`. Fixed length does not mean fixed contents.
-
-An array of references similarly allocates reference components, not every referenced object. After `String[] names = new String[2]`, both components are null. This distinction will matter when the object lessons construct arrays of mutable objects. An enhanced-for loop copies each visited component value into its loop variable; rebinding that local does not replace the array's stored reference.
-
-## Copy a range safely even when it overlaps
-
-<JavaExample file="ArrayCopyLesson.java" output={"[1, 1, 2, 3]\n[1, 1, 2, 3, 0, 0]\nfalse"} />
-
-System.arraycopy receives source array, source start, destination array, destination start and component count. Here it copies original indexes zero through two into indexes one through three of the **same** array. Its overlap contract preserves the original source values during the copy. A naive left-to-right assignment loop would overwrite source components before reading them and could produce all ones.
-
-Arrays.copyOf then allocates six int components, copies the four existing values and supplies zeros for the added components. The original length stays four and identity comparison is false. Copy length, offsets and bounds are independent inputs: do not confuse “copy three components” with “last copied index is three.” [System.arraycopy contract](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/System.html#arraycopy(java.lang.Object,int,java.lang.Object,int,int))
-
-## Process command-line arguments after learning arrays
-
-In main, args is an array supplied by the launcher. `java Example red blue` supplies two components, red and blue; the class name and launcher options are not application arguments. Test args.length before reading args[0]. An enhanced-for loop can print every supplied argument, including none, without indexing an empty array. Arguments arrive as text; numeric parsing and console input have explicit failure policies in the reliability module.
 
 ## Array references
 

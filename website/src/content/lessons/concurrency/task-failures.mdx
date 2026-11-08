@@ -14,7 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## A task can fail after submission succeeds
 
-Submitting a score calculation can succeed while the calculation later rejects its input. The submission caller cannot catch that later exception by wrapping only submit. It needs to observe the returned Future, preserving the task's cause rather than substituting a plausible value.
+A submitted task has two separate events: the service accepts its work, then the computation selects an outcome. **Exceptional completion** means the computation finished by throwing rather than producing its normal value. Its Future preserves that failed outcome for the caller to observe later.
+
+Suppose a Callable calculating a score throws IllegalArgumentException for invalid input. Future.get reports an **ExecutionException**, a wrapper whose cause is that original task failure. The owner can inspect the cause, propagate it with context, or apply a deliberate recovery rule. An arbitrary replacement score would hide the failed calculation.
+
+The program below first observes that failed result, then submits a healthy calculation to the same service. Follow acceptance → task failure → Future failure → get's cause before comparing execute, rejected submissions or multi-task failure policies. A try/catch surrounding only submit cannot observe a task exception reported later through this Future.
 
 ## Follow a failure through get
 
@@ -44,6 +48,8 @@ A successful submit return establishes a handle, not a successful computation. A
 A submitted task's failure is normally captured by its Future wrapper, so an uncaught-exception handler alone is not a complete failure-observation strategy. Keeping every Future but never retrieving or otherwise observing its failure is another form of losing errors. For several independent tasks, define whether to inspect all outcomes, cancel remaining work after a selected failure, or collect partial results. A latch countdown supplies none of these domain policies. [Future outcome contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/Future.html)
 
 ## Combine admission, completion and failure deliberately
+
+The next example combines already familiar permits and completion signals with a **failure holder**, one safely shared cell initially containing null. AtomicReference supplies an indivisible compareAndSet operation: install this failure only if the cell is still null. It records one cause without overwriting an earlier one. This one-operation contract is sufficient to follow the example; the atomics chapter later develops conditional-update algorithms in detail.
 
 <JavaExample file="SynchronizerLab.java" output={"41"} />
 

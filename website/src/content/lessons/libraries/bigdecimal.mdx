@@ -18,42 +18,25 @@ import Diagram from '../../../components/Diagram.jsx';
 
 BigDecimal provides decimal arithmetic with explicit scale and precision. It is appropriate when base-ten representation and rounding policy are part of correctness, such as monetary calculations. It is immutable: arithmetic produces a new value rather than modifying the original operand.
 
-Before calculating, define units, accepted scale, rounding boundary and equality semantics. A type with exact decimal representation cannot decide those domain policies for the application.
+Take the decimal spelling 1.20. Its unscaled integer is 120, its scale is 2, and its precision is 3 significant digits. The value is 120 × 10^-2. Scale describes decimal position; precision describes significant digits. They are separate inputs to later rounding decisions.
 
-<span id="worked-example" aria-hidden="true"></span>
+Start with ordinary arithmetic on two values:
 
-## Compare division, equality and exact conversion
+```java
+final BigDecimal left = new BigDecimal("1.20");
+final BigDecimal right = new BigDecimal("3.4");
+final BigDecimal sum = left.add(right);       // 4.60
+final BigDecimal product = left.multiply(right); // 4.080
+final BigDecimal eighth = BigDecimal.ONE.divide(new BigDecimal("8")); // 0.125
+```
 
-<JavaExample file="BigDecimalExample.java" />
-
-The example constructs decimal operands from strings and divides one by three with a scale of two and HALF_UP rounding. The result is 0.33. Omitting a rounding policy for this nonterminating decimal division can throw ArithmeticException even though the divisor is nonzero.
-
-The example also contrasts equals with compareTo and exact integer conversion. The outputs false and zero demonstrate representation-sensitive equality versus numeric ordering. Multiplying the decimal position by two minor-unit places yields 125; narrowing 1.25 directly to an exact int is rejected. Compare new BigDecimal(0.1), which captures an existing binary approximation, with constructing from "0.1".
-
-<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
-
-## Exact arithmetic and conversion policy
-
-### Decimal representation is part of the contract
-
-For unscaled integer u and scale s, the value is u × 10^-s. `1.00` therefore has unscaled 100, scale 2 and precision 3. `stripTrailingZeros` on 1000 can yield unscaled 1 and scale −3: a negative scale represents a power of ten, not an invalid number. Decide whether an API preserves input scale or normalizes it.
-
-`equals` includes scale, while compareTo can report numeric equivalence. HashSet and TreeSet can therefore produce different cardinalities from the same inputs. A normalized value model can choose another policy, but every equals/hashCode and ordering implementation must agree with that declared model. Formatting is a separate presentation step.
-
-### Rounding is a business rule
-Dividing 1 by 3 without a rounding/precision policy throws ArithmeticException because the decimal expansion does not terminate. Specify a result scale and RoundingMode or a MathContext with significant-digit precision. Scale and precision answer different questions. HALF_UP and HALF_EVEN differ at ties; repeated tie rounding can accumulate different totals. Round at the required domain boundary rather than after every intermediate calculation without justification.
-
-For fixed minor units, a long can be simpler than decimal arithmetic, provided currency scale, overflow detection and division rules are explicit. `intValue()` can truncate or overflow; `intValueExact()` rejects a fractional or out-of-range result. Binary floating point remains appropriate for many scientific calculations where approximate arithmetic is the intended model.
-
-<Diagram client:visible definition={"flowchart TD\n A[Decimal string input] --> B[Unscaled integer and scale]\n B --> C[Arithmetic with precision policy]\n C --> D[Round at declared boundary]\n D --> E[Exact conversion or validated result]"} caption={"Decimal representation, intermediate precision and domain rounding are separate choices."} />
+Each call returns a new value and leaves left/right unchanged. These exact operations retain documented preferred scales: addition uses the larger operand scale, multiplication adds scales. Division by eight terminates exactly; division by three requires a policy because no finite decimal holds its exact result. Define units and boundaries before deciding how to round that result.
 
 ## Worked arithmetic policies and exact conversion
 
 ### A decimal is an integer and a scale
 
-<JavaExample file="DecimalPolicyLab.java" output={"add=4.60\nsubtract=-2.20\nmultiply=4.080\nexact divide=0.125\nrounded divide=0.3333\nprecision4=12350\nquotient=3.00, remainder=1.25\nUP: -1.3\nDOWN: -1.2\nCEILING: -1.2\nFLOOR: -1.3\nHALF_UP: -1.3\nHALF_DOWN: -1.2\nHALF_EVEN: -1.2\nUNNECESSARY: rounding rejected\nitem tax=4.95, invoice tax=4.94\nnormalized scale=-3"} />
-
-The complete program follows several ordinary operations before the rounding cases:
+Follow these ordinary operations before running the complete arithmetic catalog:
 
 | Operation | Result | Representation to notice |
 | --- | --- | --- |
@@ -95,9 +78,39 @@ An exact divide can reject a nonterminating decimal expansion such as 1/3. A sca
 
 For a domain whose declared minor-unit scale is two, moving 1.25 right by two places and calling longValueExact yields 125. A value with extra fractional minor units is rejected by an exact conversion unless the domain explicitly rounds first. Currencies and other decimal domains can use different scales; avoid hard-coding two as a universal money rule.
 
+<JavaExample file="DecimalPolicyLab.java" output={"add=4.60\nsubtract=-2.20\nmultiply=4.080\nexact divide=0.125\nrounded divide=0.3333\nprecision4=12350\nquotient=3.00, remainder=1.25\nUP: -1.3\nDOWN: -1.2\nCEILING: -1.2\nFLOOR: -1.3\nHALF_UP: -1.3\nHALF_DOWN: -1.2\nHALF_EVEN: -1.2\nUNNECESSARY: rounding rejected\nitem tax=4.95, invoice tax=4.94\nnormalized scale=-3"} />
+
 ### Collection and API consequences
 
 Representation-sensitive equals/hashCode is intentional. If an API requires numeric equivalence independent of scale, use a value model that enforces a canonical policy. A TreeMap comparison policy alone can change membership without changing BigDecimal.equals, which affects general Map expectations. Document whether returned amounts preserve input scale, are normalized or are formatted only at a presentation boundary.
+
+<span id="worked-example" aria-hidden="true"></span>
+
+## Compare division, equality and exact conversion
+
+<JavaExample file="BigDecimalExample.java" />
+
+The example constructs decimal operands from strings and divides one by three with a scale of two and HALF_UP rounding. The result is 0.33. Omitting a rounding policy for this nonterminating decimal division can throw ArithmeticException even though the divisor is nonzero.
+
+The example also contrasts equals with compareTo and exact integer conversion. The outputs false and zero demonstrate representation-sensitive equality versus numeric ordering. Multiplying the decimal position by two minor-unit places yields 125; narrowing 1.25 directly to an exact int is rejected. Compare new BigDecimal(0.1), which captures an existing binary approximation, with constructing from "0.1".
+
+<span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
+
+## Exact arithmetic and conversion policy
+
+### Decimal representation is part of the contract
+
+For unscaled integer u and scale s, the value is u × 10^-s. `1.00` therefore has unscaled 100, scale 2 and precision 3. `stripTrailingZeros` on 1000 can yield unscaled 1 and scale −3: a negative scale represents a power of ten, not an invalid number. Decide whether an API preserves input scale or normalizes it.
+
+`equals` includes scale, while compareTo can report numeric equivalence. HashSet and TreeSet can therefore produce different cardinalities from the same inputs. A normalized value model can choose another policy, but every equals/hashCode and ordering implementation must agree with that declared model. Formatting is a separate presentation step.
+
+### Rounding is a business rule
+
+The worked matrix above separates decimal places from significant-digit precision and makes negative tie direction visible. A MathContext applies its precision/rounding policy to an arithmetic operation; setScale chooses a result scale. Keep that policy attached to the intended boundary.
+
+Narrowing conversions need a separate decision. intValue can discard a fractional part or overflow its target, whereas intValueExact rejects an inexact or out-of-range result. For a fixed-minor-unit long model, enforce the currency/scale and overflow rules explicitly rather than assuming the integer representation chooses them.
+
+<Diagram client:visible definition={"flowchart TD\n A[Decimal string input] --> B[Unscaled integer and scale]\n B --> C[Arithmetic with precision policy]\n C --> D[Round at declared boundary]\n D --> E[Exact conversion or validated result]"} caption={"Decimal representation, intermediate precision and domain rounding are separate choices."} />
 
 <span id="java-implementation" aria-hidden="true"></span>
 

@@ -2,7 +2,7 @@
 title: "References, aliases and pass-by-value"
 module: "objects"
 group: "References and identity"
-summary: "Trace aliases, object mutation and local reassignment to understand Java’s pass-by-value rule."
+summary: "Explain why a method can change a shared object while reassigning its parameter leaves the caller's variable alone."
 order: 190
 version: "Java 8+"
 prerequisites: ["objects/classes-and-instances", "language/methods-and-recursion"]
@@ -31,7 +31,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Copying a reference does not copy an object
 
-Java passes every argument by value. For a primitive, the copied value is the number or boolean itself. For an object, the copied value is a **reference**. The caller variable and parameter are different variables, but they can identify the same mutable object. That shared reachability is called aliasing.
+When a method receives a User, two different things could change: the User's stored name, or which User a variable identifies. **Argument passing** determines how the caller's supplied value becomes the callee's parameter value. Understanding that boundary explains why a helper can rename a shared User yet fail to replace the caller's variable.
+
+Java uses **pass-by-value**: each parameter receives a copy of the corresponding argument value. For a primitive, that value is the number or boolean itself. For an object, it is a **reference**, a value identifying the object. The object is the **referent**. Copying its reference does not copy its fields or give the callee access to the caller's variable itself.
+
+Two variables identifying the same object are **aliases**. Writing through either alias can change a mutable object's fields. **Reassignment**, or rebinding, instead changes only the selected variable's reference. Track those two operations separately in rename and replace below.
 
 <span id="worked-example" aria-hidden="true"></span>
 <span id="trace-mutation-and-local-reassignment" aria-hidden="true"></span>
@@ -57,6 +61,19 @@ The animation is an illustrative reference graph, not JVM memory measurement. Pa
 A final parameter prevents local reassignment; it does not prevent mutation through the reference. Likewise, final main's User variable does not make User immutable. An array follows the same rule: assigning `items[0] = 9` changes a shared component; assigning `items = new int[3]` changes only a parameter variable.
 
 To replace what a caller uses, return a replacement and assign the returned value in the caller. A mutable holder can expose a replaceable field, but that is still object mutation through a copied reference. Swapping two parameter variables never swaps the caller's variables.
+
+## Explain a holder without changing Java's calling convention
+
+Sometimes an API uses a one-element array or a mutable holder so a method can publish several results. Writing `holder[0] = replacement` changes a shared array component. It does not change the caller's variable holding the array reference. Both parties receive copies of a reference that identifies that same mutable container. Calling this “pass-by-reference” would predict the wrong behavior for parameter reassignment.
+
+For example, `replace(Box[] holder)` can assign a new Box to holder[0], but `holder = new Box[1]` redirects only the method's parameter. Returning a replacement and explicitly assigning `box = replace(box)` often makes that update clearer. Passing an Integer or String does not provide a mutable numeric/text cell: their values are immutable and rebinding a parameter does not rebind a caller variable.
+
+<details>
+<summary>A swap(String a, String b) exchanges a and b inside the method. Are the caller's two variables exchanged?</summary>
+
+No. The helper swaps its two local reference copies. To update caller-owned storage, swap two array components or return a result containing both values and let the caller assign them. The latter introduces an explicit data contract; neither approach changes the language's pass-by-value rule. A final parameter can still be used to mutate an object whose API permits mutation, because final protects the local binding rather than the referent.
+
+</details>
 
 ## Calls do not roll back prior effects
 
@@ -84,20 +101,6 @@ static User replacement() {
 ```
 
 Declare main's variable without final, keep rename(user), then execute `user = replacement();`. The print becomes Leo because **main** reassigns its variable to the returned reference. The previous object was not transformed into Leo; the caller changed which object it uses. Whether the original is collectible depends on all remaining references, not this one variable alone.
-
-</details>
-
-
-## Explain a holder without changing Java's calling convention
-
-Sometimes an API uses a one-element array or a mutable holder so a method can publish several results. Writing `holder[0] = replacement` changes a shared array component. It does not change the caller's variable holding the array reference. Both parties receive copies of a reference that identifies that same mutable container. Calling this “pass-by-reference” would predict the wrong behavior for parameter reassignment.
-
-For example, `replace(Box[] holder)` can assign a new Box to holder[0], but `holder = new Box[1]` redirects only the method's parameter. Returning a replacement and explicitly assigning `box = replace(box)` often makes that update clearer. Passing an Integer or String does not provide a mutable numeric/text cell: their values are immutable and rebinding a parameter does not rebind a caller variable.
-
-<details>
-<summary>A swap(String a, String b) exchanges a and b inside the method. Are the caller's two variables exchanged?</summary>
-
-No. The helper swaps its two local reference copies. To update caller-owned storage, swap two array components or return a result containing both values and let the caller assign them. The latter introduces an explicit data contract; neither approach changes the language's pass-by-value rule. A final parameter can still be used to mutate an object whose API permits mutation, because final protects the local binding rather than the referent.
 
 </details>
 

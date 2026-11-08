@@ -2,7 +2,7 @@
 title: "Methods, return values and recursion"
 module: "language"
 group: "Methods and recursion"
-summary: "Pass arguments, return values and follow nested or recursive calls through their local state."
+summary: "Define reusable operations, pass input, return results and solve smaller problems with recursive calls."
 order: 70
 version: "Java 8+"
 prerequisites: ["language/control-flow"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Name a calculation and return its result
 
-A method groups statements into a callable operation. Instead of repeating a calculation, call a named method with argument values. In `static int twice(final int value)`, int is the return type, twice is the name and value is a parameter. Calling `twice(7)` supplies the argument 7. A parameter is a local variable belonging to that invocation.
+A **method** is a named operation declared in a class. It packages a calculation or action so other code can request it without rewriting its statements. A method can receive input values, perform work and return one result. The code making the request is the **caller**; the method executing that request is the **callee**. One execution of a method is an **invocation** or call.
+
+In `static int twice(final int value)`, int before twice is the result type, twice is the name and value is an input **parameter**. In `twice(7)`, seven is the **argument** supplied by the caller. On entry, the parameter receives that argument value. A `return` statement sends a result back to the call site and ends this invocation.
+
+Follow twice first in the complete source. It illustrates a single input and result. The factorial method uses the same call/return mechanism repeatedly; its recursive progression is developed after ordinary return flow below. Static means these operations belong to the class and can be called here without first constructing an instance. Invalid-input guards use throw to stop the operation with a named failure; the exception lessons later explain that propagation in full.
 
 <JavaExample file="MethodsRecursion.java" output={"14\n24"} />
 
@@ -27,9 +31,19 @@ Calling twice again creates another parameter variable with the new argument. Re
 
 Static methods here belong to the class; instance methods later act on a particular object. A method signature distinguishes its name and parameter types. Begin with a unique descriptive name before introducing overload sets.
 
+## Return from one invocation and resume its caller
+
+<JavaExample file="MethodFlowLesson.java" output={"1\ncaller continues"} />
+
+The caller invokes printPositive for -1, zero and one. On the first two calls, the guard returns from that helper without printing. It does not return from main or end main's loop. The third call prints one; after all calls, main prints its continuation. A return value belongs to a call, and the place execution resumes belongs to its caller.
+
+Parameter names document roles but do not distinguish overload signatures. A non-void method whose if branches can both finish without a return is rejected; printing a value in a branch does not satisfy a return obligation. A recursive method also needs both a reachable stopping case and progress toward it. Merely adding `if (n == 0)` cannot save a recursive branch that calls itself again with unchanged n.
+
 ## Make recursive progress and stop
 
-Factorial satisfies `factorial(0) = 1` and, for a positive n, `factorial(n) = n * factorial(n-1)`. The base case stops recursion. Each recursive call receives a smaller argument, so valid inputs reach zero.
+**Recursion** occurs when a method calls itself, directly or through other calls. It is useful when a problem can be reduced to a smaller problem of the same shape. It still uses ordinary invocation rules: each call has its own parameters and must eventually return.
+
+The **factorial** of a positive whole number is the product from that number down to one: factorial(3) is 3 × 2 × 1, or six. Define factorial(0) as one. This gives the recursive rule `factorial(n) = n * factorial(n-1)` for positive n. The **base case** handles zero without another call; the recursive branch makes progress by reducing n.
 
 | Invocation | Waits for | Returns |
 | --- | --- | --- |
@@ -38,7 +52,7 @@ Factorial satisfies `factorial(0) = 1` and, for a positive n, `factorial(n) = n 
 | factorial(1) | 1 × factorial(0) | 1 |
 | factorial(0) | No further call | 1 |
 
-The multiplication happens as calls return, from the base case outward. Validation rejects negatives, which would otherwise keep decreasing, and values above 20, whose factorial cannot fit a long. Valid n takes O(n) multiplications and O(n) nested invocations.
+The multiplication happens as calls return, from the base case outward. Validation rejects negatives, which would otherwise keep decreasing, and values above 20, whose factorial cannot fit a long. Valid n takes a number of multiplications and nested invocations proportional to n, written O(n). This notation describes growth as input increases; the later algorithm-analysis lesson develops it in detail.
 
 ## Practice: write the iterative factorial
 
@@ -64,15 +78,9 @@ One is multiplication's identity and gives the required zero-factorial result wh
 
 </details>
 
-## Return from one invocation and resume its caller
-
-<JavaExample file="MethodFlowLesson.java" output={"1\ncaller continues"} />
-
-The caller invokes printPositive for -1, zero and one. On the first two calls, the guard returns from that helper without printing. It does not return from main or end main's loop. The third call prints one; after all calls, main prints its continuation. A return value belongs to a call, and the place execution resumes belongs to its caller.
-
-Parameter names document roles but do not distinguish overload signatures. A non-void method whose if branches can both finish without a return is rejected; printing a value in a branch does not satisfy a return obligation. A recursive method also needs both a reachable stopping case and progress toward it. Merely adding `if (n == 0)` cannot save a recursive branch that calls itself again with unchanged n.
-
 ## Solved coding exercise: detect a prime without overflowing the bound
+
+A **prime number** is a whole number at least two whose only positive divisors are one and itself. To classify a number, try potential divisors and stop as soon as one divides evenly. This exercise combines a method's boolean result, an early return and a loop with a justified stopping condition.
 
 <JavaExample file="PrimeTrialDivisionLesson.java" output={"false\ntrue\nfalse\ntrue"} />
 

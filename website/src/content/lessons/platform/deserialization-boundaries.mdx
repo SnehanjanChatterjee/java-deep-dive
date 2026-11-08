@@ -12,6 +12,12 @@ advanced: true
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
 
+## Restoring an object also restores its risks and obligations
+
+A **deserialization boundary** is the point where an application accepts a serialized representation and reconstructs objects from it. A **filter** can reject reported classes or excessive graph dimensions during that process. An **invariant** is a rule that every accepted domain object must satisfy, such as a score lying between zero and one hundred.
+
+These are different checks. A permitted Score class can still contain an invalid number, and a graph built from permitted types can still be excessively large. We will trace a decoder that bounds input, filters reconstruction, validates restored state and checks the final root type. Each stage answers one specific question.
+
 ## Check representation, graph and value separately
 
 Native reconstruction can invoke class-specific behavior and consume resources before application code uses the final value. Prefer deliberately designed external formats and validation for untrusted boundaries. Where native serialization is required, a narrow type policy, bounded input and graph limits complement domain validation; none substitutes for the others.
@@ -22,7 +28,7 @@ This source uses Java 17+ language/API forms, including @Serial and an instanceo
 
 ## Trace the five boundaries in decode
 
-Decode rejects a null input and byte arrays above its limit before constructing ObjectInputStream. The per-stream filter checks depth, reference count, array length and bytes consumed. Those checks run even when serialClass is null, because a callback without class information can still carry graph metrics.
+`decode` rejects a null input and byte arrays above its limit before constructing ObjectInputStream. The per-stream filter checks depth, reference count, array length and bytes consumed. Those checks run even when serialClass is null, because a callback without class information can still carry graph metrics.
 
 The filter allows the expected Score class and rejects other reported classes. UNDECIDED for a classless event is not a blanket allow-list entry. readObject then reconstructs the representation. Score's private readObject calls defaultReadObject and checks the restored 0..100 invariant, throwing InvalidObjectException if invalid. Finally, decode checks that the returned top-level object is actually Score.
 
@@ -51,11 +57,13 @@ The pre-stream byte-length check handles the first, Score.readObject's invariant
 
 | Input variation | Expected failure boundary | Why another check is insufficient |
 | --- | --- | --- |
-| Excessive byte array before parsing | Pre-stream size limit | A root-type test comes too late to bound that allocation |
+| Excessive byte array before parsing | Pre-stream size limit | Reject processing/reconstruction; the supplied byte array is already allocated |
 | Unexpected reported class | Type filter | A matching top-level type would not constrain every nested type |
 | Excessive references/depth/array length | Graph/resource limit | A small set of class names can still describe an enormous graph |
 | Score outside its invariant | readObject validation | The allowed Score class name says nothing about its field values |
 | Unexpected final root | Post-read type check | Substitution hooks can affect the resulting object |
+
+The byte-array size check runs after the caller has already allocated and supplied that array. It prevents further processing/reconstruction of excessive input. A bounded upstream reader must limit bytes while reading if the input allocation itself must also be bounded.
 
 The supplied filter rejects a resource-limit violation before deciding a class-specific status. Reversing that order and returning ALLOWED immediately for Score would skip graph checks for that callback. UNDECIDED is a status passed to the surrounding filter policy; it is not a synonym for rejected, nor proof that some other policy rejects every unlisted event.
 

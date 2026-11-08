@@ -15,11 +15,14 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Match the callback to the operation's question
 
-A selection asks whether to keep a value. A transformation asks what value to produce. An action performs an effect, while a supplier produces a value when called. These differences determine both the functional interface and its invocation method.
+A selection asks whether to keep a value. A transformation asks what value to produce. An action performs an effect, while a supplier produces a value when called. These differences determine both the functional interface and its invocation method. For example:
 
-<JavaExample file="PredicateFunctions.java" output={"true\ntrue\n[a, Java]\nlength calls=2\nor skips unsafe branch=true\nandThen/compose=8/7\nAB\nfresh containers=true\nremoveIf/replaceAll=[JAVA]"} />
+```java
+final Predicate<String> nonempty = value -> !value.isEmpty();
+final boolean keep = nonempty.test("Java"); // true
+```
 
-select receives Predicate&lt;? super T&gt; because the predicate consumes each source T. It creates a new encounter-ordered result list and does not change source membership. It calls test once for each value under this ordinary loop's contract. The predicate, not a generic type argument, determines whether a null element is valid.
+A predicate is a boolean-valued decision. In select, the loop passes each input to test and appends only accepted values to a new list. For ["", "a", "Java"], the first is rejected and the result is [a,Java]. The decision object and the traversal algorithm have separate jobs.
 
 ## Read the principal interface families
 
@@ -61,6 +64,10 @@ Let plusOne(x)=x+1 and timesTwo(x)=2x. plusOne.andThen(timesTwo) computes 2×(x+
 For functions of different types, the intermediate result must be accepted by the next function. A String-to-Integer function cannot feed a function requiring String without another conversion. Function.identity returns its argument; it neither clones nor freezes it.
 
 Consumer.andThen sequences effects. The program appends A then B. If the first action throws, the second is not invoked by that composition. Exception/failure handling remains visible at the callback boundary; the generic interface cannot silently translate every failure into success.
+
+<JavaExample file="PredicateFunctions.java" output={"true\ntrue\n[a, Java]\nlength calls=2\nor skips unsafe branch=true\nandThen/compose=8/7\nAB\nfresh containers=true\nremoveIf/replaceAll=[JAVA]"} />
+
+select receives Predicate&lt;? super T&gt; because the predicate consumes each source T. It creates a new encounter-ordered result list and does not change source membership. It calls test once for each value under this ordinary loop's contract. The predicate, not a generic type argument, determines whether a null element is valid.
 
 ## Apply a predicate or operator to ordinary collection methods
 

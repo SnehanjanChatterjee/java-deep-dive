@@ -25,9 +25,13 @@ import AdvancedThreadMotion from '../../../components/AdvancedThreadMotion.jsx';
 <span id="completablefuture-interview-questions"></span>
 ## A second operation needs the first result
 
-A Future lets a caller wait for a value. Suppose the caller needs a user ID, then a score for that ID, then a label combined with the score. Repeated get calls can describe these dependencies by blocking a caller. CompletableFuture can instead record actions to run when their inputs complete.
+A **CompletableFuture** represents an eventual outcome and allows code to complete it or attach actions depending on it. It implements CompletionStage, the interface for expressing those dependencies. A **stage** is one step with its own value-or-failure outcome. A **continuation** is an action registered to run when the inputs required by that step are available.
 
-First separate dependency shape from scheduling. An already completed source is useful for learning the shape without adding worker timing. A stage can complete with a value or failure; a new dependent stage has its own outcome.
+Suppose an operation needs a user ID, then a score for that ID, then a label combined with the score. Calling get after each request makes the calling thread wait through that sequence. A **completion graph** instead records result dependencies: one stage supplies an input to another, and independent branches can supply a later combination.
+
+Draw each result as a box and each required input as an arrow. Those arrows describe values, rather than dedicated threads. A completed source can run a suitable attached action immediately on its attaching caller; scheduling an action on an executor is an additional choice. Learn the graph first with already completed values, then add actual worker execution.
+
+The first program asks two questions about each next step. Does its function return an ordinary value or another stage? Does it need one successful input or two? ThenApply transforms one value, thenCompose connects a returned stage without nesting the final result handle, and thenCombine uses two successful inputs. The generic types and outputs below show those differences concretely.
 
 ## Transform, flatten and combine
 

@@ -22,17 +22,21 @@ import InterleavingLab from '../../../components/InterleavingLab.astro';
 <span id="boundaries-costs-and-stronger-alternatives"></span>
 ## A reader needs one complete configuration generation
 
-A writer updates base price and fee. A reader must use the pair from one generation. Making two independent fields volatile does not combine two writes into one replacement: a reader can capture an old base and new fee between those writes.
+**Volatile** is a Java field modifier providing ordering guarantees for reads and writes of that field. It is useful when one thread needs to publish current state to another while both can keep running. Unlike the preceding join example, the reader need not wait for the writer's entire lifetime to end.
 
-Instead, construct one immutable Snapshot containing both fields and publish one volatile reference. Each reader captures that reference once and reads its fields through that one local value. The object groups the invariant; volatile supplies the publication boundary.
+Consider settings with a base price and a fee. A **snapshot** is one object representing one logical version, or generation, of those settings. An **immutable** snapshot keeps its contents unchanged after construction. The reader needs both amounts from that same generation, such as base 40 and fee two giving total 42.
+
+Construct the complete Snapshot, then assign its reference to one volatile field. A reader captures that reference once, choosing one object, and reads both fields through that local reference. The object groups the values; the volatile publication orders its completed initialization before the observing reader uses them.
+
+This matters because two separately updated fields can expose a mixture of generations. Even making both fields volatile leaves two separate writes. One published snapshot reference gives the reader one complete bundle to select. Follow the ordinary publish/read program before studying those limits and lazy-initialization patterns.
 
 ## Publish one immutable snapshot
 
 <JavaExample file="VolatilePublicationLab.java" output={"42"} />
 
-Snapshot validates nonnegative amounts and checks overflow before assigning its final fields. Publish rejects null and assigns current. Read performs one volatile read and can return null before the first publication.
+Snapshot validates nonnegative amounts and checks overflow before assigning its final fields. Publish rejects null and assigns current. Read performs one volatile read and can return null before the first publication. Main **polls**, meaning it repeats that read until a snapshot is present or the demonstration's elapsed-time allowance expires.
 
-Main starts a writer, then polls for a non-null reference with a monotonic guard. Importantly, it reads the snapshot **before** joining the writer. The proof therefore uses volatile publication rather than accidentally relying on the join demonstrated previously. Yield is merely a scheduling hint in this teaching loop; it supplies no memory edge. A latch, condition or result handle is usually clearer for an application that must wait for initial configuration.
+Main starts a writer, then polls for a non-null reference with an elapsed-time guard. Its **monotonic** time measurement uses elapsed differences rather than a wall clock that an administrator can adjust. It reads the snapshot **before** joining the writer, so the proof uses volatile publication rather than the earlier join rule. Yield is merely a scheduling hint in this teaching loop; it supplies no memory edge. Later latches, conditions and result handles provide clearer application waiting protocols when their contracts fit.
 
 | Action | Consequence |
 | --- | --- |
@@ -97,9 +101,9 @@ Class initialization can often express lazy one-time construction more simply th
 <span id="interview-questions-and-coding-solution"></span>
 ## Exercise and complete reference solution
 
-Repair two separately volatile configuration fields so each operation reads one consistent generation. `VolatilePublicationLab` is the complete solution. The essential steps are grouping, validation, one volatile replacement and one captured reader reference. If writers calculate a replacement from the current state, they can still lose each other's updates; use a common lock or CAS over the whole immutable state for that different problem.
+Repair two separately volatile configuration fields so each operation reads one consistent generation. `VolatilePublicationLab` is the complete solution. The essential steps are grouping, validation, one volatile replacement and one captured reader reference. If writers calculate a replacement from the current state, they can still lose each other's updates; use a common lock or compare-and-set (CAS), a conditional atomic update developed in the atomics chapter, over the whole immutable state for that different problem.
 
-A volatile reference does not repair a mutable map key whose equality/hash fields change; key identity and later mutation remain separate contracts. A volatile cancellation flag is useful only if work checks it. A thread blocked in an unrelated operation also needs that operation's cancellation mechanism. The lifecycle chapter adds cooperative interruption and cleanup.
+A volatile reference does not repair a mutable map key whose equality/hash fields change; key identity and later mutation remain separate contracts. A volatile cancellation flag is useful only if work checks it. A thread blocked in an unrelated operation also needs that operation's cancellation mechanism. The earlier lifecycle chapter demonstrates cooperative interruption and cleanup for that case.
 
 <span id="references"></span>
 ## Primary references

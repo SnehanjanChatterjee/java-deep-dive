@@ -14,11 +14,12 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Understand an older API before replacing it
 
-Vector is a growable indexed sequence with legacy synchronized operations. Stack extends Vector and adds last-in-first-out operations. These classes still appear in existing programs, so reading their behavior is useful even when Deque is the better starting contract for a new stack.
+Existing code may store an undo history in Stack. Read its ordinary actions first: push("A") then push("B") leaves B on top; peek returns B without removing it; pop returns B and leaves A. This is last in, first out, abbreviated LIFO.
 
-<JavaExample file="LegacyVectorStack.java" output={"vector size=3, index 1=B\nsetSize grows=[A, B, C, null, null]\nsetSize shrinks=[A, B]\nstack iteration=[A, B, C]\npeek=C, search B=2, indexOf B=1\nmissing search=-1\npop=C\npop=B\npop=A\nempty peek rejected"} />
+Stack inherits from Vector, an older growable indexed sequence. That inheritance explains why Stack also exposes get(index), indexed insertion and a bottom-to-top list traversal. Deque is usually the starting contract for a new stack, but interpreting old code requires understanding the contract actually in use.
 
-The Vector starts with capacity two and size zero. Adding A,B,C creates three logical positions and grows storage as needed. This initial step resembles ArrayList; it does not create null-filled positions merely because capacity was requested.
+The example also constructs a Vector with initial capacity two and size zero, then adds A,B,C. As with ArrayList, capacity reserves storage rather than creating real elements. The legacy setSize method is different: it changes logical membership, as the next section shows.
+
 
 ## setSize changes membership, capacity does not
 
@@ -50,6 +51,10 @@ After push(A), push(B), push(C), the top is C. The inherited list sequence print
 Searching B returns two, while inherited indexOf(B) returns one from the bottom's zero-based list coordinates. These are different coordinate systems. The program then pops C, B and A, followed by the specified empty peek failure. A null peek result would be an actual stored null; an empty legacy stack throws instead.
 
 <Diagram client:visible definition={"flowchart LR\n B[Bottom: A] --> M[B]\n M --> T[Top: C]\n T --> P[pop returns C]\n S[search B] --> D[Distance 2 from top]"} caption="Stack iteration/indexing follows its inherited List sequence; push/pop/search use the top end." />
+
+<JavaExample file="LegacyVectorStack.java" output={"vector size=3, index 1=B\nsetSize grows=[A, B, C, null, null]\nsetSize shrinks=[A, B]\nstack iteration=[A, B, C]\npeek=C, search B=2, indexOf B=1\nmissing search=-1\npop=C\npop=B\npop=A\nempty peek rejected"} />
+
+The Vector starts with capacity two and size zero. Adding A,B,C creates three logical positions and grows storage as needed. This initial step resembles ArrayList; it does not create null-filled positions merely because capacity was requested.
 
 ## Inherited methods expose more than a stack
 

@@ -19,9 +19,13 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="deadlines-versus-independent-timeouts"></span>
 ## Stop needing a result without abandoning its work
 
-A caller submits work, then no longer needs its result. Cancelling the Future changes the result handle's selected outcome. If interruption is requested and supported, it also asks a running task to stop. Neither step proves that cleanup has finished or that a remote side effect was undone.
+**Cancellation** means the owner no longer wants an operation's normal result. For a Future, successful cancellation selects the handle's cancelled outcome: get will report CancellationException rather than deliver a normal value. That result decision is one part of stopping work.
 
-Use one owner to answer four questions: who observes failure, who requests cancellation, who releases acquired resources, and who accounts for termination? Adding a timeout without answering them merely changes how long one caller waits.
+The other part is the executing task. An ordinary submitted task can be asked to stop through interruption when cancel(true) succeeds under its implementation's contract. Its code must notice the request, leave safely and run its resource cleanup. A cancelled result handle and finished cleanup are therefore two different observations, just as an interruption request and joined thread termination were different in the lifecycle lesson.
+
+The controlled program uses two milestone signals to make that separation visible. Started establishes that the task entered its body. Cleanup records its finally action. A third latch, release, holds the ordinary work at an interruptible wait so it cannot simply return 42 before cancellation. Read the handle's outcome and the cleanup acknowledgement separately.
+
+Give these responsibilities one explicit owner: observe failure, request cancellation, decide how to wait for cleanup and account for remaining execution. The deadline section later adds a shared time allowance to that ownership model. Cancellation alone does not undo a remote side effect already performed.
 
 <span id="worked-example"></span>
 <span id="java-implementation"></span>
@@ -31,7 +35,7 @@ Use one owner to answer four questions: who observes failure, who requests cance
 
 <JavaExample file="TaskCancellationLesson.java" output={"true\ncancelled result\ncleanup finished"} />
 
-Started makes the task reach its intended interruptible wait before main cancels. Without it, the task might be cancelled before it began, demonstrating a different case. Cancel(true) selects cancellation and requests interruption. Get now throws CancellationException; it cannot deliver an ordinary Integer result from this cancelled handle.
+Started establishes task-body entry before main cancels. It does not prove the worker is already suspended inside release.await: interruption can arrive just before that call or during it, and the wait's interruption contract handles either case. Without the startup signal, cancellation could prevent the body from entering at all, demonstrating a different case. Cancel(true) selects cancellation and requests interruption. Get now throws CancellationException; it cannot deliver an ordinary Integer result from this cancelled handle.
 
 The worker separately leaves its wait and executes finally, counting down cleanup. Main waits for that acknowledgement before reporting cleanup finished. A successful cancellation can therefore precede resource cleanup. Finally also opens release and requests executor shutdown if main takes an exceptional path.
 
@@ -51,6 +55,8 @@ The worker separately leaves its wait and executes finally, counting down cleanu
 IsDone includes failure and cancellation. Cancel(false) can cancel an already running FutureTask without interrupting its runner; the computation may continue while its result is no longer delivered through that handle. Cancel(true) requests interruption if cancellation succeeds with a known runner. A task can ignore that request or be in a noninterruptible action.
 
 ## Share one deadline across dependent waits
+
+A **timeout** is the allowance for one wait. A **deadline** is the chosen end of a larger operation, whose remaining time must be shared across admission, result waits and other dependent steps. A **monotonic** elapsed-time clock avoids interpreting wall-clock adjustments as time gained or lost by that operation.
 
 For a parent operation with 500 milliseconds remaining, assigning a fresh 500 milliseconds to each of three waits permits a longer total operation. Track a monotonic start/deadline and recompute remaining budget before each wait. A timeout is not a statement that remote work stopped. Wall-clock adjustments make currentTimeMillis unsuitable for measuring elapsed budgets.
 

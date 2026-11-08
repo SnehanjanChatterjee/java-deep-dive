@@ -14,11 +14,17 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Order comes from a predicate, not a delay
 
-Two workers must produce 1, 2, 3, … in order, with one responsible for odd values and the other for even values. Starting the odd worker first, giving it higher priority or sleeping in the even worker cannot establish the required alternation. The workers need shared state describing whose turn is legal.
+**Turn-taking** means giving different workers permission to perform successive steps of one ordered operation. Two workers must produce 1, 2, 3, …, with one responsible for odd values and the other for even values. The rule must remain true whichever worker the scheduler runs first.
 
-Let next be the next number, starting at one. For two participants, role zero owns odd numbers and role one owns even numbers. The expression `(next - 1) % participants` selects the legal role. The same rule gives three roles A/B/C the sequence A=1, B=2, C=3, A=4, … . A role is an immutable integer assigned by the owner; Thread names are merely labels.
+Use one shared controller object to record next, the next number, and limit, the last permitted number. A **turn predicate** asks whether this worker's fixed role owns next. Both the permission check and the subsequent append/advance happen under the controller's monitor. A worker whose predicate is false waits, releasing that monitor so the eligible worker can proceed.
+
+For two participants, role zero owns odd numbers and role one owns even numbers. Starting next at one makes `(next - 1) % participants` select the legal role. With three participants, roles A/B/C own the repeating sequence A=1, B=2, C=3, A=4, … . Roles are immutable integers assigned by the owner; Thread names are diagnostic labels.
+
+The ordinary transition is append this role and number, advance next, then notify waiting contenders. Starting the odd worker first, raising its priority or sleeping in a peer cannot replace that shared predicate. The controller also records cancellation so waiting peers can leave when no further turn will be produced.
 
 ## Complete two-worker and three-worker solution
+
+Read takeTurns first: it implements the permission check and one legal transition. The surrounding run method starts and joins the participants; its cleanup helper handles interruption after the ordinary turn-taking behavior has been established. The trace builder records entries under the lock, and main prints the completed trace after joining.
 
 <JavaExample file="TurnTakingSequence.java" output={"odd=1 even=2 odd=3 even=4 odd=5 even=6 odd=7\nA=1 B=2 C=3 A=4 B=5 C=6 A=7 B=8"} />
 

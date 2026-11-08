@@ -2,7 +2,7 @@
 title: "Enums, nested classes and enclosing instances"
 module: "objects"
 group: "Nested and domain types"
-summary: "Choose fixed named alternatives and distinguish static nesting from an enclosing-instance relationship."
+summary: "Model a fixed set of choices with enums and organize helper classes around their enclosing type."
 order: 230
 version: "Java 8+"
 prerequisites: ["objects/interfaces", "language/methods-and-references"]
@@ -14,11 +14,23 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Name a fixed set of domain values
 
-An enum defines a fixed set of named instances. State.NEW and State.SENT represent alternatives, rather than unrelated integer codes. Enum constants can have fields and behavior, implement interfaces and supply constant-specific behavior. They cannot extend an arbitrary class. Identity comparison with == is appropriate for enum constants.
+A parcel can be new or sent, and can have helper objects such as a label and receipt. Two different modeling tools fit those questions. An **enumeration**, written enum, defines a fixed set of named instances for the state. A **nested class** is a class declared inside another type, keeping a related helper's declaration near its enclosing type.
+
+State.NEW and State.SENT are the enum's named constants. Callers choose one of those instances rather than inventing unrelated integer codes or constructing extra State values. Enum constants can have fields and behavior, implement interfaces and supply constant-specific behavior. They cannot extend an arbitrary class. Comparing their identity with `==` is appropriate.
+
+Nesting separately controls a helper's relationship to the surrounding class. A **static nested class** has no implicit enclosing object. A **non-static inner class** is associated with one enclosing instance, so its methods can refer to that object's state. In the source, Label needs only its own text, while Receipt is associated with a particular delivery. Follow the enum value and the two helper objects as separate decisions.
 
 <JavaExample file="NestedEnumLesson.java" output={"true\nparcel\nWest"} />
 
 CanSend returns true only for NEW. This model does not itself perform a send or guarantee a lifecycle transition; it expresses the current state's capability. A richer state machine must define allowed transitions and side effects explicitly. Avoid ordinal as a persistent external code: inserting/reordering constants changes it. Use an explicit stable value where a protocol needs one.
+
+## Use enum names and operations deliberately
+
+`State.values()` returns the constants in declaration order in an array; callers can traverse that result without creating new enum constants. `State.valueOf("NEW")` performs an exact, case-sensitive name lookup. Unknown names fail, and null is not a hidden default state. `name()` supplies the declared name, while toString can be customized for display. Persist an explicit stable domain code when names may evolve; ordinal is a position, not a durable identifier.
+
+An enum constructor establishes fields for each constant and cannot be public/protected. Ordinary callers cannot create another constant with new. `state == State.NEW` is a suitable identity comparison and is false when state is null; `state.name()` would instead fail on null. A switch still needs an explicit absence policy—having a fixed family does not make a missing reference one of its constants.
+
+The nested-class distinction is structural: static Label does not retain an implicit outer receiver, while inner Receipt does. Local and anonymous implementations have their own names/scopes/capture rules, developed with a complete returned-object example in <a href={lessonUrl('learn/objects/local-and-anonymous-classes/')}>local and anonymous classes</a>. A nested class is not automatically a privately owned part; ownership depends on construction and exposed aliases.
 
 ## A nested class can have two different ownership models
 
@@ -28,7 +40,9 @@ Retaining a Receipt can therefore retain its enclosing delivery. Choose static n
 
 ## Keep this and captured state explicit
 
-An anonymous class has its own this. A lambda uses this from its enclosing context and is target-typed to a functional interface; lambdas receive dedicated teaching later. Local/anonymous code can capture final or effectively final local variables. That restriction does not make objects referenced by those variables immutable.
+An anonymous class has its own this. Local/anonymous code can **capture** surrounding final or effectively final local values, retaining access to them; the next lesson works through that behavior. The restriction protects a variable's binding, not the mutability of an object it identifies.
+
+For the later functional lessons, keep a comparison in mind: a **lambda**, a compact function expression, uses this from its enclosing context. It is **target-typed**, meaning the expected functional interface supplies its required operation shape. That differs from declaring an anonymous object's own instance context.
 
 Enum identity and serialization receive language/runtime support, making enums useful for fixed singleton-like choices. They do not solve mutable shared state, initialization side effects or whether global access is a suitable design.
 
@@ -42,14 +56,6 @@ If Receipt needs only a copied destination String and no other delivery behavior
 Make it a static nested class with a constructor taking destination and a private final String field. Construct `new Receipt(destination)` rather than `delivery.new Receipt()`. The association becomes an explicit value rather than an implicit enclosing-instance reference. Because String is immutable, sharing that String does not expose delivery mutation. This is a design choice; an inner type is appropriate when its operations truly belong to one enclosing instance.
 
 </details>
-
-## Use enum names and operations deliberately
-
-`State.values()` returns the constants in declaration order in an array; callers can traverse that result without creating new enum constants. `State.valueOf("NEW")` performs an exact, case-sensitive name lookup. Unknown names fail, and null is not a hidden default state. `name()` supplies the declared name, while toString can be customized for display. Persist an explicit stable domain code when names may evolve; ordinal is a position, not a durable identifier.
-
-An enum constructor establishes fields for each constant and cannot be public/protected. Ordinary callers cannot create another constant with new. `state == State.NEW` is a suitable identity comparison and is false when state is null; `state.name()` would instead fail on null. A switch still needs an explicit absence policy—having a fixed family does not make a missing reference one of its constants.
-
-The nested-class distinction is structural: static Label does not retain an implicit outer receiver, while an inner View does. Local and anonymous implementations have their own names/scopes/capture rules, developed with a complete returned-object example in <a href={lessonUrl('learn/objects/local-and-anonymous-classes/')}>local and anonymous classes</a>. A nested class is not automatically a privately owned part; ownership depends on construction and exposed aliases.
 
 ## Nested-type references
 

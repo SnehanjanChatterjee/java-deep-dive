@@ -1,8 +1,8 @@
 ---
-title: "How compilation and the JVM run your program"
+title: "How Java compiles and runs a program"
 module: "execution"
 group: "How Java runs"
-summary: "Follow the greeting from source text through compiler checks and a class file to a running main method."
+summary: "See why writing source, compiling it and running it are three different steps."
 order: 20
 version: "Java 8+"
 prerequisites: ["execution/compile-and-run"]
@@ -15,7 +15,11 @@ import {url as lessonUrl} from '../../../lib/paths';
 
 ## Separate writing, compiling and running
 
-The greeting begins as text in HelloJava.java. Saving the file does not execute it. The compiler javac reads that source, checks that it is legal Java and produces HelloJava.class. The java launcher then starts an application JVM that can load the compiled class and invoke main. The greeting appears when the running program executes println.
+The **Java Virtual Machine (JVM)** is software that executes Java's compiled instruction format, called **bytecode**. It is a virtual machine because it presents a defined execution model rather than requiring your source to describe the instructions of one particular processor. A JVM implementation supplies the machinery for the actual operating system and processor.
+
+The compiler and JVM answer different questions. The compiler asks, “Is this source legal, and what compiled instructions represent it?” The JVM then carries out the compiled program. This separation explains why successful compilation need not display a greeting, and why changing source does not immediately change an already compiled program.
+
+Follow the familiar greeting through three forms: **source text** in HelloJava.java, a **compiled artifact** in HelloJava.class, and a **running invocation** of main. An artifact is a generated file you can later launch or distribute. A running invocation is work happening now. Keep those forms separate while reading the commands and walkthrough.
 
 <JavaExample file="HelloJava.java" output={"Hello, Java!"} />
 
@@ -29,6 +33,16 @@ java -cp out HelloJava
 
 Mkdir creates the destination directory. Successful javac compilation writes out/HelloJava.class and normally prints no message for this example. The java command uses out as its classpath and HelloJava as the class name. It prints Hello, Java!. The next chapter develops packages and classpath roots; here out simply keeps generated files separate from source.
 
+## Know what the JDK supplies
+
+| Term | Responsibility in this exercise |
+| --- | --- |
+| Java Virtual Machine (JVM) | Executes the compiled program according to the virtual-machine contract |
+| Java Runtime Environment (JRE) | The JVM together with platform libraries and support needed to run a program |
+| Java Development Kit (JDK) | Development tools such as javac, java and javadoc, together with the runtime needed here |
+
+The JVM is one part of a runtime environment, and a JDK supplies the development tools as well. These names describe responsibilities; you do not launch three separate programs named JDK, JRE and JVM in sequence. Install a JDK to follow the compiler exercises. Runtime distribution/packaging varies, so JRE here names the runtime concept without requiring a separate JRE installer. An IDE arranges the same compilation and launch operations while often hiding the generated-file location and selected JDK.
+
 ## Follow the source, artifact and execution
 
 <JvmVisuals client:visible model="compilation" />
@@ -39,21 +53,24 @@ Loading makes a required class definition available to the JVM. Linking checks a
 
 A compiler can check the print call without carrying it out. Javac does not execute HelloJava.main or print its greeting. Likewise, javap can inspect a class file without running it; its bytecode walkthrough follows ordinary methods and objects in JVM foundations.
 
-## Know what the JDK supplies
-
-| Term | Responsibility in this exercise |
-| --- | --- |
-| JVM | Executes the compiled program according to the virtual-machine contract |
-| Java runtime environment | Combines the JVM with the platform libraries and support needed to run the program |
-| JDK | Supplies development tools such as javac, java and javadoc, together with the runtime needed here |
-
-These are responsibilities, rather than three tools that must be launched in succession. The JDK is the development kit you install; the JVM is the execution engine used when the application runs. An IDE arranges the same kinds of compilation and launch operations while often hiding the generated-file location and selected JDK.
-
 ## Distinguish a failed compilation from an old artifact
 
 Select Failed edit, old class in the visual. Its source excerpt changes the text to Changed and omits the semicolon. Javac rejects that edit, so this one-file syntax failure produces no replacement class for the new source. Its diagnostic is compiler output, not a greeting from main.
 
 An old HelloJava.class can still remain from an earlier successful build. If you ignore the failure and launch that class, the old program can print Hello, Java!. The launcher is executing the old artifact; it is not proving the edited source compiled. Keep generated files in a known output directory and check compilation success before interpreting a run.
+
+## Explain portability at the correct boundary
+
+The class file is a binary format for a compatible JVM, rather than a machine-code executable for one processor. An appropriate JVM implementation supplies the operating-system/processor-specific execution machinery. Source syntax, required class-file version and available libraries still have to match the selected runtime. A portable format does not make a missing dependency, newer API or platform-specific native library appear automatically.
+
+Compilation checks the program against what the compiler can see. Launch starts a separate execution using its own classpath and runtime. This is why javac and java versions both matter, and why moving only a class file without the definitions it needs can fail later. For this greeting, no third-party dependency or native library is needed; keep that ordinary path clear before investigating loading and linking failures.
+
+<details>
+<summary>Must javac print Hello, Java! to prove the compilation succeeded?</summary>
+
+No. Successful javac normally produces the class file without running main or producing that application output. The launcher subsequently invokes main, and that invocation prints the greeting. A tool's own diagnostic output is different from the application's output. The stepwise model records those two responsibilities separately.
+
+</details>
 
 ## Practice: stop after compilation
 
@@ -69,19 +86,6 @@ No application greeting appears because main has not run. The compiled HelloJava
 Continue with <a href={lessonUrl('learn/execution/packages-and-tools/')}>packages, classpaths and development tools</a>. After learning classes and ordinary methods, <a href={lessonUrl('learn/jvm/stack-and-heap/')}>stack and heap</a> explains the runtime state of those calls and objects.
 
 The <a href={lessonUrl('learn/jvm/architecture/')}>JVM architecture walkthrough</a> connects loading, shared memory, each thread's execution state and runtime services in one map. It introduces the JVM foundations module before the detailed stack and bytecode lessons.
-
-## Explain portability at the correct boundary
-
-The class file is a binary format for a compatible JVM, rather than a machine-code executable for one processor. An appropriate JVM implementation supplies the operating-system/processor-specific execution machinery. Source syntax, required class-file version and available libraries still have to match the selected runtime. A portable format does not make a missing dependency, newer API or platform-specific native library appear automatically.
-
-Compilation checks the program against what the compiler can see. Launch starts a separate execution using its own classpath and runtime. This is why javac and java versions both matter, and why moving only a class file without the definitions it needs can fail later. For this greeting, no third-party dependency or native library is needed; keep that ordinary path clear before investigating loading and linking failures.
-
-<details>
-<summary>Must javac print Hello, Java! to prove the compilation succeeded?</summary>
-
-No. Successful javac normally produces the class file without running main or producing that application output. The launcher subsequently invokes main, and that invocation prints the greeting. A tool's own diagnostic output is different from the application's output. The stepwise model records those two responsibilities separately.
-
-</details>
 
 ## Compilation and execution references
 

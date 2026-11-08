@@ -23,16 +23,30 @@ The structure is not sorted. Comparator rules do not control membership; equals 
 <span id="worked-example"></span>
 ## Trace first-appearance ordering
 
+Process B,A,B,C from left to right: B creates the first membership, A creates the second, the repeated B changes nothing, and C appends the third. Traversal yields B,A,C. This is why the structure removes duplicates while preserving first appearances.
+
 <JavaExample file="LinkedHashSetExample.java" />
 
 The first output is `[B, A, C]`. Adding another A returns false and keeps that order. Removing then reinserting A yields `[B, C, A]`. This distinguishes a duplicate membership attempt from a new insertion after absence.
 
 A HashSet can remove duplicates without promising this order. A TreeSet can remove comparison-equivalent values while sorting them. Selecting LinkedHashSet therefore expresses a concrete result contract instead of relying on coincidentally stable HashSet iteration.
 
+## Complete normalized first-appearance deduplication
+
+<JavaExample file="OrderedDeduplication.java" output={"[java, jvm]\n[java, jvm]"} />
+
+The declared policy rejects null tokens, trims using String.trim's rules, applies locale-neutral lowercase and discards empty results. It normalizes before membership: " Java " and "java" become the same value, while JVM's first normalized appearance fixes its position after java.
+
+The result is a detached unmodifiable List of String. Editing the input list after return does not change it, and the immutable String elements need no further copying. For arbitrary mutable elements, the same structural copy would not be a deep snapshot. String.trim does not mean every Unicode whitespace rule; choose a different stated normalization policy when the domain requires one.
+
+The completed source supplies the ordinary API exercise. The following handwritten implementation explains how order is maintained without delegating it to LinkedHashMap.
+
 <span id="mechanics-and-tradeoffs"></span>
 ## Membership and encounter links
 
-### Membership and encounter links
+<span id="membership-and-encounter-links-1" aria-hidden="true"></span>
+
+### One entry participates in two structures
 
 An ordered backing map stores each set element as a key with one shared marker value. Its hash table supports exact membership; its encounter-order links support traversal. A new membership must enter both representations exactly once. A duplicate finds the existing key and must not add a new node or move ordinary insertion order.
 
@@ -74,21 +88,11 @@ Set equality remains about membership rather than order. Two LinkedHashSets can 
 
 ### Modern positioning operations
 
-SequencedSet adds first/last/reversed concepts on newer Java. Explicit positioning and ordinary add are distinct operations. A reversed view can remain backed by the original structure, so removing through it changes membership. Do not call a reversed view a detached reverse-ordered copy unless a copy was actually constructed.
+On Java 21+, removing through a supported reversed sequenced view removes the same underlying membership. Explicit endpoint positioning is a separate operation from add; neither a reversed view nor extra positioning APIs turn this into an access-order cache.
 
 ### Coding exercise with a reference solution
 
 Given token input, normalize each token according to the declared domain policy, reject or retain blanks explicitly, add accepted tokens to a LinkedHashSet and return a new list from its traversal. Normalization precedes membership because changing values afterward can break the set's equality/hash assumptions. If the API promises a snapshot, return an appropriate immutable/container copy and state the element ownership policy.
-
-## Complete normalized first-appearance deduplication
-
-<JavaExample file="OrderedDeduplication.java" output={"[java, jvm]\n[java, jvm]"} />
-
-The declared policy rejects null tokens, trims using String.trim's rules, applies locale-neutral lowercase and discards empty results. It normalizes before membership: " Java " and "java" become the same value, while JVM's first normalized appearance fixes its position after java.
-
-The result is a detached unmodifiable List of String. Editing the input list after return does not change it, and the immutable String elements need no further copying. For arbitrary mutable elements, the same structural copy would not be a deep snapshot. String.trim does not mean every Unicode whitespace rule; choose a different stated normalization policy when the domain requires one.
-
-The completed source supplies the ordinary API exercise. The following handwritten implementation explains how order is maintained without delegating it to LinkedHashMap.
 
 <span id="java-implementation"></span>
 ## Implement ordered membership

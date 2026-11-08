@@ -974,5 +974,13 @@
   {
     "class": "StringConstructionLab",
     "expected": "from chars=Java\nslice=av\nfrom bytes=text\nlength=0, reserved=true\nbuilt=Lia!\nbuilder=!a\nzero fill=true\nsnapshot=Lia!\ncase ordering=0\ncase equal=true\nbuffer=xy"
+  },
+  {
+    "class": "ResourceScopeLesson",
+    "expected": "opened\nused\nclosed\nafter scope"
+  },
+  {
+    "class": "MethodHandleComposition",
+    "expected": "type=(int)String\nvalue=6"
   }
 ]

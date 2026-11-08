@@ -2,7 +2,7 @@
 title: "Varargs calls and array ownership"
 module: "language"
 group: "Conversions and numeric boundaries"
-summary: "Explain zero-or-more argument calls as array parameters and handle null, aliases and overload phases."
+summary: "Write a method that accepts zero or more values while preserving ordinary array rules."
 order: 145
 version: "Java 8+"
 prerequisites: ["language/method-overloading", "language/arrays"]
@@ -13,7 +13,11 @@ import JavaExample from '../../../components/JavaExample.astro';
 
 ## Offer a convenient call without inventing a new container
 
-`sum(int... values)` lets callers pass zero, one or several int arguments. Inside the method, values has type int[]: use length, indexing or an enhanced for loop as for any array. There can be only one variable-arity parameter and it must be last, after any required parameters.
+Ordinary methods declare a fixed list of parameters. A sum operation might instead need to accept any number of values. **Variable arity**, usually called **varargs**, provides a convenient call syntax for that case: `sum()` supplies none, and `sum(2, 3, 4)` supplies three.
+
+Declare the repeated parameter with an ellipsis: `int... values`. Inside the method it is an int[] array, so length, indexes and enhanced-for traversal work as already learned. The compiler arranges the argument array when the call needs variable-arity packing. This changes call convenience, not the array's ordinary mutation or reference rules.
+
+There can be only one variable-arity parameter, and it must follow any required parameters. The first task is to trace empty and nonempty calls. Then distinguish a newly supplied argument array from an existing array that the caller explicitly passes and may still share.
 
 <JavaExample file="VarargsOwnershipLesson.java" output={"0\n9\n11\n5\nfalse"} />
 

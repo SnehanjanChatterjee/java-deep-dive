@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Read two coordinates that a writer changes together
 
-A point stores x and y. A reader wants a distance from one consistent pair. A read/write lock can exclude writers during the copy. StampedLock additionally offers an optimistic read: obtain a stamp, copy the small state, then ask whether a write invalidated that observation.
+A **StampedLock** coordinates read and write access using **stamps**, long-valued tokens returned by its operations. A stamp identifies a held lock mode or an optimistic observation for that lock. The matching API uses it for unlock, validation or attempted mode conversion; it is not the protected data itself.
 
-Optimistic reading is permitted to race with a writer. The copied fields are tentative until validation. This mechanism needs a carefully limited read operation, not arbitrary traversal through inconsistent mutable objects.
+Its distinctive option is an **optimistic read**: copy a small amount of state without acquiring read ownership, then validate whether a write acquisition invalidated that observation. The local copies are **tentative**, meaning they must not be trusted yet. If validation fails, discard them and reread under a real read lock.
+
+Use a point with x and y changed together. Distance from the origin depends on one consistent pair: (3,4) gives five and (6,8) gives ten. A reader must avoid acting on a mixture. The ordinary distance method copies the coordinates, validates, falls back if necessary, then calculates from its selected locals.
+
+Optimistic access deliberately allows overlap with a writer. It therefore fits a carefully limited copy-and-check operation, rather than arbitrary traversal or side effects through temporarily inconsistent objects. First follow the point program; the second experiment then forces a rejected validation without depending on a racing schedule.
 
 ## Implement copy, validate and fallback
 

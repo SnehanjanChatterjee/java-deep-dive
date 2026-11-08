@@ -19,18 +19,20 @@ import Diagram from '../../../components/Diagram.jsx';
 <span id="threadlocal-interview-questions"></span>
 ## A request value belongs to an operation
 
-A report needs a request identifier in a faraway formatter. The clearest starting mechanism is an ordinary parameter: each call explicitly forwards the context it needs.
+**Context** is data associated with one operation and needed by several calls, such as a request identifier included in a report. The identifier lets outputs from different methods be associated with that request. The first design question is how those methods receive it and how long they should be able to access it.
+
+Begin with ordinary parameters. Report receives the identifier, forwards it to format, and format uses it in the result. This makes the dependency explicit without any special thread mechanism:
 
 <JavaExample file="ContextParametersLesson.java" output={"request-42: report"} />
 
-Both report and format declare the context. That makes the dependency visible in the method contract. A context carrier becomes useful when a long intermediate chain merely forwards data, but its lifetime and authority still need a precise design.
+Both report and format declare the context, making it visible in their method contracts. A **context carrier** is a mechanism through which callees can access that value without every intermediate method forwarding a parameter. ThreadLocal is one such mechanism, with a lifetime tied to the executing thread. Learn its ordinary association first, then examine why that lifetime differs from a reused worker's individual tasks.
 
 <span id="thread-state-versus-task-state"></span>
 ## Thread state and task state have different lifetimes
 
-ThreadLocal associates a value with the **current thread** for a particular key. Different threads using the same key can see different associations. Set and remove affect this thread, not every worker. Get can initialize a per-thread value under the key's initialization policy, so it is not always a side-effect-free presence probe.
+A **ThreadLocal key** is the ThreadLocal object used to get/set a value for the **current thread**. A **binding**, or association, is that thread's current value under the key. Different threads using the same key can have different bindings; set and remove affect only the caller's association.
 
-A pool can reuse one worker for task A then task B. If A installs request context and forgets to remove it, B can see stale state. A private static key restricts access but does not make its value expire at task return.
+Think of one shared question with an answer maintained separately for each thread. Get can call an initializer to supply that thread's first answer, so it is not always a side-effect-free presence test. The next program gives one key an initializer returning zero; main changes its own answer to seven while a worker initializes and changes its separate answer.
 
 <span id="trace-nesting-on-a-reused-worker"></span>
 <span id="scope-and-failure-restoration"></span>
@@ -47,6 +49,10 @@ ThreadLocal does not assign one process-global value to its key. Main setting se
 Remove affects only the calling thread. Main cannot clean a reused worker's binding merely by calling remove after a Future completes; install/restore/remove must run at the worker's task boundary. This is why the wrapper below executes finally **around the action on that worker**, rather than only around submission by the owner. [Java 8 ThreadLocal association and initialization](https://docs.oracle.com/javase/8/docs/api/java/lang/ThreadLocal.html)
 
 ## Implement scoped restoration on a reused worker
+
+A pool can reuse one worker for task A then task B. If A installs request context and forgets to remove it, B can see stale state. A private static key restricts access but does not make its value expire at task return.
+
+Here a **scope** is the dynamic duration of one withContext action. Save the previous binding on entry, install the action's value, then restore the previous binding in finally. Nested actions temporarily shadow their caller's value. Restoring, rather than always removing, is what lets an outer action continue with its own context after an inner action returns or throws.
 
 <JavaExample file="ThreadContextLesson.java" output={"outer\ninner\nouter\nnull"} />
 
@@ -68,7 +74,7 @@ Reading a ThreadLocal later from a worker cannot retrieve another thread's assoc
 <span id="representation-and-reachability"></span>
 ## Representation and retained values
 
-In OpenJDK, a thread-associated map weakly references keys while values remain strongly referenced. A live key can retain its value, and a stale entry's value can remain until cleanup processes it after key reclamation. Weak keys are therefore not a complete cleanup policy.
+A **strong reference** can keep an object reachable and therefore ineligible for garbage collection. A **weak reference** alone does not keep its referent alive. In OpenJDK, a thread-associated map weakly references keys while values remain strongly referenced. A live key can retain its value, and a stale entry's value can remain until cleanup processes it after key reclamation. Weak keys are therefore not a complete cleanup policy.
 
 Remove clears only the current association and permits reclamation only if no other owner retains the value. A small forgotten binding can retain a large object graph. Virtual-thread-per-task execution changes reuse, but expensive per-thread caches can multiply across large numbers of threads. Cheap executions do not make their application values free.
 

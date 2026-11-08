@@ -2,7 +2,7 @@
 title: "Overriding, static hiding and field selection"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Predict member access by separating the declared reference type from the object's runtime type."
+summary: "Distinguish the declared type of a reference from the actual object's type when accessing fields and methods."
 order: 186
 version: "Java 8+"
 prerequisites: ["objects/inheritance-and-composition", "language/method-overloading"]
@@ -14,7 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Ask two different type questions
 
-A variable's declared type determines which members a source expression may name and which overload is selected. For an overridable instance method, the runtime object then determines the implementation of that selected method. Fields and static methods use different selection rules. Calling all three “polymorphism” hides the distinction that interview output questions depend on.
+A **member** is a declaration belonging to a type, such as a field or method. **Member selection** determines what an expression like parent.label or parent.describe() refers to. The expression may use a Parent-typed variable while its value identifies a Child object, so the declared type and actual object must be tracked separately.
+
+The **declared type** is the type available to the compiler at that source expression. The **runtime type** is the class of the actual object. Source typing determines which members can be named and which overload is selected. For an overridable instance method, dynamic dispatch then chooses the implementation of that signature on the actual receiver. Field and static-method selection do not use that same dynamic rule.
+
+The program gives fields, static methods and instance methods similar names to make the three decisions visible. **Upcasting** means using a subclass reference through a compatible base type; it changes the source view without constructing a second object. Predict each output by identifying the kind of member first, then applying its selection rule.
 
 <JavaExample file="DispatchMembersLesson.java" output={"parent field\nchild field\nparent static\nchild static\nchild method\nparent method\ntrue"} />
 

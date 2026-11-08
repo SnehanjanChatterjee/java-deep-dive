@@ -2,7 +2,7 @@
 title: "Association, aggregation and composition"
 module: "objects"
 group: "References and identity"
-summary: "Express borrowing, shared parts and owned parts through explicit object reference and lifetime policies."
+summary: "Distinguish using an object, sharing it and owning its parts through explicit references and operations."
 order: 195
 version: "Java 8+"
 prerequisites: ["language/methods-and-references", "objects/inheritance-and-composition"]
@@ -14,7 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Describe the relationship before choosing fields
 
-An **association** means objects collaborate: a Reviewer uses a Book. **Aggregation** describes a whole retaining independently usable parts: two ReadingGroups can share a Book supplied by their caller. **Composition** describes stronger ownership: a Notebook creates and controls its private Pages. These are design terms expressed by ordinary Java references, not three special allocation instructions.
+A reference tells which object another value identifies, but it does not by itself explain the relationship. Does the caller lend the object for one operation? Do several owners share it? Does one object create and control its mutable parts? These questions determine how constructors and accessors should handle aliases.
+
+**Ownership** is the design responsibility for controlling an object's use, changes and useful lifetime. **Borrowing** uses a caller-owned object without silently taking over that responsibility. An **association** is the general collaboration: a Reviewer uses a Book. **Aggregation** describes a whole retaining independently usable parts: two ReadingGroups share a caller-supplied Book. **Composition** expresses stronger ownership: a Notebook creates and controls its private Pages.
+
+Java represents all three using ordinary objects and references. The distinctions come from creation, retained aliases and exposed operations, not special allocation keywords. Trace those choices in the program before assigning the relationship label.
 
 <JavaExample file="ObjectRelationshipsLesson.java" output={"Shared\ntrue\nowned\n2\nRetained"} />
 
@@ -32,7 +36,7 @@ Construction takes O(n) time and O(n) owned storage for n pages. An indexed read
 
 ## Separate a design lifetime from garbage collection
 
-Composition says the API controls its parts' useful lifetime. It does not promise a destructor at the closing brace or immediate reclamation when an owner becomes unreachable. If a mutable Page reference escaped, a client could retain it independently and undermine that ownership model. Java reference reachability, rather than an aggregation/composition keyword, determines what storage can still be needed.
+Composition says the API controls its parts' useful lifetime. **Garbage collection (GC)** separately manages memory according to **reachability**, paths from runtime-kept references through objects. Composition does not promise a cleanup callback at the closing brace or immediate memory reclamation when an owner becomes unreachable. If a mutable Page reference escaped, a client could retain it independently and undermine that ownership model. Reference reachability, rather than an aggregation/composition keyword, determines what storage can still be needed; the JVM lessons develop that memory model.
 
 `throughRetainedOwner` makes this concrete. Local initially identifies a Book. ReadingGroup stores a copied reference in its book field. Assigning `local = null` removes only the local path. `owner.title()` still reaches the Book through a field and returns Retained. Association direction is another design choice; aggregation is not universally required to be unidirectional. [JLS reference values](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.3.1), [JVMS heap](https://docs.oracle.com/javase/specs/jvms/se25/html/jvms-2.html#jvms-2.5.3)
 

@@ -14,9 +14,13 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Two participants each bring a value
 
-A producer fills one buffer while a consumer empties another. At an agreed boundary they can exchange references: the consumer gets the filled buffer and the producer gets the reusable empty buffer. Exchanger represents that paired rendezvous. An exchange does not return until a partner exchange can match it, unless interrupted or a timed wait expires.
+An **Exchanger** pairs two calls so that each caller receives the value offered by the other. This is a **rendezvous**, a meeting point requiring both participants. If only one arrives, its ordinary exchange call waits for a matching partner; interruption or a timed allowance can end that wait unsuccessfully.
 
-This differs from a latch's one-way signal, a barrier's multi-party generation and a semaphore's consumable permits. Exchanger pairs two participants per successful exchange; it is not a broadcast to all waiting workers.
+Begin with two Strings: main brings owner-buffer and a worker brings worker-buffer. These are just labels. After a successful pair, main receives worker-buffer and the worker receives owner-buffer. Either side may arrive first, but each receives its peer's offered value.
+
+The same operation can support reusable **buffers**, containers such as arrays holding data. A producer fills one while a consumer empties another, then they swap references at an agreed boundary. Learn the value pairing in the String program first; publication and mutable-buffer ownership are separate questions developed afterward.
+
+A latch records one-way signals, a barrier releases a whole generation, and a semaphore accounts for permits. Exchanger's unit is instead one matched pair exchanging two values, rather than a broadcast to every waiter.
 
 ## Follow both received values
 

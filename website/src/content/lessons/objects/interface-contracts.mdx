@@ -2,7 +2,7 @@
 title: "Interface categories and default-method conflicts"
 module: "objects"
 group: "Interfaces and inheritance"
-summary: "Distinguish marker and functional contracts, count abstract operations correctly, and resolve competing defaults."
+summary: "Recognize interface roles and decide which inherited method body an implementation should use."
 order: 185
 version: "Java 8+"
 prerequisites: ["objects/interfaces", "objects/inheritance-and-composition"]
@@ -14,7 +14,11 @@ import Diagram from '../../../components/Diagram.jsx';
 
 ## Classify an interface by the contract it supplies
 
-An ordinary interface can specify several operations, extend other interfaces and supply default/static methods. **Functional** describes a particular abstract-operation shape that the compiler can use as a target for behavior. **Marker** describes a design purpose: a type tag interpreted by an API. These labels answer different questions; they are not three new declaration keywords.
+An interface states what operations a caller may request, but not every interface uses the same form. Some declare several required operations, some describe one operation, and some attach a type-level tag without declaring an operation at all. These differences matter when implementing a capability and when an API interprets membership in a named type.
+
+An **abstract interface method** requires an implementation. A **default method** already has an instance-method body that an implementation may inherit. A **static interface method** belongs to the interface itself. Once those roles are separated, the labels functional and marker can be read precisely: **functional** concerns the single-abstract-operation shape, while **marker** concerns the meaning of a type tag.
+
+Functional does not mean the method is automatically pure or free of side effects. Marker does not mean behavior runs merely because a class implements the interface. The compiler annotation `@FunctionalInterface` checks the functional shape; the examples use named classes, so understanding them requires no lambda syntax. Later, inherited defaults raise another concrete question: what if two capabilities supply a body for the same method?
 
 | Description | What matters | Consequence |
 | --- | --- | --- |
