@@ -2,6 +2,10 @@ name: Validate and deploy course
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - README.md
+      - docs/assets/readme-banner.svg
+      - docs/assets/readme-open-course.svg
   pull_request:
   workflow_dispatch:
 permissions:
