@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="40" viewBox="0 0 240 40" role="img" aria-labelledby="title">
+<title id="title">Open the live website</title>
+<rect x=".5" y=".5" width="239" height="39" rx="7" fill="#2563eb" stroke="#60a5fa"/>
+<text x="18" y="25" fill="white" font-family="-apple-system,BlinkMacSystemFont,Segoe UI,Arial,sans-serif" font-size="15" font-weight="600">Open the live website</text>
+<path d="M205 26 217 14M205 14h12v12" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
