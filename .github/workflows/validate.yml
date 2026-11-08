@@ -1,4 +1,4 @@
-name: Validate course
+name: Validate and deploy course
 on:
   push:
     branches: [main]
@@ -19,6 +19,11 @@ jobs:
       - run: npm test
       - run: npm run check
       - run: npm run build
+      - name: Package website for GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: website/dist
   java:
     runs-on: ubuntu-latest
     steps:
@@ -43,3 +48,23 @@ jobs:
         with:
           node-version: '22.22.0'
       - run: npm run test:modern
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: [website, java, modern-java]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+      - name: Deploy website
+        id: deployment
+        uses: actions/deploy-pages@v4

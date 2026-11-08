@@ -7,3 +7,5 @@ Read these current specifications before implementation or review:
 3. [Design specification](design.md): reading layout, navigation, themes, diagrams, controls and responsive behavior.
 
 Source metadata and canonical Java files define the executable course. Update the corresponding specification when deliberately changing those decisions. Keep private operational details, research-access records and historical design captures outside the public repository.
+
+[Deployment operations](deployment.md) covers publishing, verification and recovery.
