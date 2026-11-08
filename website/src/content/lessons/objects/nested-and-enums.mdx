@@ -18,7 +18,7 @@ A parcel can be new or sent, and can have helper objects such as a label and rec
 
 State.NEW and State.SENT are the enum's named constants. Callers choose one of those instances rather than inventing unrelated integer codes or constructing extra State values. Enum constants can have fields and behavior, implement interfaces and supply constant-specific behavior. They cannot extend an arbitrary class. Comparing their identity with `==` is appropriate.
 
-Nesting separately controls a helper's relationship to the surrounding class. A **static nested class** has no implicit enclosing object. A **non-static inner class** is associated with one enclosing instance, so its methods can refer to that object's state. In the source, Label needs only its own text, while Receipt is associated with a particular delivery. Follow the enum value and the two helper objects as separate decisions.
+Nesting separately controls a helper's relationship to the surrounding class. A **static nested class** has no implicit enclosing object. A **non-static member class** is an inner class associated with one enclosing instance, so its methods can refer to that object's state. Local and anonymous inner classes declared in a static context instead have no enclosing instance, as the next lesson explains. In the source, Label needs only its own text, while Receipt is associated with a particular delivery. Follow the enum value and the two helper objects as separate decisions.
 
 <JavaExample file="NestedEnumLesson.java" output={"true\nparcel\nWest"} />
 

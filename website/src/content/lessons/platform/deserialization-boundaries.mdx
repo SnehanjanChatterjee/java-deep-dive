@@ -42,17 +42,6 @@ Declare serialVersionUID deliberately for a native-serializable type. Keeping th
 
 A serialization proxy can represent a type using a restricted intermediate form and reconstruct through a controlled invariant boundary. It still needs a format/type/resource policy. Constructor validation remains insufficient for conventional Serializable classes whose fields are restored outside the ordinary constructor path.
 
-## Practice: classify four defenses
-
-Which check rejects an oversized byte array? Which catches restored score -1? Which proves the root is Score? Which authorizes the caller to change a score?
-
-<details>
-<summary>Answer</summary>
-
-The pre-stream byte-length check handles the first, Score.readObject's invariant check the second, and the explicit instanceof root check the third. None authorizes a caller: authentication/authorization belong to the application operation boundary. Matching UID, a valid graph and a valid score can all coexist with an unauthorized operation. Test rejection categories independently rather than asserting only a message containing rejected.
-
-</details>
-
 ## Separate a rejected graph from a rejected value
 
 | Input variation | Expected failure boundary | Why another check is insufficient |
@@ -71,6 +60,17 @@ The supplied filter rejects a resource-limit violation before deciding a class-s
 <summary>Is keeping serialVersionUID constant enough to add a new positive quantity field safely?</summary>
 
 No. An older stream may have no value for the field, so zero can be restored under a compatible representation evolution. Decide how to migrate that data or reject it if the new invariant cannot be satisfied. Validation belongs on the reconstruction path as well as ordinary construction. A serialization proxy can centralize reconstruction, but still needs input and graph boundaries.
+
+</details>
+
+## Practice: classify four defenses
+
+Which check rejects an oversized byte array? Which catches restored score -1? Which proves the root is Score? Which authorizes the caller to change a score?
+
+<details>
+<summary>Answer</summary>
+
+The pre-stream byte-length check handles the first, Score.readObject's invariant check the second, and the explicit instanceof root check the third. None authorizes a caller: authentication/authorization belong to the application operation boundary. Matching UID, a valid graph and a valid score can all coexist with an unauthorized operation. Test rejection categories independently rather than asserting only a message containing rejected.
 
 </details>
 

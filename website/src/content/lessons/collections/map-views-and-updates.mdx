@@ -44,7 +44,9 @@ The program first stores A=null. getOrDefault("A",99) returns null because the m
 | replace(key,old,new) | Replace only if current value matches old | Boolean success |
 | remove(key) | Remove the mapping when present | Removed value |
 | remove(key,value) | Remove only the matching association | Boolean success |
-| getOrDefault(key,default) | Read fallback only for no mapping | Stored value, including null, otherwise default |
+| getOrDefault(key,default) | Select the fallback result when no mapping exists | Stored value, including null, otherwise default |
+
+getOrDefault selects a return value without installing a mapping. Java evaluates its default argument before entering the method, even when the key is present. For example, getOrDefault(key, buildDefault()) still calls buildDefault for a present key. Lazy construction and installation use a different callback policy, developed in the Map callback chapter.
 
 A present-null mapping can satisfy remove(key,null), while an absent key cannot. These distinctions are deliberate; do not implement every conditional operation as get(key) != null.
 

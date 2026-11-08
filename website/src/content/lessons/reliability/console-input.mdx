@@ -17,7 +17,7 @@ An interactive program must obtain data before it can calculate with it. **Comma
 
 Java distinguishes byte input from character input. A **Reader** exposes text units; an InputStreamReader decodes incoming bytes using a chosen charset. A **BufferedReader** adds buffering and a readLine operation. A **Scanner** instead helps recognize tokens, such as whitespace-separated integers. These wrappers do different jobs and can hold their own buffered state.
 
-Reading obtains text; **parsing** interprets it as a value such as an int. **End of file/input (EOF)** means no more input is available, not an empty String or the number zero. **Input/output (I/O)** failures report problems obtaining data, while malformed text and a negative-but-well-formed number fail at later interpretation/domain boundaries. The example keeps those outcomes distinct and keeps borrowed-input ownership explicit.
+Reading obtains text; **parsing** interprets it as a value such as an int. **End of file/input (EOF)** means no more input is available, not an empty String or the number zero. **Input/output (I/O)** failures report problems obtaining data, while malformed text and a negative-but-well-formed number fail at later interpretation/domain boundaries. The helper separates those checks and keeps borrowed-input ownership explicit; its stdin application's catch deliberately presents missing, malformed and negative counts with the same invalid count label, while I/O failures propagate.
 
 <JavaExample file="ConsoleInputLesson.java" output={"12\n12:remaining=[]:name=Ada"} />
 

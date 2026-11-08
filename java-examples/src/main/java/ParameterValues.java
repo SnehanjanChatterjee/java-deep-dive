@@ -7,7 +7,7 @@ public final class ParameterValues {
     /** Returns a replacement reference for the caller to assign explicitly. */
     static User replacement() { return new User("Leo"); }
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         final User user = new User("Ava");
         rename(user);
         replace(user);

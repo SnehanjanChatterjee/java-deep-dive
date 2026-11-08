@@ -42,8 +42,10 @@ Generic varargs introduce another issue because generic element types are not fu
 ## Practice: retain the supplied array
 
 <details>
-<summary>A constructor stores its int... parameter directly. Can a caller later change its contents?</summary>
+<summary>What breaks if snapshot returns its int... parameter directly instead of cloning it?</summary>
 
-Yes: the caller can pass an existing array and keep an alias. A convenience call with separate int arguments does not establish a universal exclusive-ownership contract for all callers. Clone at the storage boundary when the receiving object promises an independent snapshot. An empty call remains valid, but null must still follow the constructor's stated policy.
+The caller can pass an existing array and keep an alias. Returning that parameter would make the result and original identify the same array, so changing either would change the other's observed contents. A convenience call with separate int arguments does not establish exclusive ownership for every possible call. Clone when this method promises an independent snapshot. Empty input remains valid, while a null array follows the method's explicit rejection policy.
+
+After constructors and stored object state are introduced, the same rule applies at a storage boundary: a constructor retaining a caller-supplied varargs array can expose later caller mutations unless it copies under its declared ownership contract.
 
 </details>

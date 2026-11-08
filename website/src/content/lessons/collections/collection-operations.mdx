@@ -58,9 +58,9 @@ Collections can disagree about membership: a TreeSet comparator and ordinary equ
 
 The no-argument toArray returns Object[]; it does not promise a String[] even when every current element is String. A cast from that Object[] to String[] is not a conversion. Use `names.toArray(new String[0])` for a new array with the intended runtime component class.
 
-If the supplied typed array is large enough, the method can use it. The program passes a three-slot String array for one name. The first slot becomes B and the immediately following slot is null. Only the logical element count belongs to the result data; spare positions are not new collection members. This is why a trailing unused value in a reused array must not be treated as another element.
+If the supplied typed array is large enough, the method populates and returns that same array. The program passes a three-slot String array for one name. The first slot becomes B and the immediately following slot is null. Only the logical element count belongs to the result data; spare positions are not new collection members. This is why a trailing unused value in a reused array must not be treated as another element.
 
-The array is an independent container snapshot. Its element references are still shared. Runtime array-store checking also remains: asking a collection containing an incompatible value to populate a narrower array can throw ArrayStoreException. Generic type arguments do not disable the array's reified component rule.
+In this ArrayList example, the result array has storage separate from the list and shares its element references. More generally, a caller-supplied target can already alias a backing array: Arrays.asList(array).toArray(array) returns that same array. The typed overload does not by itself promise unshared storage; the no-argument overload allocates a fresh array. Runtime array-store checking also remains: asking a collection containing an incompatible value to populate a narrower array can throw ArrayStoreException. Generic type arguments do not disable the array's reified component rule.
 
 Java 11 adds the generator form `names.toArray(String[]::new)`. It expresses the same array-component choice through a constructor reference, taught in Functional Java. Java 8 callers can use the typed-array overload above.
 

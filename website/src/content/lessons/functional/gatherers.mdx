@@ -40,7 +40,7 @@ Gatherers.scan supplies a running scan from initial state; fold accumulates a fi
 
 ## Compare scans, folds and window families
 
-<JavaExample file="modern/BuiltInGatherers.java" output={"scan=[1, 3, 6]\nfold=[6]\nfixed=[[1, 2], [3]]\nsliding=[[1, 2], [2, 3]]\nshort sliding=[[1]]\nempty windows=[]"} />
+<JavaExample file="modern/BuiltInGatherers.java" output={"scan=[1, 3, 6]\nfold=[6]\nempty scan=[]\nempty fold=[0]\nfixed=[[1, 2], [3]]\nsliding=[[1, 2], [2, 3]]\nshort sliding=[[1]]\nempty windows=[]"} />
 
 scan emits every running prefix: one,three,six. fold emits the final aggregate six. Fixed size-two windows produce [1,2] then [3]; sliding size-two windows produce [1,2] then [2,3]. If a sliding input is shorter than its requested window, one short window contains that input. An empty source produces no windows.
 
@@ -50,7 +50,9 @@ The separate concurrent-gatherer chapter develops mapConcurrent after the thread
 
 ## Handle empty and cancelled intermediate state deliberately
 
-The custom running-total source uses fresh state per evaluation. An empty source emits no running totals because no input triggers an integrator push. A final-state fold and a prefix scan have different empty/final emission policies; inspect the selected gatherer's contract instead of assuming all reductions emit a zero.
+The built-in scan emits after each input, so an empty source yields []. The fold emits its one final state on completion, so the same empty source with initial value zero yields [0]. The complete built-in program prints both. The custom running-total source likewise emits no result for empty input because no input triggers its push.
+
+A fold needs the end of its upstream traversal before it can emit its final value. Placing limit(1) after a fold does not make an unbounded upstream source finite. To fold a bounded prefix, place the upstream limit before gather(fold(...)); that asks for the aggregate of the bounded prefix. A scan can instead produce successive prefixes without waiting for the whole source to end. [Fold and scan emission contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/stream/Gatherers.html)
 
 The integrator must respect downstream rejection, and a finisher must obey the gatherer protocol when flushing buffered state. A source feeding an infinite internal loop cannot be made bounded merely by naming limit later; the transformation itself must cooperate with demand/termination.
 

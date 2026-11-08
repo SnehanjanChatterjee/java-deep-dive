@@ -30,7 +30,7 @@ import Diagram from '../../../components/Diagram.jsx';
 
 A **resource** is a facility with a lifetime that needs explicit management, such as a file or network connection used for input/output (I/O). A Java object can wrap that facility, but reclaiming the wrapper's memory is not the same operation as closing the file or connection. **Ownership** names the code responsible for ending that lifetime. A helper merely borrowing a caller's resource should not silently close it.
 
-**AutoCloseable** is an interface declaring close. **Try-with-resources** is a try statement with resource declarations in parentheses. After a resource is successfully initialized, the language calls close when leaving the body, whether it completes normally or exceptionally. Scope makes the intended lifetime visible: acquire, use, close, then continue after the construct.
+**AutoCloseable** is an interface declaring close. **Try-with-resources** is a try statement with resource declarations in parentheses. After a non-null resource is successfully initialized, the language calls close when leaving the body, whether it completes normally or exceptionally. Scope makes the intended lifetime visible: acquire, use, close, then continue after the construct.
 
 Begin with the normal closing path. Then add a body failure, a closing failure and partial initialization one at a time. This separates the basic lifetime rule from the rule selecting a primary failure when several operations fail.
 
@@ -81,6 +81,8 @@ A constructor acquiring several external resources must account for partial acqu
 ## Read the closing interface's actual promise
 
 An **idempotent** close has the same effect when repeated after the resource is already closed. AutoCloseable.close may declare Exception and is not universally required to be idempotent. Closeable narrows its checked failure to IOException and specifies that closing an already closed stream has no effect. A concrete type may promise more than its broad interface; read that type's contract before retrying close or sharing a resource between owners. In Java 9+, an existing final or effectively final local can appear as a resource (`try (reader)`); the Java 8 declarations above remain valid on later releases. [AutoCloseable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/AutoCloseable.html), [Closeable](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/io/Closeable.html)
+
+Checked closing obligations follow the resource variable's declared type. TraceResource.close declares no checked failure, so the normal example needs no throws clause. Declaring that variable as AutoCloseable would expose AutoCloseable.close's broader Exception contract and require catching or declaring it, even for the same runtime object. The chosen implementation does not erase the compiler's source-level obligation. [JLS try-with-resources translation](https://docs.oracle.com/javase/specs/jls/se21/html/jls-14.html#jls-14.20.3.1)
 
 <span id="failure-paths-as-part-of-the-api" aria-hidden="true"></span>
 

@@ -1,5 +1,7 @@
 # Project guidelines
 
+Before course or interface work, read `docs/course-plan.md`, `docs/curriculum.md` and `docs/design.md`. They are the current authoritative specifications. Preserve their teaching progression and design decisions; update them when an intentional change alters the course. Historical notes do not override these documents.
+
 ## Architecture
 
 Java Deep Dive is a static Astro site using TypeScript, MDX, React islands, Mermaid and Pagefind. The default base path is `/java-deep-dive/`. Keep routes, imports, search assets and downloads base-aware. Java execution occurs locally through downloadable examples; the website has no Java execution backend.

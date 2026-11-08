@@ -3,7 +3,7 @@
 public final class TextAndArrays {
 
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         final String text = "A\uD83D\uDE00";
         System.out.println(text.length());
         System.out.println(text.codePointCount(0, text.length()));

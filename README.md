@@ -59,6 +59,8 @@ tests/                   Website behavior tests
 
 ## Course content
 
+The authoritative [course plan](docs/course-plan.md), [curriculum](docs/curriculum.md) and [design specification](docs/design.md) describe the teaching and interface decisions used throughout implementation.
+
 The course introduces compilation and JVM execution alongside the first programs. Variables, control flow, methods, arrays and objects establish the prerequisites for stack/heap and bytecode foundations. Later modules develop exceptions, generics, collections, functional programming, standard libraries, threading, advanced JVM internals, diagnostics, platform APIs and engineering practices.
 
 Topic navigation and previous/next links follow the same prerequisite sequence. Java version requirements appear beside the relevant material. Instructional models support deliberate stepping and optional playback; complete Java files can be downloaded and run locally.

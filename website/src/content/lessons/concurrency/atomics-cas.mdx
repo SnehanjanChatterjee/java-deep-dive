@@ -25,7 +25,7 @@ An **atomic variable**, such as AtomicInteger, supplies documented indivisible o
 
 Why make the update conditional? A budget has three units remaining and two callers each request two. Both can read three and judge their request affordable. A separate check followed by set could let both report success. The invariant instead requires validation and subtraction to take effect together.
 
-Each attempt keeps two local values: the **expected** amount it observed, and a **candidate** remaining amount calculated from it. CAS succeeds only if the shared value still matches expected at the comparison. If it differs, CAS returns false without installing the candidate. This budget's loop rereads, rechecks whether the request fits and recalculates after such a failure.
+Each attempt reads the **expected** amount into its previous local, then checks whether the request fits that observation. Only after the check passes does the compareAndSet call evaluate its **candidate** argument, previous minus units. CAS succeeds only if the shared value still matches expected at the comparison. If it differs, CAS returns false without installing the candidate. This budget's loop rereads, rechecks and recalculates after such a failure.
 
 First follow the Budget method and its successful/too-large requests. The complete file also contains a reference-plus-version experiment for **ABA**, the history A→B→A that a value-only comparison cannot reveal. Its final false output is explained after the ordinary CAS loop and retry trace.
 
@@ -104,26 +104,48 @@ Compare a decomposed increment, a synchronized increment and an explicit CAS loo
 
 <JavaExample file="MemoryVisibility.java" output={"1"} />
 
+## Combine an atomic counter with completion coordination
+
+<JavaExample file="LatchCoordination.java" output={"2"} />
+
+Each task atomically increments one shared counter and decrements a latch in finally. The atomic operation protects the update; successful await establishes that both increments preceded their signals and publishes them before the owner's read. It does not prove the entire Runnable or its reusable worker Thread has terminated: return/framework code may follow the signal. The latch also does not combine a separate get/set into one increment or collect failure causes. Retain task result handles when task completion and success/failure matter in addition to the counted milestone.
+
 <span id="memory-effects-progress-and-representation"></span>
 ## Memory effects, progress and counter choice
 
 Familiar AtomicInteger get/set/CAS operations have their documented ordering effects. Additional plain/opaque/acquire/release methods have weaker contracts; do not substitute them into a stronger proof mechanically. Exact API availability and implementation should be labeled when studying those modes.
 
-Lock-free means algorithm-wide progress, not a guarantee that each caller completes within a bounded number of steps. Wait-free is stronger. Using an atomic variable does not make an entire algorithm lock-free if it blocks elsewhere.
+Lock-free means algorithm-wide progress, not a guarantee that each caller completes within a bounded number of steps. Wait-free is stronger. Using an atomic variable does not establish either property for the whole algorithm.
 
-AtomicLong can return the exact value assigned by one increment, useful for sequences with an overflow policy. LongAdder spreads contention over cells; concurrent sum is not one linearizable snapshot. It suits statistics rather than hard resource limits or unique IDs. False sharing describes independent hot writes sharing coherence granularity; investigate a real profile/benchmark before padding or weakening an exact invariant.
+A **spin lock** repeatedly tests or attempts to acquire an ownership flag instead of parking while waiting. It can use CAS and still depend on the current owner releasing that flag: if the owner pauses, contenders can keep retrying without entering the protected region. A CAS primitive therefore does not turn an ownership lock into a lock-free algorithm. The budget loop instead attempts one conditional state update without retaining an ownership flag around later work. [Atomic ownership and waiting example](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/locks/LockSupport.html)
+
+AtomicLong can return the exact value assigned by one increment, useful for sequences with an overflow policy. LongAdder spreads contention over cells; concurrent sum is not one linearizable snapshot. It suits statistics rather than hard resource limits or unique IDs.
+
+## Distinguish a shared variable from a shared cache line
+
+A **cache line** is a hardware unit used to hold and coordinate nearby memory locations in processor caches. **Cache coherence** keeps those cached locations consistent under the hardware's protocol. With an invalidation-based protocol, a core writing a line can require other cores' copies to be invalidated, even when their code uses a different location in that line.
+
+**False sharing** is that unnecessary contention between logically independent locations. Consider two frequently written counters: A alone writes left and B alone writes right. Assume, for this conceptual example, that both locations occupy one coherence line and the workers run on separate cores. The counters can be logically correct while their stores compete for that line's write permission. [Intel's false-sharing discussion](https://www.intel.com/content/dam/develop/external/us/en/documents/gdma-2-165938.pdf#page=74)
+
+<Diagram client:visible definition={"flowchart TD\n W[Independent writers: A writes left; B writes right] --> L[One assumed cache line contains both locations]\n L --> P[Stores can compete for the same line write permission]"} caption="A concept map of false sharing: independent variables can occupy one coherence unit. The boxes do not specify JVM field offsets, line size, event timing or measured traffic; the table below traces a hypothetical store sequence." />
+
+| Illustrative store | left / right afterward | Why unrelated code can still contend |
+| --- | --- | --- |
+| A writes left = 1 | 1 / 0 | A needs permission to write their common line |
+| B writes right = 1 | 1 / 1 | B's line permission can invalidate A's copy |
+| A writes left = 2 | 2 / 1 | A can need the line again despite never using right |
+
+All three writes are retained; this is different from the lost-update bug. With independent single writers and result reads after join, such fields can be data-race-free while their actual placement still causes false sharing. Volatile or atomic access does not by itself guarantee separation into different lines. Hardware coherence is also not a substitute for the Java Memory Model's ordering rules.
+
+Actual line size, placement and generated stores depend on the hardware, JVM and optimization. Correct totals do not establish that false sharing occurred. If the access pattern permits it, accumulating locally and publishing less often can reduce shared stores. Layout isolation/padding has memory costs and needs representative evidence; allocating separate objects alone does not promise separate cache lines. [OpenJDK 25 layout-isolation rationale](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/jdk/internal/vm/annotation/Contended.java)
+
+**Interview check:** two threads repeatedly update the same counter. That is true sharing and needs an atomic update protocol. Two separate counters placed in one line can instead have a performance interaction despite correct independent updates. This example reports no measured speedup, cache misses or padding benefit.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
 ## Exercise and complete reference solution
 
 Implement the nonnegative budget and reject invalid/oversized requests without mutation. `AtomicCounterLab` is the complete solution. Under contention, successful one-unit reservations plus remaining must equal initial capacity after completion. Do not assert how many retries one thread happened to perform.
-
-## Combine an atomic counter with completion coordination
-
-<JavaExample file="LatchCoordination.java" output={"2"} />
-
-Each worker atomically increments one shared counter and decrements a completion latch in finally. The atomic operation protects the update; the latch establishes that both task bodies ended before the owner reads. The latch does not itself combine a separate get and set into one increment, and it does not collect worker failure causes. Retain task result handles when success/failure matters as well as completion.
 
 <span id="references"></span>
 ## Primary references

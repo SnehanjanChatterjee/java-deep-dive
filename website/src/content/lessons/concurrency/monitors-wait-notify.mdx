@@ -78,7 +78,7 @@ Each object can serve as a monitor. A synchronized instance method locks its rec
 
 Here value and closed form one guarded invariant. Null is rejected as data because it represents an empty slot. Put waits while occupied and open, then rechecks closure before writing. Take waits while empty and open; it drains accepted data after closure and returns null only when closed and empty. Close sets the flag and wakes both producer and consumer populations.
 
-NotifyAll is useful because one wait set contains different predicates. Waking an arbitrary producer when only a consumer can progress can leave useful work asleep. Separate Conditions in the next chapter target distinct waiter populations.
+NotifyAll is useful because one wait set contains different predicates. Waking an arbitrary producer when only a consumer can progress can leave useful work asleep. The ReentrantLock chapter later uses separate Conditions to target distinct waiter populations.
 
 The main method demonstrates the closure policy sequentially; the earlier handoff program demonstrates real waiting. They answer different questions about the same underlying mechanism.
 

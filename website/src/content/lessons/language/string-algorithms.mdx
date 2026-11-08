@@ -25,6 +25,8 @@ For first-unique search, use the already learned LinkedHashMap as a **frequency 
 
 ReverseCodePoints starts at input.length, obtains codePointBefore(end), appends the full point and subtracts Character.charCount(point). The invariant is that the builder contains the reversed suffix already visited, with no valid surrogate pair split. When end reaches zero, every code point has been appended. Null is rejected; empty text returns empty text. Time is O(n) with O(n) output storage for n UTF-16 units.
 
+The code-point reversal claim assumes well-formed UTF-16 input. Java Strings can also contain unpaired surrogate units; codePointBefore returns an individual unit when it cannot form a pair, and this method does not validate that input. Reversing `"\uDE00\uD83D"` produces `"\uD83D\uDE00"`, forming a valid pair from two originally unpaired units. If well-formed Unicode text is required at the API boundary, validate it explicitly rather than treating code-point iteration as validation. [Character.codePointBefore](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/Character.html#codePointBefore(java.lang.CharSequence,int))
+
 ## Count without assuming a map default value
 
 FirstUnique traverses code points from left to right. Get returns an Integer count or null when absent. Put stores one for an absent point or previous + 1 for a present point. The explicit null test protects unboxing; a missing mapping is not automatically the number zero. LinkedHashMap retains the first insertion order while later count replacements leave that order intact.

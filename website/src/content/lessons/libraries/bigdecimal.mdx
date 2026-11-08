@@ -72,13 +72,24 @@ UP does not mean positive infinity. CEILING and FLOOR depend on sign; the progra
 
 An exact divide can reject a nonterminating decimal expansion such as 1/3. A scale-based divide specifies decimal places; a MathContext specifies significant-digit precision. Intermediate multiplication/division can need a policy even if the final display has two places. Specify whether taxes, discounts or allocations round per item, per group or at the total boundary.
 
+The divide overload determines what precision information is supplied:
+
+| Invocation shape | Result rule | One divided by three |
+| --- | --- | --- |
+| divide(divisor) | Require an exact terminating decimal | ArithmeticException |
+| divide(divisor, roundingMode) | Use the dividend's existing scale | 1 gives 0; 1.00 gives 0.33 with HALF_UP |
+| divide(divisor, scale, roundingMode) | Use the explicitly requested result scale | Scale 4 gives 0.3333 |
+| divide(divisor, mathContext) | Use the context's significant-digit precision and rounding | Precision 4 gives 0.3333 |
+
+The RoundingMode-only overload does not invent extra fractional places. For BigDecimal.ONE the dividend scale is zero, so rounding 1/3 to that scale yields zero under HALF_UP. The numerically equal dividend 1.00 has scale two and yields 0.33. If the domain requires a fixed result scale, state it explicitly rather than depending on an operand's spelling. The complete program prints both cases. [BigDecimal.divide overload contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/math/BigDecimal.html#divide(java.math.BigDecimal,java.math.RoundingMode))
+
 `divideToIntegralValue` obtains the integral quotient; `remainder` returns what remains after that quotient. For 7.25 and 2, the program prints quotient 3.00 and remainder 1.25. Remainder is not a general nonnegative modular operation: a negative dividend can produce a negative remainder. Dividing by zero fails independently of whether a nonzero divisor would have a terminating decimal expansion.
 
 ### Exact minor-unit conversion
 
 For a domain whose declared minor-unit scale is two, moving 1.25 right by two places and calling longValueExact yields 125. A value with extra fractional minor units is rejected by an exact conversion unless the domain explicitly rounds first. Currencies and other decimal domains can use different scales; avoid hard-coding two as a universal money rule.
 
-<JavaExample file="DecimalPolicyLab.java" output={"add=4.60\nsubtract=-2.20\nmultiply=4.080\nexact divide=0.125\nrounded divide=0.3333\nprecision4=12350\nquotient=3.00, remainder=1.25\nUP: -1.3\nDOWN: -1.2\nCEILING: -1.2\nFLOOR: -1.3\nHALF_UP: -1.3\nHALF_DOWN: -1.2\nHALF_EVEN: -1.2\nUNNECESSARY: rounding rejected\nitem tax=4.95, invoice tax=4.94\nnormalized scale=-3"} />
+<JavaExample file="DecimalPolicyLab.java" output={"add=4.60\nsubtract=-2.20\nmultiply=4.080\nexact divide=0.125\nrounded divide=0.3333\ndividend scale0=0\ndividend scale2=0.33\nprecision4=12350\nquotient=3.00, remainder=1.25\nUP: -1.3\nDOWN: -1.2\nCEILING: -1.2\nFLOOR: -1.3\nHALF_UP: -1.3\nHALF_DOWN: -1.2\nHALF_EVEN: -1.2\nUNNECESSARY: rounding rejected\nitem tax=4.95, invoice tax=4.94\nnormalized scale=-3"} />
 
 ### Collection and API consequences
 
@@ -92,7 +103,7 @@ Representation-sensitive equals/hashCode is intentional. If an API requires nume
 
 The example constructs decimal operands from strings and divides one by three with a scale of two and HALF_UP rounding. The result is 0.33. Omitting a rounding policy for this nonterminating decimal division can throw ArithmeticException even though the divisor is nonzero.
 
-The example also contrasts equals with compareTo and exact integer conversion. The outputs false and zero demonstrate representation-sensitive equality versus numeric ordering. Multiplying the decimal position by two minor-unit places yields 125; narrowing 1.25 directly to an exact int is rejected. Compare new BigDecimal(0.1), which captures an existing binary approximation, with constructing from "0.1".
+The example also contrasts equals with compareTo and exact integer conversion. The outputs false and zero demonstrate representation-sensitive equality versus numeric ordering. Moving 1.25's decimal point two places right yields 125; converting 1.25 directly to an exact int is rejected. Compare new BigDecimal(0.1), which captures an existing binary approximation, with constructing from "0.1".
 
 <span id="mechanics-and-tradeoffs" aria-hidden="true"></span>
 

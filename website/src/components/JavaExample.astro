@@ -7,5 +7,7 @@ const displayName=label||file.split('/').at(-1);
 const sources=import.meta.glob(['../../../java-examples/src/{main,test}/java/*.java','../../../java-examples/modern/**/*.java','../../../java-examples/projects/**/*.java','!../../../java-examples/projects/**/target/**','!../../../java-examples/projects/**/.maven-cache/**','!../../../java-examples/projects/**/out/**'],{query:'?raw',import:'default',eager:true});
 const source=Object.entries(sources).find(([path])=>path.endsWith('/'+file))?.[1] as string | undefined;
 if(!source)throw new Error(`Missing canonical Java source: ${file}`);
+const usesAssertionCallback=file.endsWith('Test.java') && source.includes('assertThrows') && /->|::/.test(source);
 ---
+{usesAssertionCallback&&<p>Supporting test source: <code>assertThrows</code> receives the operation to execute as a lambda or method reference. See <a href={url('learn/engineering/first-project-and-tests/')}>test fundamentals</a> and <a href={url('learn/functional/lambdas-and-optional/')}>functional interfaces and callback syntax</a>.</p>}
 <div class="code-wrap example-code"><div class="code-head"><span>{displayName}</span><span><a href={url('examples/'+file)} download aria-label={`Download ${displayName}`}><DownloadSimple size={14} aria-hidden="true"/>Download</a><button data-copy-code aria-label={`Copy ${displayName}`}>Copy</button></span></div><Code code={source} lang="java" themes={{light:"github-light",dark:"github-dark-high-contrast"}} />{output&&<div class="output"><span>OUTPUT</span><code>{output}</code></div>}</div>

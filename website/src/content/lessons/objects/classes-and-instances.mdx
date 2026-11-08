@@ -31,7 +31,9 @@ A variable of class type holds a **reference** identifying an object. A call suc
 
 The field points and the method points() have different roles: one stores state, the other publishes a read operation. Parentheses mark an invocation. A method can return a primitive, return an object reference or perform an action and return void. A class with no declared constructor receives a compiler-provided default constructor; the next chapter replaces it with explicit initialization rules.
 
-## Class members do not need an object receiver
+<span id="class-members-do-not-need-an-object-receiver" aria-hidden="true"></span>
+
+## Static members belong to the class
 
 Fields and methods are **members** of a class. Main is static: it belongs to ScoreCard as a class. A static method has no implicit current ScoreCard, so it cannot read points without identifying an object. The expression `first.points()` provides that receiver. Instance methods instead have an implicit current object, called this.
 

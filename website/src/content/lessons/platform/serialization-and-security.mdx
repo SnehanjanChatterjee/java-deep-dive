@@ -77,21 +77,6 @@ SerialVersionUID participates in representation compatibility. A mismatch can ca
 <span id="serialization-and-security-interview-practice" aria-hidden="true"></span>
 <span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Practice: preserve sharing or make two copies?
-
-If each restored Person had an independent Address with identical city text, would that be the same graph behavior? Does marking session transient guarantee secrecy?
-
-<details>
-<summary>Answer</summary>
-
-No. Equal field text is different from shared identity; changing a mutable shared Address would affect both people, while independent addresses would diverge. Transient only changes default representation eligibility and does not provide confidentiality. Design a deliberate external format when crossing a trust boundary, and apply bounds/validation separately rather than treating a matching class name or UID as evidence of safe data.
-
-</details>
-
-
-<span id="what-native-serialization-actually-records" aria-hidden="true"></span>
-<span id="filtered-serialization-with-invariant-validation" aria-hidden="true"></span>
-
 ## A stream remembers objects it has already written
 
 One ObjectOutputStream has a handle table. If the same ordinary object is written again, the stream can write a back-reference to its earlier representation instead of serializing its newly mutated fields. This preserves identity within a graph, but surprises code that treats repeated writeObject calls as independent snapshots.
@@ -130,6 +115,22 @@ Casting the result of readObject checks its runtime type. The cast does not crea
 With a compatible class evolution, a newly added field can receive its default value when no corresponding value exists in the old stream. A field initializer in the ordinary constructor path is not a reliable migration mechanism for conventional Serializable reconstruction. Validate the resulting state and use an intentional compatible read/migration policy, or reject representations that cannot satisfy the new invariant. Matching UIDs alone does not fill in a meaningful business value.
 
 </details>
+
+
+## Practice: preserve sharing or make two copies?
+
+If each restored Person had an independent Address with identical city text, would that be the same graph behavior? Does marking session transient guarantee secrecy?
+
+<details>
+<summary>Answer</summary>
+
+No. Equal field text is different from shared identity; changing a mutable shared Address would affect both people, while independent addresses would diverge. Transient only changes default representation eligibility and does not provide confidentiality. Design a deliberate external format when crossing a trust boundary, and apply bounds/validation separately rather than treating a matching class name or UID as evidence of safe data.
+
+</details>
+
+
+<span id="what-native-serialization-actually-records" aria-hidden="true"></span>
+<span id="filtered-serialization-with-invariant-validation" aria-hidden="true"></span>
 
 <span id="references" aria-hidden="true"></span>
 <span id="serialization-and-security-references" aria-hidden="true"></span>

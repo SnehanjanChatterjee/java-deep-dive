@@ -50,20 +50,9 @@ InvocationTargetException preserves the target's failure as its cause. IllegalAc
 
 Finding private metadata is different from invoking private behavior. Java/module access rules still apply. trySetAccessible (Java 9+) can return false under strong encapsulation; blindly suppressing checks is not a portable strategy. An exported public API and a package opened for deep reflection are different module contracts, taught in the modules chapter.
 
-## Practice: look up an int overload
-
-A type declares `public void setLevel(int level)`. Will `getMethod("setLevel", Integer.class)` locate it? What if invocation of the correctly located method throws?
-
-<details>
-<summary>Answer</summary>
-
-No: request int.class for lookup. A later invocation can accept a compatible boxed argument under its conversion rules, but that does not alter the lookup signature. If the target body throws, inspect/preserve InvocationTargetException.getCause. If lookup fails, there was no target-body execution to diagnose. Cache member metadata only when the owning type/loader and access policy remain appropriate; reflection is not automatically faster or simpler than a direct interface.
-
-</details>
-
 ## Erasure, varargs and discovery order
 
-A generic method declared with an unbounded T has Object in its erased parameter descriptor. Requesting String.class because this invocation will pass a String does not find a separately reified T=String overload. Generic metadata can describe a TypeVariable or ParameterizedType, but it does not turn every List instance into a runtime List-of-String class.
+When a parameter is declared directly as an unbounded T, its erased parameter type is Object. A parameter declared `List<T>` instead erases to List, and T[] erases to Object[]; erasure follows the parameter's whole type. Requesting String.class for a T parameter because this invocation will pass a String does not find a separately reified T=String overload. Generic metadata can describe a TypeVariable or ParameterizedType, but it does not turn every List instance into a runtime List-of-String class. [JLS: type erasure](https://docs.oracle.com/javase/specs/jls/se25/html/jls-4.html#jls-4.6)
 
 Invocation itself has a varargs boundary: Method.invoke accepts an Object array representing the target's argument list. A target expecting one String[] needs that array treated as **one argument**, not accidentally expanded as several invocation arguments. Casting that array expression to Object is one way to express the intended boundary. The actual target signature remains unchanged.
 
@@ -73,6 +62,17 @@ Do not assign business priority from the order of getDeclaredMethods. Reflection
 <summary>Why can discovery find a private field while reading it fails?</summary>
 
 Discovery identifies metadata. Reading needs a valid receiver/type and applicable access permission. Inspect the access failure and module openness separately from lookup. Caching a Method or Field is not permission to use it on any receiver or pass private-member capabilities to arbitrary code.
+
+</details>
+
+## Practice: look up an int overload
+
+A type declares `public void setLevel(int level)`. Will `getMethod("setLevel", Integer.class)` locate it? What if invocation of the correctly located method throws?
+
+<details>
+<summary>Answer</summary>
+
+No: request int.class for lookup. A later invocation can accept a compatible boxed argument under its conversion rules, but that does not alter the lookup signature. If the target body throws, inspect/preserve InvocationTargetException.getCause. If lookup fails, there was no target-body execution to diagnose. Cache member metadata only when the owning type/loader and access policy remain appropriate; reflection is not automatically faster or simpler than a direct interface.
 
 </details>
 

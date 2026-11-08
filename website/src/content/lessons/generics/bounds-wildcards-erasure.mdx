@@ -97,6 +97,19 @@ You cannot add Double to an extends Number view because it might point to the or
 
 With a super Integer view, existing data might include Double if the underlying list is List&lt;Number&gt;. Reading as Integer would therefore need evidence the wildcard does not provide. Reading as Object is always safe; an instanceof check can then refine a particular runtime element.
 
+## Keep append-copy traversal independent of destination growth
+
+The supplied copy appends into its destination while traversing its source. Its type bounds establish safe reads and writes; they do not establish that the two references own different containers. Passing the same ArrayList as both arguments can invalidate its source iterator after an append. Distinct subList references can also share backing storage. No rollback is promised for such interference.
+
+To append a sequence to itself deliberately, first take a structural snapshot, then traverse that independent container:
+
+```java
+final List<Integer> snapshot = new ArrayList<>(values);
+GenericAlgorithms.copy(values, snapshot);
+```
+
+Starting with [3,1,2], the result is [3,1,2,3,1,2]. The snapshot's membership stays [3,1,2]. Element references are shared; the snapshot protects this traversal from structural changes, not from arbitrary concurrent element mutation. This append-copy algorithm differs from Collections.copy, which overwrites existing destination positions.
+
 ## Capture one unknown type, not several unrelated unknowns
 
 swap accepts List&lt;?&gt;. Reading its left position yields the unknown captured type, but the source declaration cannot write that type name directly. swapCaptured introduces T for this exact list. Both saved values and both set calls now use one T.

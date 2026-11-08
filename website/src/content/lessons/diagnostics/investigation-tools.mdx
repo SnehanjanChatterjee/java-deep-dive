@@ -152,17 +152,6 @@ Thread.print serves this platform-thread monitor scenario. A virtual-thread-heav
 <span id="separate-observation-hypothesis-and-conclusion"></span>
 <span id="a-minimal-thread-state-observation"></span>
 <span id="coding-exercise"></span>
-## Exercise: separate observation, hypothesis and conclusion
-
-The complete lab is the reference implementation. State three observations: waiter is blocked at contend, owner holds the matching monitor while parked on a latch, and a completed monitor-enter event names that owner/waiter after release. The supported causal explanation is this controlled ownership interval. A general incident needs correlation with its workload and time window.
-
-For a high-CPU incident, collect running samples and process/thread CPU evidence. For retention, compare equivalent phases and root paths. Change one hypothesis-relevant factor for a follow-up experiment. A plausible story from one sample is not yet a demonstrated application bottleneck.
-
-<JavaExample file="ThreadInspection.java" output={"TERMINATED"} />
-
-This minimal final-state example waits through join and inspects the remaining Thread object. It establishes termination, while the larger lab demonstrates actual stack/ownership investigation.
-
-<span id="diagnostic-interview-practice"></span>
 ## Read a thread dump as a dependency graph
 
 | Stack/state evidence | What it can indicate | What still needs establishing |
@@ -184,6 +173,18 @@ Workers can wait for new tasks while idle. Determine whether work is queued, whe
 
 </details>
 
+
+## Exercise: separate observation, hypothesis and conclusion
+
+The complete lab is the reference implementation. State three observations: waiter is blocked at contend, owner holds the matching monitor while parked on a latch, and a completed monitor-enter event names that owner/waiter after release. The supported causal explanation is this controlled ownership interval. A general incident needs correlation with its workload and time window.
+
+For a high-CPU incident, collect running samples and process/thread CPU evidence. For retention, compare equivalent phases and root paths. Change one hypothesis-relevant factor for a follow-up experiment. A plausible story from one sample is not yet a demonstrated application bottleneck.
+
+<JavaExample file="ThreadInspection.java" output={"TERMINATED"} />
+
+This minimal final-state example waits through join and inspects the remaining Thread object. It establishes termination, while the larger lab demonstrates actual stack/ownership investigation.
+
+<span id="diagnostic-interview-practice"></span>
 <span id="references"></span>
 
 ## Diagnostic-tool references

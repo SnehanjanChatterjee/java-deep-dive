@@ -77,6 +77,8 @@ SOLID is a reasoning aid, not a requirement to add an interface for every class.
 
 ## Use doubles and test levels at genuine boundaries
 
+A **test double** replaces a real collaborator during a test so the test can control inputs or observe relevant effects. Fakes, stubs and mocks are different kinds of test double. [Test-double terminology](https://martinfowler.com/bliki/TestDouble.html)
+
 A fake repository can provide deterministic in-memory state. A stub Clock/policy can return controlled inputs. A mock verifies an interaction when that interaction is itself meaningful, such as exactly one controlled dispatch. Mocking every private collaboration makes structure part of the test requirement; mocking BigDecimal arithmetic normally obscures the calculation.
 
 Unit tests exercise a bounded behavior such as quote. Integration tests exercise real collaboration such as file/charset round-tripping. Contract tests check independent implementations of an interface promise. A smaller set of end-to-end checks protects whole flows. Choose the level that exposes the relevant failure rather than repeating the same formula everywhere.
@@ -90,12 +92,6 @@ This quote method builds a result without writing storage or charging a payment.
 
 <span id="java-implementation" aria-hidden="true"></span>
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
-## Completed design exercise
-
-For a new discount policy, define its input/output bounds first, supply it through DiscountPolicy, and use the same quote boundary/tests to reject invalid results. A zero-discount policy is subtotal -> 0; a full-discount policy is subtotal -> subtotal. Both preserve 0 ≤ discount ≤ subtotal. A policy returning −1 or subtotal+1 violates substitutability and is rejected.
-
-For refactoring, retain ContractExampleTest unchanged while extracting the private helper shown above. The supplied source is the completed reference. Test a future currency/rounding requirement separately after defining that new contract; the current example does not claim to cover payments, persistence or arbitrary concurrent policies.
-
 ## Evaluate substitutability with one concrete counterexample
 
 Suppose a discount policy advertises the same interface but stores each customer's request in a global mutable collection. Its numeric return might satisfy 0 ≤ discount ≤ subtotal, yet it violates this API's stated side-effect-free requirement and can introduce retention/races. Type compatibility is only part of substitutability; preconditions, postconditions, failures and effects belong to the promise too.
@@ -108,6 +104,12 @@ A useful review starts with a table of accepted inputs and outcomes. Then choose
 Not for this pure public contract. That assertion would couple tests to an implementation detail and reject a valid alternative that validates inline. Assert accepted/rejected inputs and exact results instead. Interaction assertions belong where the interaction is an observable requirement, such as invoking an effectful dispatch once under a defined retry policy.
 
 </details>
+
+## Completed design exercise
+
+For a new discount policy, define its input/output bounds first, supply it through DiscountPolicy, and use the same quote boundary/tests to reject invalid results. A zero-discount policy is subtotal -> 0; a full-discount policy is subtotal -> subtotal. Both preserve 0 ≤ discount ≤ subtotal. A policy returning −1 or subtotal+1 violates substitutability and is rejected.
+
+For refactoring, retain ContractExampleTest unchanged while extracting the private helper shown above. The supplied source is the completed reference. Test a future currency/rounding requirement separately after defining that new contract; the current example does not claim to cover payments, persistence or arbitrary concurrent policies.
 
 ## References
 

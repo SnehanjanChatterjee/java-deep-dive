@@ -49,13 +49,22 @@ toConcurrentMap combines repeated words with a lawful count merge. groupingByCon
 
 A concurrent outer map does not promise that its grouped List values are generally thread-safe for arbitrary caller mutation. The final line checks only group cardinalities after terminal completion, not incidental order within those lists. If encounter order is a value requirement, choose an ordered reduction or explicitly construct/sort the required sequence.
 
-An ordinary nonconcurrent collector can be parallel-safe through separate partial containers. A concurrent collector can permit shared accumulation under its applicable characteristics and stream ordering conditions. Neither description implies that every arbitrary user accumulator is safe, or that changing characteristics repairs an incorrect combiner.
+An ordinary nonconcurrent collector can be parallel-safe through separate partial containers. A concurrent reduction additionally requires a parallel stream, a collector declaring CONCURRENT, and either an unordered stream or a collector declaring UNORDERED.
+
+| Evaluation and collector | Shared concurrent accumulation |
+| --- | --- |
+| Sequential evaluation | No overlapping accumulator calls from this evaluation |
+| Parallel, collector not CONCURRENT | Use isolated partial containers and combine |
+| Parallel, CONCURRENT, with an unordered stream or UNORDERED collector | Concurrent reduction is supported by those contracts |
+| Parallel, CONCURRENT, ordered stream and collector not UNORDERED | Preserve the ordered reduction contract; CONCURRENT alone is insufficient |
+
+This explains why groupingByConcurrent can perform an unordered concurrent reduction even when its input comes from an ordered List: the collector declares UNORDERED as well as CONCURRENT. These properties do not promise a particular worker count or supplier-call count, and they cannot repair an unsafe accumulator or incorrect merge. [Stream.collect concurrent-reduction conditions](https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html#collect-java.util.stream.Collector-)
 
 sequential()/parallel() configure pipeline evaluation mode, and isParallel reports that mode without consuming elements. The StreamSources program changes mode before its one terminal operation. unordered relaxes result order constraints; it neither randomizes elements nor forces another thread count. These are pipeline contracts, not a manual worker-allocation API.
 
 ## Understand execution resources
 
-Parallel streams commonly use ForkJoin machinery; pool sharing, contention and blocking matter. Blocking I/O can occupy workers needed elsewhere. Nested parallelism is not an automatic optimization. The concurrency module later develops task pools and work stealing. Here the essential model is independent partial work plus combination, rather than a universal faster mode.
+Parallel streams commonly use ForkJoin machinery; pool sharing, contention and blocking matter. Blocking I/O can occupy workers needed elsewhere. Nested parallelism is not an automatic optimization. The prerequisite executor and ForkJoin chapters develop task ownership and work stealing. Here the essential model is independent partial work plus combination, rather than a universal faster mode.
 
 A timed wait does not establish cancellation of remote effects or complete resource cleanup. A stream pipeline is also not a substitute for an explicit bounded task protocol when admission, deadlines and lifetime are the main problem.
 

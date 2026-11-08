@@ -37,23 +37,6 @@ The attempted exact call with 4L has a long argument, so WrongMethodTypeExceptio
 
 `findVirtual` differs from `findStatic`: the requested method type describes the member's parameters/result, while the obtained handle also needs the receiver as an invocation argument. `bindTo` can bind an appropriate receiver and remove that parameter. Keep receiver, arguments and result visible when writing down the invocation type.
 
-## Keep access and performance claims precise
-
-A lookup has a defined access context. Handles do not automatically bypass module readability or package openness. Do not pass a privileged private-member handle to code that should not possess that capability. A handle is immutable, while its target can still mutate state or require coordination.
-
-Lookup frequency, adaptation and call-site stability affect optimization. Measure an actual invocation pattern before claiming handles always outperform reflection or direct calls. A cached handle can avoid repeated lookup without proving every remaining cost disappears.
-
-## Practice: diagnose two failures
-
-An exact invocation uses long where the handle expects int. A correctly shaped call instead supplies Integer.MAX_VALUE to twice. Are these the same error?
-
-<details>
-<summary>Answer</summary>
-
-No. The first fails the invocation type relationship with WrongMethodTypeException. The second reaches Math.multiplyExact and fails with ArithmeticException because the int result would overflow. Changing a cast can fix an invocation descriptor, but cannot make an overflowing mathematical result fit the declared numeric domain.
-
-</details>
-
 ## Write the type through each adaptation
 
 | Operation in the example | Incoming type | Resulting handle type |
@@ -85,6 +68,24 @@ The String cast at invokeExact supplies the composite call site's required retur
 <summary>What changes when a virtual handle is bound to one receiver?</summary>
 
 The unbound handle needs the receiver in addition to the member's explicit parameters. Binding a compatible receiver supplies that argument in advance, so it disappears from the resulting invocation type. The target still acts on that same receiver and can mutate its state. Handle immutability therefore does not imply target immutability or automatic thread safety.
+
+</details>
+
+
+## Keep access and performance claims precise
+
+A lookup has a defined access context. Handles do not automatically bypass module readability or package openness. Do not pass a privileged private-member handle to code that should not possess that capability. A handle is immutable, while its target can still mutate state or require coordination.
+
+Lookup frequency, adaptation and call-site stability affect optimization. Measure an actual invocation pattern before claiming handles always outperform reflection or direct calls. A cached handle can avoid repeated lookup without proving every remaining cost disappears.
+
+## Practice: diagnose two failures
+
+An exact invocation uses long where the handle expects int. A correctly shaped call instead supplies Integer.MAX_VALUE to twice. Are these the same error?
+
+<details>
+<summary>Answer</summary>
+
+No. The first fails the invocation type relationship with WrongMethodTypeException. The second reaches Math.multiplyExact and fails with ArithmeticException because the int result would overflow. Changing a cast can fix an invocation descriptor, but cannot make an overflowing mathematical result fit the declared numeric domain.
 
 </details>
 

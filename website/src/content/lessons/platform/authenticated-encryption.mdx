@@ -37,17 +37,6 @@ Associated data can authenticate context without encrypting it, such as a protoc
 
 Do not use unauthenticated decrypted data as trusted application state before authentication succeeds. Keep the original authentication failure visible at the boundary owning the operation. An encrypted, authenticated message still needs domain validation and an authorized purpose; cryptography does not decide whether a caller may perform an action.
 
-## Practice: reuse a nonce after restart?
-
-A service persists its AES key but resets an incrementing nonce counter to zero after every restart. Why does passing a round-trip test fail to establish security?
-
-<details>
-<summary>Answer</summary>
-
-The same key/nonce pairs can repeat across process lifetimes, violating GCM's uniqueness requirement even though encryption and decryption still round-trip. Preserve a safe allocation state or adopt an established protocol that guarantees uniqueness across the key's lifetime. Test tampering and malformed inputs as failure paths, and review key/nonce ownership separately from ordinary functional output. Prefer established protocols and reviewed libraries over adding a custom checksum or home-made cipher composition.
-
-</details>
-
 ## Explain every boundary in the round trip
 
 The source's transform helper creates a fresh Cipher for one operation, selects encrypt or decrypt mode, supplies a GCMParameterSpec and calls doFinal. Creating a fresh Cipher avoids sharing its mutable operation state between these calls. It does not make reusing a key/nonce pair safe for repeated encryption. The example's key is freshly generated and used for one encrypted message.
@@ -65,6 +54,17 @@ Tampering with the tag, ciphertext or authenticated context must not yield a suc
 <summary>Does converting ciphertext to a UTF-8 String make a valid storage format?</summary>
 
 No. Arbitrary ciphertext bytes need not be valid text and a text decoding/encoding round trip can lose bytes. Use a specified binary format or a byte-preserving encoding such as Base64 when text transport is needed. That encoding supplies no additional confidentiality or authentication.
+
+</details>
+
+## Practice: reuse a nonce after restart?
+
+A service persists its AES key but resets an incrementing nonce counter to zero after every restart. Why does passing a round-trip test fail to establish security?
+
+<details>
+<summary>Answer</summary>
+
+The same key/nonce pairs can repeat across process lifetimes, violating GCM's uniqueness requirement even though encryption and decryption still round-trip. Preserve a safe allocation state or adopt an established protocol that guarantees uniqueness across the key's lifetime. Test tampering and malformed inputs as failure paths, and review key/nonce ownership separately from ordinary functional output. Prefer established protocols and reviewed libraries over adding a custom checksum or home-made cipher composition.
 
 </details>
 

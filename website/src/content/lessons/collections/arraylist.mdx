@@ -50,7 +50,7 @@ ArrayList(), ArrayList(initialCapacity) and ArrayList(collection) have different
 | --- | --- | --- |
 | get / set | Read or replace an existing position; set returns its old value | O(1) after bounds checks |
 | add(value) | Append one position | Amortized O(1); an expansion can copy O(n) |
-| add(index,value) | Insert, shifting the suffix | O(n−index), plus possible growth |
+| add(index,value) | Insert, shifting the suffix | Move n−index references, plus O(1) ordinary work and possible growth |
 | addAll(values) / addAll(index,values) | Insert source sequence | Includes source size, suffix movement and possible growth |
 | indexOf / lastIndexOf | First/last equality match, or −1 | O(n) equality checks |
 | remove(index) / remove(Object) | Return old value / report first equal-value removal | Includes search or suffix movement as applicable |

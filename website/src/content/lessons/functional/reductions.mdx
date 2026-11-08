@@ -25,7 +25,7 @@ for (final int value : values) { total += value; }
 final int reduced = values.stream().reduce(0, Integer::sum);
 ```
 
-The initial 0 is the **identity**, an input that leaves an addition result unchanged. The combining function takes the running result and the next element. A maximum has no universal integer identity; the overload without an identity returns Optional and leaves empty input empty.
+The initial 0 is the **identity**, an input that leaves an addition result unchanged. The combining function takes the running result and the next element. For Integer::max over the bounded int domain, Integer.MIN_VALUE is a valid identity: max(MIN_VALUE,x) equals x for every int. An identity-based reduction would return MIN_VALUE both for empty input and for a real maximum of MIN_VALUE. The no-identity overload returns Optional so those outcomes stay distinct.
 
 <JavaExample file="StreamReductionLab.java" output={"10\n4\nfalse\n10"} />
 

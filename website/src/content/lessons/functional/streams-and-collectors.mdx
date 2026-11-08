@@ -73,6 +73,8 @@ Resource-backed sources still need closing. A stream from an ordinary collection
 
 The final program expression filters even numbers, squares them and finds the first result. It can reject 1, accept 2, produce 4 and stop. It need not create a complete filtered list or evaluate 3 and 4.
 
+The animation uses IntStream, whose elements are primitive ints, and OptionalInt for its possible first result. The downloadable program uses `Stream<Integer>` and `Optional<Integer>` for the same numeric transformation. Their element/result types differ; both illustrate rejecting 1, squaring 2 and obtaining 4 without needing the remaining inputs.
+
 <ConceptAnimation client:visible model="stream" />
 
 This model illustrates a legal sequential traversal of [1,2,3,4], filter-even, square and findFirst. It is a teaching model rather than a JVM execution transcript. The Stream contract permits optimizations when callbacks cannot affect the required result; do not place mandatory auditing or writes in peek/map and depend on every invocation occurring.

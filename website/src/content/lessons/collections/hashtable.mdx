@@ -1,0 +1,109 @@
+---
+title: "Hashtable, legacy enumeration and map contracts"
+module: "collections"
+group: "Maps and search trees"
+summary: "Use Hashtable mappings, distinguish its value-based contains method and traverse a stable table with Enumeration before examining buckets and locking limits."
+order: 475
+version: "Java 8+; implementation discussion OpenJDK 25"
+prerequisites: ["collections/hashmap", "collections/map-views-and-updates", "collections/linkedlist"]
+advanced: false
+---
+
+import JavaExample from '../../../components/JavaExample.astro';
+import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
+
+## Read a legacy key-to-value table
+
+Hashtable is a Java class implementing Map. It associates one non-null value with each non-null key, uses equality and hashing for key membership, and supplies synchronized operations. It appears in older APIs and code, so understanding its behavior matters even when a new design chooses another implementation.
+
+Start with a score table. put("Ada",10) creates one mapping; put("Lin",8) creates another. A later put("Ada",20) replaces Ada's value and returns the old 10. There are still two keys. get("Ada") now returns 20. No insertion or sorted encounter order is promised.
+
+This fragment uses the same Map operations already learned:
+
+```java
+final Hashtable<String, Integer> table = new Hashtable<>();
+table.put("Ada", 10);
+table.put("Lin", 8);
+final Integer old = table.put("Ada", 20); // 10
+final Integer current = table.get("Ada"); // 20
+```
+
+The no-argument constructor creates an empty table. Capacity reserves buckets; it does not create score entries. Other constructors accept an initial capacity, a capacity/load factor, or an existing Map whose associations are copied. Copying associations shares key/value references.
+
+## Keep key queries separate from legacy value queries
+
+Hashtable has an older method named contains(Object). It searches **values**, like containsValue. It is different from containsKey. In this table, containsKey("Ada") is true, contains("Ada") is false, and containsValue(20) is true. HashMap has no corresponding contains method; choose the explicit containsKey/containsValue name when reading or migrating code.
+
+Both null keys and null values are rejected with NullPointerException. Consequently get returning null means no mapping for an eligible key. Querying with a null key is itself invalid; it is not an absence test. remove returns the previous value or null when no mapping existed. The null policy differs from HashMap and a synchronized wrapper over a null-capable backing map.
+
+## Traverse a stable table with Enumeration
+
+An Enumeration is a legacy traversal cursor. hasMoreElements asks whether another item can be returned, and nextElement returns it or throws NoSuchElementException when exhausted. It has no Iterator.remove operation. Hashtable.keys supplies keys; elements supplies values.
+
+```java
+final Enumeration<String> keys = table.keys();
+while (keys.hasMoreElements()) {
+    final String key = keys.nextElement();
+    // Process this key without depending on its encounter position.
+}
+```
+
+The complete copyKeys helper appends each enumerated key to a new ArrayList. Its caller must prevent structural changes during the whole traversal. After copying finishes, adding/removing table mappings does not change the result list, and editing that list does not edit the table. The key objects remain shared. This is an ordinary stable-input copy, not a concurrently atomic snapshot.
+
+<JavaExample file="HashtableLesson.java" output={"replaced=10\nAda=20, size=2\nkey/legacy-value/value=true/false/true\nenumerated=2, members=true\nmissing=null\nnull key rejected\nnull value rejected\nremoved=8, size=1\ncollision members=2"} />
+
+The enumeration line checks membership and count rather than asserting an order. Removing Lin returns eight and leaves one mapping. The final separate table stores Aa and BB: their String hashes collide, but their unequal values remain distinct keys.
+
+Collection-view iterators such as keySet().iterator() use best-effort fail-fast detection. The legacy keys/elements enumerations are not fail-fast; structural modification during enumeration gives undefined results. Neither behavior establishes a whole-table snapshot or a concurrency protocol. [Hashtable traversal contracts](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Hashtable.html)
+
+## Follow a bucket search before discussing locks
+
+The selected OpenJDK 25 implementation uses an array of buckets with linked entry chains. A lookup computes the key hash, selects a bucket, then checks candidate hashes and key equality. During put, a matching key updates its existing value; a previously absent unequal key needs its own entry, even when it collides. A successful get returns the matched value without replacing it. This is the chained-table mechanism developed in the earlier handwritten map, with different indexing/growth choices.
+
+<Diagram client:visible definition={"flowchart LR\n Q[Lookup BB] --> H[String hash 2112]\n H --> B[Bucket 0 at capacity 11]\n B --> E[Candidate BB maps to 2]\n E -. next link, not followed for this hit .-> A[Another candidate Aa maps to 1]\n E --> R[Hash and equality match BB: return 2]"} caption="The two strings share a bucket without becoming one key. Solid arrows follow the successful BB lookup. The dotted arrow is a stored next link that this hit does not traverse. This is an illustrative chain, not an encounter-order guarantee." />
+
+In this source version, indexing uses (hash & 0x7fffffff) modulo table length. The default initial capacity is eleven; ordinary growth aims at twice the old capacity plus one, subject to limits. Do not substitute HashMap's power-of-two mask or assume it uses the same tree-bin policy. Follow rehash when studying how stored entries move. These representation details are separate from the Map/null/traversal contract.
+
+With suitable hash dispersion and bounded key-method cost, exact-key operations have expected constant search work, while a crowded chain can require linear candidate checks. A value search scans entries; a resize redistributes them. Concurrent waiting for a lock is another cost, so these algorithm bounds are not latency guarantees.
+
+## Defer shared-access protocols until the concurrency foundations
+
+Synchronized instance operations coordinate on that **Hashtable object's** monitor. Two different tables have different instance monitors. A coordinated get and a coordinated put do not automatically combine “check missing, calculate, install” into one indivisible operation. An Enumeration also spans many calls; individual method synchronization is not enough to permit arbitrary overlapping structural changes.
+
+The <a href={lessonUrl('learn/concurrency/intrinsic-lock-identity/')}>monitor-identity lesson</a> and <a href={lessonUrl('learn/concurrency/concurrenthashmap/')}>ConcurrentHashMap lesson</a> develop complete shared-access and per-key update protocols after ordinary threads. No thread creation or locking block is needed for this lesson's stable single-threaded example. Stored mutable values still need their own ownership rules.
+
+For migration, choose HashMap when the application's ownership needs no supplied synchronization. For concurrent access, evaluate ConcurrentHashMap's null, update and weak-iteration contracts after those prerequisites. Neither a legacy label nor one timing comparison establishes the right replacement.
+
+## Solved interview questions
+
+<details>
+<summary>Why can contains("Ada") be false while get("Ada") returns twenty?</summary>
+
+contains checks values, so it compares the String Ada with stored Integer values. containsKey checks the key domain. Use the explicit names to keep that distinction visible; do not infer semantics from a method name shared by another collection class.
+
+</details>
+
+<details>
+<summary>Does an Enumeration that throws no ConcurrentModificationException prove traversal was valid?</summary>
+
+No. These enumerations are not fail-fast. Their results are undefined after structural interference. Establish stable input or the required shared-access protocol for the whole traversal instead of relying on an exception detector.
+
+</details>
+
+<details>
+<summary>Does synchronized Hashtable make a pair of calls atomic or freeze a stored list?</summary>
+
+No. The two calls are still separate operations, and the referenced list remains mutable. The concurrency chapters teach how to protect a larger invariant; typed storage and one method's synchronization do not provide that invariant automatically.
+
+</details>
+
+<JavaExample file="HashtableLessonTest.java" />
+
+The tests cover empty/nonempty enumeration, detached result membership, null table/key/value rejection, replacement, value-versus-key queries, exhaustion and unequal colliding keys. They deliberately make no assertion about enumeration order or behavior during forbidden structural interference.
+
+## References
+
+- [Hashtable methods, null policy and traversal](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/util/Hashtable.html)
+- [OpenJDK 25 Hashtable: buckets, rehash and synchronized methods](https://github.com/openjdk/jdk/blob/jdk-25-ga/src/java.base/share/classes/java/util/Hashtable.java)
+- [Enumeration cursor protocol](https://docs.oracle.com/javase/8/docs/api/java/util/Enumeration.html)

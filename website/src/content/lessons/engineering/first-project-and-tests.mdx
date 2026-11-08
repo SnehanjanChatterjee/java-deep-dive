@@ -64,7 +64,7 @@ JUnit is a dependency with test scope: it is available to compile and execute te
 
 <JavaExample file="projects/first-tests/src/test/java/study/math/CalculatorTest.java" />
 
-`@Test` marks a method for the runner. The runner creates the test fixture and invokes test methods; this class needs no main method. The static import lets the code write `assertEquals` instead of its declaring class name.
+`@Test` marks a method for the runner. With this default JUnit 4 runner, each test method runs on a fresh instance of CalculatorTest. The test instance and any state prepared for a test form its **fixture**; this class needs no main method. Fresh test instances do not isolate mutable static fields or external files, so tests still need deliberate state ownership. The static import lets the code write `assertEquals` instead of its declaring class name. [JUnit 4 test lifecycle](https://junit.org/junit4/javadoc/4.13.2/org/junit/Test.html)
 
 In `assertEquals(5, Calculator.add(2, 3))`, the expected value comes first and the actual result second. A mismatch produces an assertion failure with both values. Each test method is independent: these tests do not rely on execution order or shared mutable state.
 
@@ -99,6 +99,19 @@ Read the test name and the assertion's source line, then compare the expected an
 
 A test failure and a test error need different investigation. A failed assertion means the test reached a comparison and disagreed. An unexpected exception may stop it before the intended assertion. Compilation failure happens earlier still: no test execution can establish behavior for code that did not compile.
 
+## Import the existing build into an IDE
+
+In Eclipse, import the extracted directory as an existing Maven project using its pom.xml. In another IDE, open/import that same POM rather than creating a second unrelated source structure. Confirm the selected project JDK, language target, production source root and test source root. The root folder containing pom.xml is the project root; src/main/java is not a separate repository or project root.
+
+| Symptom | Check first |
+| --- | --- |
+| JUnit imports are red only in the IDE | Maven dependency refresh and test-source classification |
+| Terminal and IDE run different results | Entry point, output directory, selected JDK and launch classpath |
+| Test compiles but is not discovered | Runner/framework version, @Test import and test-selection conventions |
+| java -jar fails after package | Manifest entry point and dependency packaging, rather than arithmetic code |
+
+A Git repository can use this project root directly. Source/build descriptors are maintained inputs; target is generated output. A branch/commit records a source revision, while Maven compile/test/package produces artifacts from a revision. Git push publishes repository objects and is not the same operation as Maven deploy publishing build artifacts. Neither operation is required to understand or run this local exercise.
+
 ## Exercises and complete answers
 
 <details>
@@ -121,19 +134,6 @@ The behavior under test is the returned arithmetic result. Calling add isolates 
 Change the production operation to Math.addExact and replace the wrapping-boundary expectation with an assertion that ArithmeticException is thrown. The requirement, implementation and test must change together. Exception contracts are developed in the next module; a test's current behavior is not permission to invent a different API silently.
 
 </details>
-
-## Import the existing build into an IDE
-
-In Eclipse, import the extracted directory as an existing Maven project using its pom.xml. In another IDE, open/import that same POM rather than creating a second unrelated source structure. Confirm the selected project JDK, language target, production source root and test source root. The root folder containing pom.xml is the project root; src/main/java is not a separate repository or project root.
-
-| Symptom | Check first |
-| --- | --- |
-| JUnit imports are red only in the IDE | Maven dependency refresh and test-source classification |
-| Terminal and IDE run different results | Entry point, output directory, selected JDK and launch classpath |
-| Test compiles but is not discovered | Runner/framework version, @Test import and test-selection conventions |
-| java -jar fails after package | Manifest entry point and dependency packaging, rather than arithmetic code |
-
-A Git repository can use this project root directly. Source/build descriptors are maintained inputs; target is generated output. A branch/commit records a source revision, while Maven compile/test/package produces artifacts from a revision. Git push publishes repository objects and is not the same operation as Maven deploy publishing build artifacts. Neither operation is required to understand or run this local exercise.
 
 ## References for project and test fundamentals
 

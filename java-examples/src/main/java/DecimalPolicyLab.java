@@ -12,6 +12,8 @@ public final class DecimalPolicyLab {
         System.out.println("multiply=" + a.multiply(b).toPlainString());
         System.out.println("exact divide=" + BigDecimal.ONE.divide(new BigDecimal("8")).toPlainString());
         System.out.println("rounded divide=" + BigDecimal.ONE.divide(new BigDecimal("3"), 4, RoundingMode.HALF_UP));
+        System.out.println("dividend scale0=" + BigDecimal.ONE.divide(new BigDecimal("3"), RoundingMode.HALF_UP));
+        System.out.println("dividend scale2=" + new BigDecimal("1.00").divide(new BigDecimal("3"), RoundingMode.HALF_UP));
         System.out.println("precision4=" + new BigDecimal("12345.67").round(new MathContext(4, RoundingMode.HALF_EVEN)).toPlainString());
         final BigDecimal dividend = new BigDecimal("7.25"), divisor = new BigDecimal("2");
         System.out.println("quotient=" + dividend.divideToIntegralValue(divisor) + ", remainder=" + dividend.remainder(divisor));

@@ -111,7 +111,7 @@
   },
   {
     "class": "BuiltInGatherers",
-    "expected": "scan=[1, 3, 6]\nfold=[6]\nfixed=[[1, 2], [3]]\nsliding=[[1, 2], [2, 3]]\nshort sliding=[[1]]\nempty windows=[]"
+    "expected": "scan=[1, 3, 6]\nfold=[6]\nempty scan=[]\nempty fold=[0]\nfixed=[[1, 2], [3]]\nsliding=[[1, 2], [2, 3]]\nshort sliding=[[1]]\nempty windows=[]"
   },
   {
     "class": "ConcurrentGatherer",

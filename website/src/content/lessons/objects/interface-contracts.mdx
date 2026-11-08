@@ -23,7 +23,7 @@ Functional does not mean the method is automatically pure or free of side effect
 | Description | What matters | Consequence |
 | --- | --- | --- |
 | Ordinary capability | The required operations and their behavior | A concrete implementation fulfills the complete inherited contract |
-| Functional interface | One abstract operation after the language's inheritance/signature rules | A named class can implement it; lambdas express implementations later |
+| Functional interface | An interface not declared sealed, with one abstract operation after the language's inheritance/signature rules | A named class can implement it; lambdas express implementations later |
 | Marker type | Membership in a named type carries a defined meaning | An API can test or require that type even when it declares no operations |
 
 The empty Tagged interface below adds a type relationship. It does not execute a tagging operation automatically. Serializable and Cloneable are standard-library marker examples whose specific APIs are developed later; implementing a marker alone does not run serialization or create a clone.
@@ -40,7 +40,7 @@ TextOperation's default kind method is inherited behavior. Its static descriptio
 
 TextOperation declares apply and redeclares equals(Object), yet @FunctionalInterface is valid. A public Object-method signature such as equals(Object) does not add another functional-operation requirement. Default and static methods also do not add abstract operations. Inherited override-equivalent declarations can describe one operation rather than several unrelated ones.
 
-The annotation asks the compiler to check the functional-interface rule; it is optional when the interface already satisfies that rule. Add an unrelated abstract method such as `int length();` and this declaration no longer qualifies. A class can still implement a nonfunctional interface normally; it simply lacks that single-operation target shape. Java 9+ also permits private interface helpers, which are implementation details rather than inherited abstract operations. [JLS interface methods and functional interfaces](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.8)
+The annotation asks the compiler to check the functional-interface rule; it is optional when the interface already satisfies that rule. Add an unrelated abstract method such as `int length();` and this declaration no longer qualifies. A class can still implement a nonfunctional interface normally; it simply lacks that single-operation target shape. The definition also excludes an interface declared sealed, a subtype restriction taught in the later sealed-types lesson; counting one abstract operation alone is not sufficient for that declaration. Java 9+ also permits private interface helpers, which are implementation details rather than inherited abstract operations. [JLS interface methods and functional interfaces](https://docs.oracle.com/javase/specs/jls/se25/html/jls-9.html#jls-9.8)
 
 ## Resolve unrelated defaults at the implementing class
 

@@ -35,7 +35,7 @@ Suppose a live root reaches a list, the list reaches A/B, and an unrelated C/D c
 
 A nonmoving reclaiming phase can make unreachable storage reusable. A moving collector instead copies selected live objects, updates the references that must name their new locations, and reuses the vacated storage. Compaction reduces fragmentation by organizing survivors. These are algorithmic models; a particular collector combines them with barriers and synchronization rules.
 
-For movement, call A’s old location L1 and its destination L2. After copying A, both a root reference to A and B’s field referring to A must continue to identify that same logical object. Repairing only the root would leave B’s path stale. A collector can update references directly or use its documented barrier/indirection protocol; the symbols L1/L2 are a teaching model, not measured addresses. Reuse of the old storage follows only after the required protocol keeps those references valid.
+For movement, call A’s old location L1 and its destination L2. After copying A, the list’s reference to A must continue to identify that same logical object. If an additional root also refers directly to A, both that root and the list reference need the appropriate repair; updating only the root would leave the list’s path stale. A collector can update references directly or use its documented barrier/indirection protocol; the symbols L1/L2 are a teaching model, not measured addresses. Reuse of the old storage follows only after the required protocol keeps those references valid.
 
 <Diagram client:visible definition={"flowchart TD\n R[Root reference] --> L[List]\n L --> A[Live A]\n L --> B[Live B]\n A --> N[Copy survivor to selected destination]\n N --> F[Repair relevant references]\n U[Unreachable C–D cycle] --> X[Storage can be reclaimed]\n F --> Q[Vacated storage reusable under collector protocol]"} caption="Liveness discovery and moving/reference repair are separate responsibilities. This picture does not expose a real object's address or prescribe every collector's phases." />
 
@@ -91,7 +91,7 @@ java -Xms32m -Xmx32m -XX:+UseG1GC -Xlog:gc GarbageCollectionWorkload
 
 These are observed teaching records, not promised pause times. The timestamp is JVM uptime. GC(0)/GC(1) identify different collection events. Pause Young names a young collection, and G1 Evacuation Pause identifies its moving/evacuation activity. In the first event the reported occupancy changes from about 18M to about 2M within a 32M heap capacity; these rounded figures are not exact payload-byte accounting or whole-process resident memory.
 
-The 0.507ms duration describes that recorded pause, not average operation time, request p99 or the complete cost of concurrent GC work. The second event has a different pre-collection occupancy and pause. Comparable low post-collection occupancy is consistent with this bounded owner; a leak investigation would still need repeated equivalent phases and actual retaining paths.
+The 0.507ms duration describes that recorded pause, not average operation time, request p99 (99th-percentile request latency) or the complete cost of concurrent GC work. The second event has a different pre-collection occupancy and pause. Comparable low post-collection occupancy is consistent with this bounded owner; a leak investigation would still need repeated equivalent phases and actual retaining paths.
 
 <span id="zgc-concurrent-work-with-headroom-requirements"></span>
 <span id="choosing-a-collector-from-a-workload"></span>
@@ -102,13 +102,6 @@ The **Z Garbage Collector (ZGC)** is another HotSpot collector, designed around 
 Serial, Parallel, G1 and ZGC balance throughput, pauses, CPU and footprint differently, with availability/defaults depending on runtime/platform. Choose from workload goals and evidence rather than a universal ranking. Changing collector, heap and application code together makes causal interpretation harder.
 
 <span id="investigation-exercise-and-solution"></span>
-## Exercise and complete interpretation
-
-Explain why the static buffer window stays at sixteen entries while allocating replacements. Then decode every first-event field and identify which claim needs other evidence: reclaimed occupancy, retained owner, or request latency. The program supplies the complete workload; the explanations above supply the worked interpretation.
-
-For retention, run CoreRetentionLab with hold and locate its static map's root path. Allocation profiles identify where new arrays are made; heap graphs identify who keeps them. Weak/soft references and cleaners are specialized contracts, not generic repairs for unclear ownership or a replacement for deterministic external-resource close.
-
-<span id="reference-strengths-and-external-resources"></span>
 ## Compare collector strategies before tuning them
 
 | Strategy | Primary mechanism to explain | Tradeoff to investigate |
@@ -127,6 +120,13 @@ An old object can hold a reference to the young object. The young-collection alg
 
 </details>
 
+## Exercise and complete interpretation
+
+Explain why the static buffer window stays at sixteen entries while allocating replacements. Then decode every first-event field and identify which claim needs other evidence: reclaimed occupancy, retained owner, or request latency. The program supplies the complete workload; the explanations above supply the worked interpretation.
+
+For retention, run CoreRetentionLab with hold and locate its static map's root path. Allocation profiles identify where new arrays are made; heap graphs identify who keeps them. Weak/soft references and cleaners are specialized contracts, not generic repairs for unclear ownership or a replacement for deterministic external-resource close.
+
+<span id="reference-strengths-and-external-resources"></span>
 ## References
 
 - [G1 architecture and phases](https://dev.java/learn/jvm/tool/garbage-collection/g1gc-overview/)

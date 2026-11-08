@@ -46,17 +46,6 @@ An inherited method can still be represented by its original Method declaration 
 
 An annotation processor operates during compilation rounds, where it can validate inputs and generate additional sources/resources. It does not turn every annotated method into an intercepted runtime call. Configure processor discovery explicitly in the build with its processor path/module path or processor selection. Runtime retention is unnecessary when only compile-time processing needs the metadata; conversely, retaining an annotation does not install a processor.
 
-## Practice: repair an absent runtime annotation
-
-A Label is visible in a class-file inspection but getAnnotation returns null. What should you check before changing reflection access?
-
-<details>
-<summary>Answer</summary>
-
-Check retention first: CLASS metadata can exist without being returned by runtime annotation lookup. Then check the annotated declaration and lookup policy: type versus method, interface versus implementation, declared-only versus inherited-aware. Access suppression does not change retention or move an annotation onto a different member. Recompile after changing the annotation definition and apply the intended definition consistently across dependencies.
-
-</details>
-
 ## Annotation elements, repetition and processing rounds
 
 An annotation element is a declaration of metadata, not a normal mutable instance field. Permitted element types include primitives, String, Class, enum types, annotation types and one-dimensional arrays of permitted types. An element cannot use null as its default. These restrictions allow metadata to be encoded and interpreted consistently, rather than holding arbitrary application objects.
@@ -71,6 +60,17 @@ An annotation processor receives a compile-time element/type model, not already 
 <summary>Is an annotation that declares String value() a functional interface?</summary>
 
 No. An annotation type has its own declaration and usage rules; the presence of one element declaration does not make it an ordinary lambda target. Similarly, @FunctionalInterface asks the compiler to validate a functional-interface contract; it does not make an otherwise invalid multiple-abstract-method interface functional. Distinguish the compiler-checked declaration from a runtime annotation consumer.
+
+</details>
+
+## Practice: repair an absent runtime annotation
+
+A Label is visible in a class-file inspection but getAnnotation returns null. What should you check before changing reflection access?
+
+<details>
+<summary>Answer</summary>
+
+Check retention first: CLASS metadata can exist without being returned by runtime annotation lookup. Then check the annotated declaration and lookup policy: type versus method, interface versus implementation, declared-only versus inherited-aware. Access suppression does not change retention or move an annotation onto a different member. Recompile after changing the annotation definition and apply the intended definition consistently across dependencies.
 
 </details>
 

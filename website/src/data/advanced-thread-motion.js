@@ -165,20 +165,23 @@ function makeCasTrace(capacity,units,retrySucceeds) {
  const finalRemaining=retrySucceeds?afterA-units:afterA;
  const events=[
   {line:0,text:`Create a budget of ${capacity}. Each contender requests ${units}; the moving bundle represents one call’s expected value and replacement argument.`},
-  {line:3,text:`A reads ${capacity} into its own previous local. Its candidate is ${capacity}-${units}=${afterA}.`,expectedA:capacity,candidateA:afterA,phaseA:'Prepared from its read'},
-  {line:3,text:`B reads the same ${capacity} before A updates it. B’s equal local value is a separate observation, not a reservation.`,expectedB:capacity,candidateB:afterA,phaseB:'Prepared from its read'},
-  {line:5,text:'A supplies its expected/candidate arguments to the atomic comparison point.',locations:{A:'compare'},phaseA:'CAS attempt'},
+  {line:3,text:`A reads ${capacity} into its own previous local. No replacement expression has been evaluated yet.`,expectedA:capacity,phaseA:'Read previous; not checked yet'},
+  {line:3,text:`B reads the same ${capacity} before A updates it. B’s equal local value is a separate observation, not a reservation.`,expectedB:capacity,phaseB:'Read previous; not checked yet'},
+  {line:4,text:`A checks its observed ${capacity}: a request of ${units} fits. It may now evaluate the CAS arguments.`,phaseA:'Budget check passed'},
+  {line:5,text:`A evaluates previous minus units as ${capacity}-${units}=${afterA}, then supplies its expected/replacement arguments to the atomic comparison.`,locations:{A:'compare'},candidateA:afterA,phaseA:'CAS attempt'},
   {line:5,text:`A’s comparison matches ${capacity}; CAS installs ${afterA} atomically and returns true.`,tones:{A:'success'},remaining:afterA,successes:['A'],phaseA:'CAS succeeded'},
   {line:6,text:'The successful comparison lets A return true. Its argument bundle leaves the comparison point on the return path.',locations:{A:'aReturn'},phaseA:'Reservation returns true'},
   {line:6,text:'A’s caller has a successful reservation outcome. The expected argument is a past observation, not a live view of remaining.',locations:{A:'aResult'}},
-  {line:5,text:`B supplies its stale expected ${capacity}. Shared remaining is already ${afterA}.`,locations:{B:'compare'},phaseB:'CAS attempt with stale expected'},
+  {line:4,text:`B’s local previous is still ${capacity}, so its local fit check passes. Shared remaining is already ${afterA}; only CAS will test whether the observation is still current.`,phaseB:'Budget check passed from stale read'},
+  {line:5,text:`B evaluates the old candidate ${afterA} and supplies stale expected ${capacity} to CAS.`,locations:{B:'compare'},candidateB:afterA,phaseB:'CAS attempt with stale expected'},
   {line:5,text:'The comparison fails. B does not install its old candidate and must not report a successful reservation.',tones:{B:'rejected'},phaseB:'CAS failed; no shared write'},
   {line:5,text:'The failed attempt leaves the comparison point. CAS returned false to the retry loop; tryReserve has not returned its final outcome.',locations:{B:'bReturn'}},
-  {line:3,text:`B loops and rereads shared remaining: ${afterA}. It must revalidate this fresh value before another update.`,locations:{B:'bLocal'},tones:{B:'normal'},expectedB:afterA,candidateB:retrySucceeds?finalRemaining:null,phaseB:'Reread; old arguments discarded'},
+  {line:3,text:`B loops and rereads shared remaining: ${afterA}. It discards the old arguments and must check this new observation before evaluating another replacement.`,locations:{B:'bLocal'},tones:{B:'normal'},expectedB:afterA,candidateB:null,phaseB:'Reread; not checked yet'},
  ];
  if(retrySucceeds){
   events.push(
-   {line:5,text:`One unit still fits. B recomputes the candidate ${finalRemaining} and retries with the new expected ${afterA}.`,locations:{B:'compare'},phaseB:'CAS retry from fresh state'},
+   {line:4,text:`B checks fresh previous ${afterA}: the one-unit request still fits. The replacement expression has not run yet.`,phaseB:'Fresh budget check passed'},
+   {line:5,text:`B evaluates the new candidate ${finalRemaining} and retries with expected ${afterA}.`,locations:{B:'compare'},candidateB:finalRemaining,phaseB:'CAS retry from fresh state'},
    {line:5,text:`The fresh comparison succeeds. B installs ${finalRemaining}; two distinct successful reservations have taken effect.`,tones:{B:'success'},remaining:finalRemaining,successes:['A','B'],phaseB:'CAS succeeded'},
    {line:6,text:'B can return true after this successful attempt. Its bundle follows the caller’s return path.',locations:{B:'bReturn'},phaseB:'Reservation returns true'},
    {line:6,text:'Each successful CAS reserved once. The sum of reserved units and remaining equals the original capacity.',locations:{B:'bResult'},output:`A: true\nB: true\nremaining=${finalRemaining}`},

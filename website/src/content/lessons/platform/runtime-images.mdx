@@ -31,6 +31,22 @@ study-runtime/bin/java -m study.client/study.client.Main
 
 Choose an output location that does not already exist. The final command prints Hello Mira using the image's own launcher. It no longer needs the development JDK launcher on PATH to execute this example. The image is platform-specific and needs an update policy when its runtime receives fixes.
 
+## Inspect what is inside the image
+
+After linking, run the image's launcher with `--list-modules` and compare the listed modules with the application's roots and provider requirements. Launching `java --list-modules` from an unrelated JDK examines that JDK instead. The distinction is the same as testing the packaged dependency graph instead of relying on an IDE's larger classpath.
+
+<Diagram client:visible definition={"flowchart LR\n A[Application modules] --> R[Resolve roots and dependencies]\n P[Required providers and resources] --> R\n R --> I[Link platform-specific image]\n I --> T[Run with image launcher]\n T --> V[Verify used features and module list]"} caption="A linked image is verified as the runtime actually distributed, including dynamically selected features." />
+
+Three outputs answer different questions: a JAR packages application classes/resources, a runtime image packages a resolved Java runtime, and an installer arranges distribution on a target platform. One can contain or accompany another. None removes the need to update shipped runtime components. Linker plugin options affect image size/content; benchmark a chosen configuration rather than assuming a smaller image always makes application operations faster.
+
+<details>
+<summary>Why does static dependency analysis miss a reflectively selected class?</summary>
+
+An application can build a class name from configuration and load it only on a particular feature path. The static bytecode graph does not necessarily identify that chosen name/provider. Review the actual configuration and resource/module policy, then exercise that feature using the image launcher. Adding arbitrary modules until startup passes does not establish all feature dependencies.
+
+</details>
+
+
 ## Inspect dependencies before assuming completeness
 
 Jdeps analyzes static bytecode dependencies. It helps explain references to study.service and java.base, but configuration-driven reflection, provider discovery and native resources can require additional review. A successful development classpath run does not prove an image contains every runtime-selected feature.
@@ -49,21 +65,6 @@ A ServiceLoader-based feature works on the development JDK but discovers no prov
 <summary>Answer</summary>
 
 Compare module roots, the image's module list, uses/provides declarations, provider packaging and class-loader/module-layer visibility. Determine whether the provider was statically required, included through service binding or intentionally external. Do not convert an invalid provider configuration into an empty result. Add the required provider/module through the intended image policy, rebuild into a new output location and test that feature with the image's own launcher.
-
-</details>
-
-## Inspect what is inside the image
-
-After linking, run the image's launcher with `--list-modules` and compare the listed modules with the application's roots and provider requirements. Launching `java --list-modules` from an unrelated JDK examines that JDK instead. The distinction is the same as testing the packaged dependency graph instead of relying on an IDE's larger classpath.
-
-<Diagram client:visible definition={"flowchart LR\n A[Application modules] --> R[Resolve roots and dependencies]\n P[Required providers and resources] --> R\n R --> I[Link platform-specific image]\n I --> T[Run with image launcher]\n T --> V[Verify used features and module list]"} caption="A linked image is verified as the runtime actually distributed, including dynamically selected features." />
-
-Three outputs answer different questions: a JAR packages application classes/resources, a runtime image packages a resolved Java runtime, and an installer arranges distribution on a target platform. One can contain or accompany another. None removes the need to update shipped runtime components. Linker plugin options affect image size/content; benchmark a chosen configuration rather than assuming a smaller image always makes application operations faster.
-
-<details>
-<summary>Why does static dependency analysis miss a reflectively selected class?</summary>
-
-An application can build a class name from configuration and load it only on a particular feature path. The static bytecode graph does not necessarily identify that chosen name/provider. Review the actual configuration and resource/module policy, then exercise that feature using the image launcher. Adding arbitrary modules until startup passes does not establish all feature dependencies.
 
 </details>
 

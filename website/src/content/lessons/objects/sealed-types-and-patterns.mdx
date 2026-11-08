@@ -27,7 +27,7 @@ Sealing became final in Java 17. The record patterns and pattern switch in this 
 
 ## Learn flow scoping before deconstruction
 
-A **type pattern**, such as `String text`, tests whether a value is a non-null instance of the named type and introduces a variable for the successful path. A **record pattern** additionally inspects the declared record components, such as the int inside Success. A variable introduced by a pattern is available only where control flow proves the match succeeded.
+A **type pattern**, such as `String text` in an instanceof test or a top-level switch case, accepts a non-null instance of the named type and introduces a variable for the successful path. A **record pattern** additionally inspects the declared record components, such as the int inside Success. Component patterns have an additional null-matching rule described below. A variable introduced by a pattern is available only where control flow proves the match succeeded.
 
 `if (value instanceof String text && !text.isEmpty())` makes text available on the right of && because that operand runs only after the match succeeds. Replacing && with || does not provide that guarantee: the right operand can run when the match failed. A pattern variable's scope follows proven matching paths, not just the nearest pair of braces.
 
@@ -50,7 +50,9 @@ Result permits Success and Failure. A Success carries a nonnegative int; constru
 
 Describe covers the known permitted alternatives, so it needs no default for non-null Result values. Without an applicable null label, a null selector throws NullPointerException; ordinary default does not automatically make it null-safe. Add `case null -> "no result";` when absence is an allowed input policy.
 
-An earlier broad pattern can dominate a later narrow one, making the latter illegal. A guard such as `case Failure f when f.message() != null && f.message().isEmpty()` covers only some failures; include a remaining unguarded Failure case. Nested record patterns do not fabricate defaults for null nested components.
+An earlier broad pattern can dominate a later narrow one, making the latter illegal. A guard such as `case Failure f when f.message() != null && f.message().isEmpty()` covers only some failures; include a remaining unguarded Failure case.
+
+Distinguish a null selector from a null component. The source's `Failure(final String message)` component pattern is **unconditional** for the declared String component: it does not narrow that component to a more specific type. Such a component pattern can bind null, so a non-null `new Failure(null)` matches and describe returns `"error=null"`. A nested record pattern itself does not match null: it cannot deconstruct a missing nested record or invent default component values. [JLS pattern matching and null-matching component patterns](https://docs.oracle.com/javase/specs/jls/se21/html/jls-14.html#jls-14.30.2)
 
 Exhaustiveness is checked against the compile-time hierarchy. Adding a permitted alternative exposes missing cases during recompilation. An old client can still encounter an evolved hierarchy through separate compilation; a previously exhaustive binary is not a promise of meaningful behavior for every future alternative.
 

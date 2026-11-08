@@ -47,17 +47,6 @@ RequirePositive accepts 42 and rejects zero as outside the identifier domain. No
 
 Security-sensitive randomness uses SecureRandom, not a general simulation generator. Password storage requires an appropriate salted password-hashing/KDF design, rather than a fast general-purpose digest. The Security Manager is permanently disabled from Java 24; it is not an available modern in-process sandbox. Operational isolation has its own explicit process/resource boundary.
 
-## Practice: replace the public key
-
-An attacker replaces both a message and the verification key with their own pair. Can a valid signature alone expose this substitution?
-
-<details>
-<summary>Answer</summary>
-
-No. Verification checks against the key supplied to it. The application needs a trusted binding for the expected identity/key and a policy for permitted operations and message context. Similarly, a valid positive identifier is not proof of access to that resource. Preserve cryptographic and authorization failures rather than turning them into a success-like fallback.
-
-</details>
-
 ## Follow the bytes through the chosen guarantee
 
 | Mechanism | Input ownership | What the receiver verifies |
@@ -73,6 +62,17 @@ The signature example converts text to UTF-8 once, feeds those bytes to update a
 <summary>Why does a signature not automatically prevent replay?</summary>
 
 A previously valid signed message can remain mathematically valid when presented again. A protocol needs a meaningful freshness/context rule, such as an authenticated operation identifier and an enforced acceptance policy. Those values must be included in the agreed signed representation and checked by the operation owner. Generating a new Signature object for verification does not establish freshness.
+
+</details>
+
+## Practice: replace the public key
+
+An attacker replaces both a message and the verification key with their own pair. Can a valid signature alone expose this substitution?
+
+<details>
+<summary>Answer</summary>
+
+No. Verification checks against the key supplied to it. The application needs a trusted binding for the expected identity/key and a policy for permitted operations and message context. Similarly, a valid positive identifier is not proof of access to that resource. Preserve cryptographic and authorization failures rather than turning them into a success-like fallback.
 
 </details>
 

@@ -5,7 +5,7 @@ public final class ResourceFailures {
         @Override public void close() { throw new IllegalStateException("close"); }
     }
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         try (final Resource resource = new Resource()) {
             throw new IllegalStateException("body");
         } catch (final IllegalStateException failure) {

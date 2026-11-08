@@ -53,7 +53,7 @@ The next example combines already familiar permits and completion signals with a
 
 <JavaExample file="SynchronizerLab.java" output={"41"} />
 
-Each worker owns an independent result slot. A semaphore bounds the illustrated resource region; release occurs only after acquire succeeds. An outer finally counts termination even when the worker is interrupted. Main awaits the signals, checks the failure holder, then combines the slots.
+Each worker owns an independent result slot. A semaphore bounds the illustrated resource region; release occurs only after acquire succeeds. The outer finally signals after resource use or an interruption outcome has been recorded. Main awaits those milestones, checks the failure holder, then combines the slots. The signal itself does not prove that a worker has terminated; the owner's finally separately interrupts and joins those Threads before sum returns.
 
 AtomicReference here is one safely shared failure cell. compareAndSet from null records a first failure without replacing an earlier one; the later atomics chapter develops this conditional-update primitive. That holder is for outcome reporting, while the successful latch await publishes ordinary slot writes. Neither responsibility should be inferred from the other.
 

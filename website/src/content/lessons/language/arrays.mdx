@@ -31,7 +31,7 @@ An array of references similarly allocates reference components, not every refer
 
 ## Trace a sum and a first-match search
 
-Sum starts total at zero and reads each component once. For scores, the successive totals are 4, 11 and 15. At loop entry, total contains the sum of indexes before index. The condition `index < values.length` prevents reading index 3. The helper uses exact addition so an overflowing int total is rejected instead of wrapped.
+Sum starts total at zero and reads each component once. For scores, the successive totals are 4, 11 and 15. At loop entry, total contains the sum of component values at positions before index. For example, at index two it is 4 + 7 = 11, not the sum of the position numbers zero and one. The condition `index < values.length` prevents reading index 3. The helper uses exact addition so an overflowing int total is rejected instead of wrapped.
 
 FirstIndexOf returns immediately when it finds a match. At index zero, 4 equals the target, so the result is zero even though another 4 exists later. When no match exists, return -1 only after the loop. This **sentinel** is a special result representing absence, distinguishable from every valid nonnegative index. For an empty array, sum is zero and search returns -1 without accessing any component. Both methods use Objects.requireNonNull to reject a missing array before reading it; the Objects utility supplies that explicit input check.
 
@@ -40,11 +40,11 @@ An enhanced for loop is useful when you need values rather than indexes:
 ```java
 int total = 0;
 for (final int score : scores) {
-    total += score;
+    total = Math.addExact(total, score);
 }
 ```
 
-It visits components in index order. The loop variable is final here, preventing its reassignment. If it were not final, assigning that local would still not change the stored component; use indexed assignment when replacement is intended.
+It visits components in index order and retains sum's exact-addition policy. Replacing that addition with `total += score` would permit int wrapping and change the overflow contract. The loop variable is final here, preventing its reassignment. If it were not final, assigning that local would still not change the stored component; use indexed assignment when replacement is intended.
 
 ## Copying creates a different array
 

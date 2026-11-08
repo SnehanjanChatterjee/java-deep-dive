@@ -20,7 +20,7 @@ import Diagram from '../../../components/Diagram.jsx';
 
 A **just-in-time compiler (JIT)** translates suitable code into the host machine’s native instructions while the application runs. An **interpreter** executes bytecode through the VM’s interpreter machinery. A JVM implementation can use both execution strategies. This runtime compilation is different from javac producing class files before launch.
 
-Repeated execution supplies information about frequently used methods, loops and receiver types. An optimizing compiler can use that information to remove unnecessary work while preserving program behavior. We will first calculate a small method’s result, then examine compilation records. Only afterward will we reason about inlining, escape analysis and rebuilding execution state when an optimized assumption stops applying.
+Repeated execution supplies information about frequently used methods, loops and receiver types. An optimizing compiler can use that information to remove unnecessary work while preserving program behavior. We will first calculate a small method’s result and explain possible optimizations. Compilation records then distinguish those hypotheses from observed decisions, before deoptimization explains how execution continues when an optimized assumption stops applying.
 
 ## The same bytecode can execute through different paths
 
@@ -43,22 +43,37 @@ For a localScore call with seed three, trace the data before considering an opti
 | Read fields and calculate | 3 × 31 + 4 is 97 |
 | Return | Caller receives 97 |
 
-Inlining can expose those constructor assignments to the caller’s optimizer view. If object identity and escape requirements permit, useful state can be represented directly as scalar values rather than a materialized Pair. This explains the possible transformation; the later log analysis asks which compiler decisions were actually observed.
+**Inlining** lets an optimizing compiler incorporate an eligible called method’s work into its caller’s compiled code. This exposes values and control flow across the original call boundary; it does not change which Java method the source selected. Inlining can expose those constructor assignments to the caller’s optimizer view. If object identity and escape requirements permit, useful state can be represented directly as scalar values rather than a materialized Pair. This explains the possible transformation; the later log analysis asks which compiler decisions were actually observed.
 
 If the compiler can see through the local calls, inlining exposes the constructor/field arithmetic. It may represent fields directly and eliminate a materialized allocation where identity/escape semantics permit. That is a hypothesis to investigate. The two printed booleans prove matching checksums and a published reference, not allocation elimination or a speed difference.
 
 <span id="profiles-hot-methods-and-loop-compilation"></span>
 <span id="inlining-exposes-more-than-call-overhead"></span>
 <span id="inspect-compilation-without-making-timing-claims"></span>
+## Explain a cold run and a warmed run without changing semantics
+
+A first invocation can include definition/loading, initialization and interpreted execution. Later invocations may reuse initialized classes and run different compiled versions. Thus a faster later sample can have several causes. Separate the observation from the hypothesis: compilation logs identify particular compilation decisions, allocation evidence addresses allocation, and a suitable workload measures the operation's cost.
+
+An inline decision is not ordinary source substitution by hand. A compiler can guard assumptions, compile multiple paths and preserve exception/deoptimization metadata. Likewise, escape analysis can enable lock elimination when the relevant object/lock does not escape the analyzed computation; it cannot remove synchronization merely because one sample happened not to contend. Required inter-thread observations must remain correct.
+
+<details>
+<summary>Why can a long manual loop make a method appear much cheaper than one application call?</summary>
+
+The compiler can see relationships across repetitions, hoist invariant work or replace repeated pure calculations. That loop may also warm compilation and amortize setup. If real calls receive changing inputs or publish results, the two programs do not perform the same observable work. Use a harness design matching the intended operation and retain independent correctness checks.
+
+</details>
+
+
 ## Capture compilation and inlining records
 
-**Inlining** lets an optimizing compiler incorporate an eligible called method’s work into its caller’s compiled code. This exposes values and control flow across the original call boundary; it does not change which Java method the source selected. A **compilation tier** is an execution/optimization level in the selected HotSpot configuration. These terms describe compiler decisions, not application thread priorities.
+A **compilation tier** is an execution/optimization level in the selected HotSpot configuration. These terms describe compiler decisions, not application thread priorities.
 
 For this investigation, use the selected modern HotSpot JDK for the diagnostic launcher and target Java 8 class files when compiling. The `--release 8` flag keeps that target consistent with the older-target translation discussed in the excerpt. With an actual JDK 8 compiler, omit `--release 8`, which that compiler does not support. Compilation IDs, offsets and synthetic-member details can differ with the compiler build.
 
 Compile the source, then run:
 
 ```bash
+mkdir -p out
 javac --release 8 -d out CoreHotLoop.java
 java -Xbatch -XX:+UnlockDiagnosticVMOptions -XX:+PrintCompilation -XX:+PrintInlining -XX:CompileCommand=compileonly,CoreHotLoop::localScore -XX:CompileCommand=quiet -cp out CoreHotLoop
 ```
@@ -107,19 +122,6 @@ Compiled code occupies code-cache memory outside the ordinary heap. Metadata, na
 Identify which CoreHotLoop path publishes, predict a possible local-allocation optimization, then compare that prediction with the selected records. The complete source and decoded trace are the reference answer: equal numeric outputs do not make the two paths equivalent work, the trace shows specific inlining decisions, and it does not prove allocation elimination or a speedup.
 
 The benchmarking chapter uses a harness for a narrower performance question. A valid explanation keeps the workload, required observable semantics and mechanism evidence together.
-
-## Explain a cold run and a warmed run without changing semantics
-
-A first invocation can include definition/loading, initialization and interpreted execution. Later invocations may reuse initialized classes and run different compiled versions. Thus a faster later sample can have several causes. Separate the observation from the hypothesis: compilation logs identify particular compilation decisions, allocation evidence addresses allocation, and a suitable workload measures the operation's cost.
-
-An inline decision is not ordinary source substitution by hand. A compiler can guard assumptions, compile multiple paths and preserve exception/deoptimization metadata. Likewise, escape analysis can enable lock elimination when the relevant object/lock does not escape the analyzed computation; it cannot remove synchronization merely because one sample happened not to contend. Required inter-thread observations must remain correct.
-
-<details>
-<summary>Why can a long manual loop make a method appear much cheaper than one application call?</summary>
-
-The compiler can see relationships across repetitions, hoist invariant work or replace repeated pure calculations. That loop may also warm compilation and amortize setup. If real calls receive changing inputs or publish results, the two programs do not perform the same observable work. Use a harness design matching the intended operation and retain independent correctness checks.
-
-</details>
 
 ## References
 

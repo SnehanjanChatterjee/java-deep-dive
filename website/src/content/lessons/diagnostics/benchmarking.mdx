@@ -80,7 +80,7 @@ At size sixteen, a middle hit is not the same scan workload as a first-element h
 | State with Scope.Thread | Independently owned state per benchmark thread | Behavior under an application's shared contention |
 | Param | Selected sizes and hit/miss cases | A representative production distribution by itself |
 | Setup at trial level | Build once outside measured calls | Total cost of constructing a collection |
-| AverageTime and ns output | Mean time per operation under the configured harness | End-to-end request p99 |
+| AverageTime and ns output | Mean time per operation under the configured harness | End-to-end request p99: the 99th-percentile request latency |
 | Warmup | Execute before recorded iterations so profiles can evolve | One universal point when all JVM behavior is stable |
 | Measurement iterations | Repeated recorded work | Immunity to an unrealistic question |
 | Forks | Fresh JVM processes | Elimination of every machine/workload influence |
@@ -127,14 +127,6 @@ An array scan can benefit from locality; a hash lookup pays hash/equality and ta
 This deterministic checksum example keeps a value observable. It does not measure time and is not itself a substitute for the packaged harness. A cold nanoTime loop could mix class loading, compilation, setup and an eliminated body into one misleading number.
 
 <span id="solved-interpretation-exercise"></span>
-## Exercise and complete reference interpretation
-
-Explain exactly what setup excludes, why the returned boolean matters, and what hit/miss distribution is measured. The complete LookupBenchmark source/project is the reference implementation. The decoded scoreboard above is the worked result-reading exercise.
-
-To study a one-off collection conversion, create a separately named construction-plus-lookup benchmark rather than relabeling the lookup-only score. To study shared contention, change state ownership deliberately and preserve a valid synchronization contract. A useful report states the actual question and its practical limits rather than claiming the harness validated the application design.
-
-<span id="benchmark-source"></span>
-<span id="why-can-a-benchmark-of-a-pure-method-appear-implausibly-fast"></span>
 ## A benchmark review checklist applied to the lookup experiment
 
 Before running, predict what would change the answer: hit position, miss rate, container size, key hashing/equality cost, whether construction is included, and shared versus independent ownership. These are workload choices. Keep them explicit rather than adding a vague realistic label to synthetic inputs.
@@ -150,6 +142,15 @@ No. Result consumption prevents elimination of an entirely unused result, but a 
 
 [JMH's constant-folding example](https://github.com/openjdk/jmh/blob/master/jmh-samples/src/main/java/org/openjdk/jmh/samples/JMHSample_10_ConstantFold.java) complements the result-consumption and fork examples below.
 
+
+## Exercise and complete reference interpretation
+
+Explain exactly what setup excludes, why the returned boolean matters, and what hit/miss distribution is measured. The complete LookupBenchmark source/project is the reference implementation. The decoded scoreboard above is the worked result-reading exercise.
+
+To study a one-off collection conversion, create a separately named construction-plus-lookup benchmark rather than relabeling the lookup-only score. To study shared contention, change state ownership deliberately and preserve a valid synchronization contract. A useful report states the actual question and its practical limits rather than claiming the harness validated the application design.
+
+<span id="benchmark-source"></span>
+<span id="why-can-a-benchmark-of-a-pure-method-appear-implausibly-fast"></span>
 <span id="references"></span>
 
 ## Benchmark references

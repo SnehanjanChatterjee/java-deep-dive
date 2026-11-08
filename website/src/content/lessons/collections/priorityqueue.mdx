@@ -48,7 +48,7 @@ Save the root result, remove the last logical element, then place that replaceme
 
 ### Building and top-k
 
-Repeated offer builds a heap in O(n log n) worst-case work. Bottom-up heapify starts at the last internal node and sifts down; many nodes are near leaves, yielding O(n) total work. To retain the largest k values, keep a min-heap of size k and compare incoming values with its root. The total processing cost is O(n log k), with O(k) storage, plus any final ordering work.
+Repeated offer builds a heap in O(n log n) worst-case work. Bottom-up heapify starts at the last internal node and sifts down; many nodes are near leaves, yielding O(n) total work. To retain the largest k values, keep a min-heap of size k and compare incoming values with its root. For k at least two, processing takes O(n log k) heap work; k=1 takes O(n) comparisons. The bound O(n log(k+1)) covers every positive k, with O(k) storage plus final ordering work.
 
 <Diagram client:visible definition={"flowchart TD\n R[1 at index 0] --> L[2 at index 1]\n R --> H[3 at index 2]\n L --> V[4 at index 3]\n P[Poll 1] --> S[Move last value 4 to root hole]\n S --> D[Lift smaller child 2; place 4 below]"} caption={"PriorityQueue and binary heaps: representation and state transitions described in the accompanying trace."} />
 
@@ -89,7 +89,7 @@ For k=3 and input 4,1,7, the heap holds all three values with root 1. Reading 5 
 
 ### Cost includes final output policy
 
-Processing n values takes O(n log k) heap work for positive k, with O(k) candidate storage. Polling the final heap to produce ascending output adds O(k log k). If the consumer does not require ordered output, that final sorting/extraction requirement can be different. Do not claim a lookup-only heap cost while silently omitting required ordered presentation.
+Processing n values takes O(n log(k+1)) work for positive k, including the O(n) scan when k=1. For k at least two this is the familiar O(n log k) bound. Candidate storage is O(k); final ascending extraction takes O(k log(k+1)). If the consumer does not require ordered output, that final sorting/extraction requirement can be different. Do not claim a lookup-only heap cost while silently omitting required ordered presentation.
 
 ### Boundary choices are part of the API
 

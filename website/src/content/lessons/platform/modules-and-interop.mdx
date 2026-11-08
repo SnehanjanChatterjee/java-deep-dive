@@ -89,21 +89,6 @@ A modular JAR on the classpath belongs to the unnamed module rather than enforci
 <span id="module-and-interop-interview-practice" aria-hidden="true"></span>
 <span id="solved-interview-and-debugging-practice" aria-hidden="true"></span>
 
-## Practice: choose a narrow repair
-
-An ordinary public API call works, while a framework's private-field reflection fails. Should every package be exported?
-
-<details>
-<summary>Answer</summary>
-
-No. Ordinary access and deep reflection have different contracts. Confirm the framework's target declaration, then provide only the intended reflective openness if that access belongs to the design. Exporting unrelated packages does not solve a missing private-access permission. Review readability and package visibility separately. Runtime-image packaging builds on this resolved graph in the next chapter; native memory has a separate lifetime model.
-
-</details>
-
-
-<span id="module-declarations-are-dependency-and-access-contracts" aria-hidden="true"></span>
-<span id="two-module-example" aria-hidden="true"></span>
-
 ## Read a descriptor as a dependency and access map
 
 | Directive | Consumer's question | A frequent misconception |
@@ -123,6 +108,22 @@ Trace a failure from the consumer toward the declaration: find the runtime modul
 Not necessarily. A provider module can declare provides for an implementation without exporting that implementation package as a general API. Consumers compile against the exported service contract. This preserves a narrow ordinary API while exposing the intended service capability through the descriptor.
 
 </details>
+
+
+## Practice: choose a narrow repair
+
+An ordinary public API call works, while a framework's private-field reflection fails. Should every package be exported?
+
+<details>
+<summary>Answer</summary>
+
+No. Ordinary access and deep reflection have different contracts. Confirm the framework's target declaration, then provide only the intended reflective openness if that access belongs to the design. Exporting unrelated packages does not solve a missing private-access permission. Review readability and package visibility separately. Runtime-image packaging builds on this resolved graph in the next chapter; native memory has a separate lifetime model.
+
+</details>
+
+
+<span id="module-declarations-are-dependency-and-access-contracts" aria-hidden="true"></span>
+<span id="two-module-example" aria-hidden="true"></span>
 
 <span id="references" aria-hidden="true"></span>
 <span id="module-and-interop-references" aria-hidden="true"></span>

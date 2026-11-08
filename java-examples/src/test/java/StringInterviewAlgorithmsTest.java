@@ -11,6 +11,13 @@ public final class StringInterviewAlgorithmsTest {
         assertEquals("B\uD83D\uDE00A", StringInterviewAlgorithms.reverseCodePoints("A\uD83D\uDE00B"));
         assertThrows(NullPointerException.class, () -> StringInterviewAlgorithms.reverseCodePoints(null));
     }
+    @Test public void testReverseDoesNotValidateUnpairedSurrogates() {
+        final String malformed = "\uDE00\uD83D";
+        final String reversed = StringInterviewAlgorithms.reverseCodePoints(malformed);
+        assertEquals("\uD83D\uDE00", reversed);
+        assertEquals(2, malformed.codePointCount(0, malformed.length()));
+        assertEquals(1, reversed.codePointCount(0, reversed.length()));
+    }
     @Test public void testFirstUniqueCodePoint() {
         assertEquals('w', StringInterviewAlgorithms.firstUnique("swiss").getAsInt());
         assertEquals(0x1F600, StringInterviewAlgorithms.firstUnique("a\uD83D\uDE00a").getAsInt());

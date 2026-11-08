@@ -37,7 +37,7 @@ The first iterator captures an array holding A and B. Replacing A and appending 
 
 The second experiment captures a StringBuilder reference and later mutates that builder. The iterator returns the same object, now containing old-new. Capturing membership copies references, not the objects' historical fields. Concurrent mutation of element contents would still need its own visibility/consistency policy.
 
-<Diagram client:visible definition={"flowchart TD\n A[Published array: A B] --> I[Iterator retains this array]\n A --> W[Writer copies and changes membership]\n W --> N[Publish replacement: changed B C]\n I --> O[Old iteration still returns A B]\n M[One mutable element object] --> I\n M --> N"} caption="Old and new arrays can coexist. An element reference can still name one shared mutable object across snapshots." />
+<Diagram client:visible definition={"flowchart TD\n subgraph Membership[Membership changes]\n I[Old iterator] -->|retains| A[Captured array: A B]\n L[Current list after set and add] --> N[Current array: changed B C]\n A -. later updates publish replacements .-> N\n end\n subgraph MutableElements[Mutable element experiment]\n J[Snapshot iterator] -->|retains| S[One captured array]\n C[Current list] -->|same array| S\n S -->|element reference| M[StringBuilder: old to old-new]\n end"} caption="These are two separate experiments. Solid arrows show references; the dotted arrow summarizes replacement publication. The second iterator and current list still reach the same mutable StringBuilder." />
 
 <span id="publication-and-mutation"></span>
 <span id="iteration-interview-questions"></span>
@@ -67,7 +67,9 @@ For a listener registry, two callers can both observe contains(listener) as fals
 
 If caller A successfully registers listener L and caller B then performs addIfAbsent(L), B reports no new insertion. A dispatcher that captured its iterator **before** registration still uses the earlier array; a later dispatcher can capture the new membership. Unregistering L similarly cannot remove L from an already captured iterator. Decide whether a callback already selected by a dispatch is allowed to finish after unregistration.
 
-Snapshot membership is especially useful when callbacks run outside the membership-update lock. It does not make each callback safe to invoke concurrently or freeze a mutable listener's fields. Keep listener behavior/state ownership separate from registration. A subList is also a backed range with its own documented restrictions after external structural changes, rather than a new durable snapshot API; use an iterator/toArray when that is the required contract. [CopyOnWriteArrayList conditional membership and traversal](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CopyOnWriteArrayList.html)
+Snapshot membership is especially useful when callbacks run outside the membership-update lock. It does not make each callback safe to invoke concurrently or freeze a mutable listener's fields. Keep listener behavior/state ownership separate from registration.
+
+A subList is a backed range with a stricter boundary than a snapshot iterator. Its documented semantics become undefined if the backing list is modified outside that view, including a replacement through set, rather than only a size-changing update. Do not rely on a particular later exception or a stable historical view after that invalidation; use an iterator/toArray when snapshot membership is required. [CopyOnWriteArrayList view contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CopyOnWriteArrayList.html#subList-int-int-)
 
 ## Exercise and complete reference solution
 

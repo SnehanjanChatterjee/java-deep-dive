@@ -90,19 +90,6 @@ A JVM can interpret bytecode and compile hot execution to machine code. Inlining
 
 A debugger may need runtime metadata to reconstruct source locals and invocation state after optimization or deoptimization. The frame picture is not a promise that every invocation always has a permanently materialized native stack record. The JIT chapter develops optimization evidence and profiling after these semantics are clear.
 
-## Practice: separate overloads, dispatch and optimization
-
-Does inlining authorize replacing Child.describe(Object) with Child.describe(String) merely because this run's argument is a String? Why might a debugger omit a no-longer-live local?
-
-<details>
-<summary>Worked answer</summary>
-
-No. The source-selected member contract remains describe(Object); optimization must preserve the required behavior of that invocation. A compiler can specialize or inline an implementation only under conditions that keep its observable semantics correct. A local's source name, bytecode slot and optimized value are different representations; live ranges and debug/reconstruction information determine what a debugger can show. Neither effect changes pass-by-value or permits new overload selection.
-
-</details>
-
-The <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>early operand-stack trace</a> remains the small concrete foundation for these mechanisms.
-
 ## Trace an instance invocation and a thrown result
 
 For an ordinary virtual call, the caller evaluates the receiver and arguments, then the invocation uses the source-selected member descriptor. A callee frame provides its local-variable array and operand stack. The receiver is the first local for an instance method; the caller's reference and callee's receiver value can identify the same heap object without sharing a local-variable slot.
@@ -115,6 +102,19 @@ If the callee returns an int, the caller can continue with that result on its ow
 No. An overridable instance call can reach a subclass implementation before the subclass's own initialization has completed. That implementation may observe default field values. The constructor invocation itself uses its special initialization rules, but an ordinary virtual call made by the constructor is a separate instruction/contract. Avoid exposing partially constructed state and trace the actual source call separately from the constructor call.
 
 </details>
+
+## Practice: separate overloads, dispatch and optimization
+
+Does inlining authorize replacing Child.describe(Object) with Child.describe(String) merely because this run's argument is a String? Why might a debugger omit a no-longer-live local?
+
+<details>
+<summary>Worked answer</summary>
+
+No. The source-selected member contract remains describe(Object); optimization must preserve the required behavior of that invocation. A compiler can specialize or inline an implementation only under conditions that keep its observable semantics correct. A local's source name, bytecode slot and optimized value are different representations; live ranges and debug/reconstruction information determine what a debugger can show. Neither effect changes pass-by-value or permits new overload selection.
+
+</details>
+
+The <a href={lessonUrl('learn/jvm/frames-and-bytecode/')}>early operand-stack trace</a> remains the small concrete foundation for these mechanisms.
 
 ## Bytecode-linkage references
 

@@ -22,6 +22,17 @@ Why introduce another path? Suppose reading a file must wait for input. That cal
 
 The design question comes before the API: what can proceed independently, and what data must those activities share? Threads allow overlap, while the program remains responsible for coordinating shared changes.
 
+## Compare process and thread boundaries
+
+**Multiprocessing** organizes work across multiple processes; **multithreading** uses multiple threads within a process. Either arrangement can make concurrent progress on one core or run work in parallel when execution resources permit.
+
+| Arrangement | State boundary | Communication |
+| --- | --- | --- |
+| Two separate java launches | Separate JVM processes with their own Java heaps and runtime state | Exchange data through an explicit mechanism such as files, pipes or sockets |
+| Two threads in one JVM | Separate call stacks within the same process | Can hold references to the same Java objects |
+
+One JVM's object reference is not automatically a usable reference in another JVM. Deliberate shared-memory mechanisms also need their own data protocol. Process separation changes the memory boundary; programs can still need coordination over shared external resources such as files. Avoid treating either design as automatically faster. [Process and thread resources](https://docs.oracle.com/javase/tutorial/essential/concurrency/procthread.html)
+
 ## Trace two stacks referring to one object
 
 A **call stack** records one thread's unfinished method calls. Each active call has a **frame** holding its parameters, local variables and the information needed to return to its caller. Calling a method adds a frame; returning removes that call's frame.

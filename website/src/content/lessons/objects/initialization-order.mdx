@@ -22,6 +22,8 @@ A block marked static is a **static initializer**. A bare block in the class bod
 
 ## Trace two constructions and one class initialization
 
+InitializerOrderLesson is the entry class containing main. Ticket is a **static nested helper class**, declared inside it so the program stays in one file. Static on that class declaration allows constructing Ticket without an enclosing InitializerOrderLesson object; it does not make Ticket's value field static. Ticket's own static fields belong to Ticket, so starting the entry class's main does not itself run those nested-class initializers in this program.
+
 <JavaExample file="InitializerOrderLesson.java" output={"before first new\nstatic field\nstatic block 1\nsecond static block\ninstance field\ninstance block 2\nargument body 7\nno-argument body\nfirst=7\ninstance field\ninstance block 2\nargument body 9\nsecond=9"} />
 
 `main` begins without having created a Ticket. At the first `new Ticket()`, Ticket must be initialized. Its static field initializer calls `trace`, stores one, and is followed by both static blocks in textual order. The compiler does not print these lines: the running program does.

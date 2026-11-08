@@ -52,7 +52,9 @@ A non-null retrieval reporting an update has the documented happens-before relat
 | get expected value then replace | Value can change before replacement | conditional replace |
 | Update key A then key B | Readers can see the intermediate state | A larger shared protocol |
 
-Callbacks must be short and follow their documented restrictions. ComputeIfAbsent returning null creates no non-null mapping; throwing preserves failure rather than installing that result. Blocking callbacks can delay competing updates. Avoid unsupported recursive updates to the same map.
+Keep the mapping/remapping functions passed to computeIfAbsent, computeIfPresent, compute and merge short. They must not modify this same map during computation; return the desired value and let the enclosing operation perform its update. Blocking computation can delay competing updates. Detectable recursive update cycles can throw IllegalStateException, but detection is not a guarantee that every invalid recursive dependency fails promptly. [Computation restrictions](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html)
+
+ComputeIfAbsent returning null creates no mapping; a thrown exception leaves this attempt unestablished. These outcomes allow a later invocation to compute again, as the next program demonstrates.
 
 ## Follow absent, failed and installed callback outcomes
 
@@ -62,7 +64,7 @@ The first computeIfAbsent returns null, leaving no mapping. The second throws a 
 
 This sequential experiment demonstrates why atomic callback execution does not mean one callback invocation for the lifetime of a key. An absent/null/failed/removed mapping permits another attempt under its contract. Do not place an external once-only action such as payment inside a map callback and infer a business delivery guarantee.
 
-The local calls array is confined to this experiment; it is not an example of an unprotected shared counter. For a concurrently used callback, captured mutable state requires its own protocol. Keep computations short and avoid unsupported recursive updates to the same map. [Java 8 computeIfAbsent outcomes](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html#computeIfAbsent-K-java.util.function.Function-)
+The local calls array is confined to this experiment; it is not an example of an unprotected shared counter. For a concurrently used callback, captured mutable state requires its own protocol. Returning a value or throwing is separate from modifying the map from inside the callback, which violates the computation restrictions above. [Java 8 computeIfAbsent outcomes](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/ConcurrentHashMap.html#computeIfAbsent-K-java.util.function.Function-)
 
 ## Bins, publication and resizing
 

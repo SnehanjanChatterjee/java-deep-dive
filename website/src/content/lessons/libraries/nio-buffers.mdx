@@ -83,7 +83,7 @@ Direct buffers can reduce some native I/O copying but have allocation/lifecycle 
 
 Suppose four bytes are readable and only two are consumed. Calling clear loses the state identifying the unread two; later writes can overwrite them. compact moves those two bytes to indexes zero/one and sets position two. Append the next bytes there, then flip again before consuming. No additional capacity is created by compact.
 
-Calling getInt immediately after putInt without flip reads from the current position, not from the bytes just written. The existing introductory FilesAndBuffers program demonstrates the simplest putInt/flip/getInt round-trip; the complete channel copy above applies the same state transition repeatedly.
+In the four-byte example, calling getInt immediately after putInt leaves no bytes remaining and throws BufferUnderflowException. With more remaining capacity it would attempt to read at the current position, not automatically return the int just written. The existing introductory FilesAndBuffers program demonstrates the simplest putInt/flip/getInt round-trip; the complete channel copy above applies the same state transition repeatedly.
 
 ## Observe independent cursors over shared bytes
 

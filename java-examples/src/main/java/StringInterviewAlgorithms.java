@@ -5,7 +5,7 @@ import java.util.OptionalInt;
 
 /** Implements code-point-based string exercises, not grapheme-cluster editing. @author Snehanjan Chatterjee */
 public final class StringInterviewAlgorithms {
-    /** Reverses Unicode code points while preserving each surrogate pair. */
+    /** Reverses well-formed UTF-16 by code point; does not validate unpaired surrogate input. */
     public static String reverseCodePoints(final String input) {
         Objects.requireNonNull(input, "input");
         final StringBuilder reversed = new StringBuilder(input.length());

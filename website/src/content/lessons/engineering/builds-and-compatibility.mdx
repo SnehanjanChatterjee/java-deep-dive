@@ -141,12 +141,6 @@ For NoSuchMethodError, identify the caller's descriptor, actual loaded library v
 For migration, inventory dependencies and toolchains, use jdeps to inspect static/internal JDK usage, review removed/deprecated APIs, configure processors explicitly and compare warnings. Recheck serialization, charset/locale, time and concurrency assumptions where the domain depends on them. Use project-local settings instead of silently changing machine-wide configuration.
 
 <span id="exercises-and-interview-questions" aria-hidden="true"></span>
-## Completed compatibility exercise
-
-The supplied reference artifacts demonstrate four outcomes: old client with v1 prints Hello Mira; old client with v2 fails at its absent String descriptor; old client with the retained overload prints Welcome Mira; recompiled client with v2 also prints Welcome Mira. The difference is which client binary is held fixed.
-
-A migration note should state source/API target, actual runtime/toolchain, resolved dependency changes, removed/internal API use, processor configuration and observed behavior checks. Record unsupported or unrun combinations honestly. A library's successful clean build cannot establish compatibility for client/runtime combinations it never exercised.
-
 ## Keep a compatibility matrix instead of one passing build
 
 | Consumer artifact | Library artifact | Question answered |
@@ -164,6 +158,12 @@ The lab's retained String overload repairs one old binary descriptor, but changi
 A Java compiler can emit a bridge where the language's overriding/erasure rules require one, preserving a callable inherited signature. That does not mean arbitrary API descriptor edits automatically keep every old member. Inspect the produced descriptors/bridges and test a separately compiled client. Source-level assignability and the runtime member requested by an old class file remain distinct questions.
 
 </details>
+
+## Completed compatibility exercise
+
+The supplied reference artifacts demonstrate four outcomes: old client with v1 prints Hello Mira; old client with v2 fails at its absent String descriptor; old client with the retained overload prints Welcome Mira; recompiled client with v2 also prints Welcome Mira. The difference is which client binary is held fixed.
+
+A migration note should state source/API target, actual runtime/toolchain, resolved dependency changes, removed/internal API use, processor configuration and observed behavior checks. Record unsupported or unrun combinations honestly. A library's successful clean build cannot establish compatibility for client/runtime combinations it never exercised.
 
 ## References
 

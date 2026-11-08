@@ -62,17 +62,6 @@ The chosen loader/context determines visible provider classes and resources. The
 
 An explicit module consumer declares `uses service.Interface`. An explicit module provider declares `provides service.Interface with provider.Implementation`. The provider implementation package need not be exported just to supply the service. Explicit named modules additionally support the specified public static provider-method form. Automatic modules are named too, but still use the provider-constructor rules; the classpath example above also requires a public provider constructor.
 
-## Practice: remove or corrupt the descriptor
-
-What differs between deleting the service resource and changing a provider line to an unknown class?
-
-<details>
-<summary>Answer</summary>
-
-Without metadata and with no other configured providers, iteration is empty and this consumer reports its no-provider selection failure. Invalid metadata instead produces ServiceConfigurationError during discovery. Restoring the resource repairs packaging; it is not a reflection accessibility problem. If two providers both advertise upper, select deliberately rejects ambiguity instead of trusting iteration order. A richer API can define priorities or capabilities, but that must be an explicit rule.
-
-</details>
-
 ## Synthesis: distinguish four extension mechanisms
 
 <JavaExample file="MetadataLab.java" output={"true\nHello Mira\nHello Mira\nHello Mira\nHello Mira"} />
@@ -91,6 +80,17 @@ ServiceLoader caches discovered/instantiated providers. `reload()` clears its pr
 <summary>Why can the first provider succeed but selecting a provider still fail?</summary>
 
 This consumer intentionally traverses all candidates to detect ambiguity. A later malformed provider can therefore fail discovery even if an earlier candidate looked suitable. Silently returning the first match would change that uniqueness contract. Diagnose the reported provider/resource and repair packaging rather than treating a configuration failure as an empty capability list.
+
+</details>
+
+## Practice: remove or corrupt the descriptor
+
+What differs between deleting the service resource and changing a provider line to an unknown class?
+
+<details>
+<summary>Answer</summary>
+
+Without metadata and with no other configured providers, iteration is empty and this consumer reports its no-provider selection failure. Invalid metadata instead produces ServiceConfigurationError during discovery. Restoring the resource repairs packaging; it is not a reflection accessibility problem. If two providers both advertise upper, select deliberately rejects ambiguity instead of trusting iteration order. A richer API can define priorities or capabilities, but that must be an explicit rule.
 
 </details>
 

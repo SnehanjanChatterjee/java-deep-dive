@@ -92,7 +92,7 @@ An OutOfMemoryError for Java heap differs from inability to create a native thre
 
 HotSpot commonly uses thread-local allocation buffers for efficient small-object allocation. Other sizes and collector paths differ. A new expression is not proof of one physical allocation after optimization. The dedicated garbage-collection and compilation chapters trace those implementation mechanisms and evidence separately.
 
-WeakHashMap's weak keys can remain indirectly retained when strongly held values refer back to them. Soft references do not implement a predictable eviction/expiry SLA. Phantom references and cleaners support cleanup coordination; a cleaner action capturing its referent can defeat cleanup. Deterministic close still owns files, sockets and native resources with prompt release requirements.
+WeakHashMap's weak keys can remain indirectly retained when strongly held values refer back to them. Soft references do not implement a predictable eviction budget or expiry deadline. Phantom references and cleaners support cleanup coordination; a cleaner action capturing its referent can defeat cleanup. Deterministic close still owns files, sockets and native resources with prompt release requirements.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
@@ -102,21 +102,6 @@ WeakHashMap's weak keys can remain indirectly retained when strongly held values
 <span id="read-gc-logs-as-evidence"></span>
 <span id="jit-profiles-and-deoptimization"></span>
 <span id="optimization-preserves-observable-contracts"></span>
-## Continue from ownership to runtime mechanisms
-
-The <a href={lessonUrl('learn/jvm/garbage-collection/')}>garbage-collection chapter</a> traces marking, movement, generational reference bookkeeping and observed G1 events, then compares collector mechanisms. The <a href={lessonUrl('learn/jvm/jit-compilation/')}>JIT chapter</a> develops inlining, escape constraints, compilation records and deoptimization. Those mechanisms build on the allocation, ownership and process-budget distinctions established here.
-
-## Exercise and complete reference solution
-
-Compare repeated replacement of sixteen keys with adding a new range, then clear. `CoreRetentionLab` supplies the complete solution and optional inspection pause. State exactly which ownership edge changes and which tool could distinguish allocation from retention. A rising comparable post-collection live set motivates a retaining-path investigation; it does not itself identify the offending field.
-
-<span id="process-memory-and-reachability"></span>
-<span id="trace-removal-of-a-retaining-reference"></span>
-<span id="map-process-memory-before-diagnosing-it"></span>
-<span id="reference-categories-are-not-cache-policies"></span>
-<span id="runtime-memory-beyond-heap"></span>
-<span id="memory-and-jit-reasoning-pitfalls"></span>
-<span id="memory-and-optimization-interview-practice"></span>
 ## Classify a growing process before changing a limit
 
 | Observation across comparable phases | Next question | A misleading shortcut |
@@ -130,6 +115,22 @@ Object footprint also includes more than declared field payloads. Headers, align
 
 `final`, `finally` and `finalize` answer unrelated questions. A final reference can still reach mutable data. Finally participates in source-level control flow. Finalization is a historical cleanup mechanism, deprecated for removal, with no prompt-execution guarantee. Use explicit close for deterministic external-resource ownership; neither finalization nor a requested GC establishes a deadline for releasing a handle.
 
+
+## Exercise and complete reference solution
+
+Compare repeated replacement of sixteen keys with adding a new range, then clear. `CoreRetentionLab` supplies the complete solution and optional inspection pause. State exactly which ownership edge changes and which tool could distinguish allocation from retention. A rising comparable post-collection live set motivates a retaining-path investigation; it does not itself identify the offending field.
+
+## Continue from ownership to runtime mechanisms
+
+The <a href={lessonUrl('learn/jvm/garbage-collection/')}>garbage-collection chapter</a> traces marking, movement, generational reference bookkeeping and observed G1 events, then compares collector mechanisms. The <a href={lessonUrl('learn/jvm/jit-compilation/')}>JIT chapter</a> develops inlining, escape constraints, compilation records and deoptimization. Those mechanisms build on the allocation, ownership and process-budget distinctions established here.
+
+<span id="process-memory-and-reachability"></span>
+<span id="trace-removal-of-a-retaining-reference"></span>
+<span id="map-process-memory-before-diagnosing-it"></span>
+<span id="reference-categories-are-not-cache-policies"></span>
+<span id="runtime-memory-beyond-heap"></span>
+<span id="memory-and-jit-reasoning-pitfalls"></span>
+<span id="memory-and-optimization-interview-practice"></span>
 <span id="references"></span>
 
 ## Runtime-memory references

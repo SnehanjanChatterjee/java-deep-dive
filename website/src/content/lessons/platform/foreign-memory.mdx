@@ -32,9 +32,23 @@ The first program needs only one int, not a native library. Create an arena, all
 
 The point layout has two named Java-int members. X is at byte offset zero and y at four. The code derives those offsets through layout paths rather than scattering constants. It writes three and four, then reads their sum seven. The same segment becomes invalid when its arena closes.
 
-Struct members follow one another; a layout does not guess every external ABI's padding. A byte followed by an aligned int may need an explicit padding layout. Layouts also describe byte order and alignment. A slice is a view sharing storage and scope, not an independent allocation that extends the arena lifetime.
+Struct members follow one another; a layout does not guess an external native format's padding. A byte followed by an aligned int may need an explicit padding layout. Layouts also describe byte order and alignment. A slice is a view sharing storage and scope, not an independent allocation that extends the arena lifetime.
 
 <Diagram client:visible definition={"stateDiagram-v2\n [*] --> Open: arena created\n Open --> Open: access within layout and bounds\n Open --> Closed: close\n Closed --> Rejected: retained segment access\n Open --> Rejected: invalid offset or wrong thread"} caption="A segment reference is usable only while its access, bounds, alignment and lifetime conditions hold." />
+
+## Trace the ownership graph of a slice
+
+Suppose an arena allocates eight bytes for the two-int point. A slice covering bytes four through seven identifies the y region. Reading offset zero from that slice means the original segment's y location, not a copied int. A write through either view can be seen through the other while access remains valid. Closing the arena invalidates both views; keeping the slice reference cannot keep a closeable arena open.
+
+| Check | Concrete failing situation | Repair to reason about |
+| --- | --- | --- |
+| Bounds | Four-byte read beginning too near the segment end | Correct the byte range and layout size |
+| Alignment | An int layout used at an incompatible location | Match actual representation/alignment |
+| Lifetime | Access after arena close | Keep the owner alive for the actual use, then close it |
+| Confinement | Another thread accesses a confined segment | Choose an appropriate arena and synchronization policy |
+
+A heap-backed segment from an array and a native allocation are different storage kinds using the same access model. An Arena does not convert an ordinary Java object graph into native structs automatically. Each external representation needs explicit layouts and ownership. [Segment access and storage kinds](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/MemorySegment.html)
+
 
 ## Diagnose confinement separately from races
 
@@ -83,20 +97,6 @@ Does slicing a live point segment keep its x field accessible after the original
 No to both. The slice shares the original scope, so closing invalidates it as well. Sharing changes thread-access permission; a compound update still needs a coordination policy. For a native API that stores a pointer, prove the owner and release protocol before handing over memory. A successful single call does not establish that retained pointers or callbacks remain valid.
 
 </details>
-
-## Trace the ownership graph of a slice
-
-Suppose an arena allocates eight bytes for the two-int point. A slice covering bytes four through seven identifies the y region. Reading offset zero from that slice means the original segment's y location, not a copied int. A write through either view can be seen through the other while access remains valid. Closing the arena invalidates both views; keeping the slice reference cannot keep a closeable arena open.
-
-| Check | Concrete failing situation | Repair to reason about |
-| --- | --- | --- |
-| Bounds | Four-byte read beginning too near the segment end | Correct the byte range and layout size |
-| Alignment | An int layout used at an incompatible location | Match actual representation/alignment |
-| Lifetime | Access after arena close | Keep the owner alive for the actual use, then close it |
-| Confinement | Another thread accesses a confined segment | Choose an appropriate arena and synchronization policy |
-| Native ABI | Descriptor differs from the actual C function | Correct the declaration against the native contract |
-
-A heap-backed segment from an array and a native allocation are different storage kinds using the same access model. An Arena does not convert an ordinary Java object graph into native structs automatically. Each external representation needs explicit layouts and ownership. [Segment access and storage kinds](https://docs.oracle.com/en/java/javase/25/docs/api/java.base/java/lang/foreign/MemorySegment.html)
 
 ## Foreign-memory references
 

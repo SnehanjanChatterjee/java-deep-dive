@@ -20,6 +20,8 @@ A checkout needs to ask how a price is calculated, but it should not have to kno
 
 The caller can hold the object through a variable declared Pricing and request apply. It creates an actual DiscountPricing object, not an extra interface object. This separates the capability visible to the caller from the particular class doing the work, allowing a different pricing implementation to be supplied without rewriting Checkout.
 
+The helper types are declared inside CompositionExample to keep this demonstration in one file. Static on DiscountPricing and Checkout means neither needs an enclosing CompositionExample object. Their own objects still have instance behavior and state; static nesting does not make Checkout's pricing field a static field.
+
 <JavaExample file="CompositionExample.java" output={"90"} />
 
 Read the declarations in order. Pricing defines the method shape. DiscountPricing implements it with a named class, subtracting ten. Checkout stores a private Pricing reference supplied to its constructor. Total delegates to `pricing.apply(amount)`. In main, the concrete object is DiscountPricing, while the reference type is Pricing. A total of 100 follows the delegate and returns 90.

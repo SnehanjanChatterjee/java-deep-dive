@@ -49,7 +49,7 @@ flatMap opens zero/many results for each input and concatenates their traversal.
 
 The complete program parses comma-separated numeric groups into primitive streams and sums them. Parsing failures remain failures; flatMap is not an exception-to-empty filter. Primitive variants avoid a boxed result contract but do not remove overflow or rounding.
 
-Each mapped stream has its operation-defined close behavior. Returning a resource-backed stream needs a deliberate lifetime; retaining unrelated outer resources still needs the caller's close protocol.
+Stream.flatMap closes each inner mapped stream after transferring its contents into the flattened traversal. This does not close unrelated captured resources or waive the outer resource-backed stream's own close obligation. Keep each resource open for the traversal that actually uses it. [flatMap lifecycle contract](https://docs.oracle.com/javase/8/docs/api/java/util/stream/Stream.html#flatMap-java.util.function.Function-)
 
 ## Equality-based distinct is different from sorting ties
 

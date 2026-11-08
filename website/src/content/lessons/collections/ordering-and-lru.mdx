@@ -81,7 +81,7 @@ For a new key, create one node, add it to the index and append it. Only this bra
 
 ### unlink and append: four neighboring references
 
-`unlink` makes the previous node skip forward to the successor, and the successor skip backward to the predecessor. `append` fills the detached node's two links, joins the previous recent node to it and updates tail's previous link. Reuse these helpers instead of maintaining slightly different pointer logic in get and put.
+`unlink` makes the previous node skip forward to the successor and the successor skip backward to the predecessor, then clears the detached node's former links. `append` fills the detached node's two links, joins the previous recent node to it and updates tail's previous link. Reuse these helpers instead of maintaining slightly different pointer logic in get and put.
 
 The helpers take a known live node under the class's private invariant. They are not public APIs accepting arbitrary null, sentinel or already-corrupted nodes. Validation of public inputs and preservation of the internal invariant are separate responsibilities.
 

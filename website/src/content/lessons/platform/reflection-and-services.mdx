@@ -49,6 +49,23 @@ Wrap rejects a null target and asks Proxy.newProxyInstance to implement Greeting
 
 <span id="why-object-methods-need-an-explicit-policy" aria-hidden="true"></span>
 
+## Trace the receiver across interception
+
+<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant P as Proxy\n participant H as Handler\n participant T as Target\n C->>P: greet(name)\n P->>H: invoke(proxy, method, args)\n H->>T: invoke target\n T-->>H: result or target exception\n H-->>C: result or preserved cause"} caption="Delegation goes to the target receiver. Reflectively invoking the same method on the proxy would enter the handler again." />
+
+For the successful call, the argument array contains Mira and the target is the original Greeting lambda. The result is returned through the handler. For an empty name, the target throws IOException; reflective invocation wraps it; the handler unwraps it so the caller sees the declared failure. A handler that returns a default string in that branch has changed the service contract, not just its logging.
+
+If a target method calls another method on `this`, that receiver is still the target. It does not cross the proxy boundary again. Conversely, passing the proxy to external code allows later calls to re-enter interception. Draw the receiver references before assuming every nested call is intercepted.
+
+<details>
+<summary>Does wrapping an unsynchronized target make it thread-safe?</summary>
+
+No. The handler and target can be invoked concurrently unless their contract establishes coordination. A handler's mutable counter can introduce a race even around an immutable target. Choose state ownership and synchronization separately from interception. Test the proxy's return/failure/equality contracts as well as any genuinely intended cross-call coordination.
+
+</details>
+
+
+
 ## Give Object methods a consistent policy
 
 If equals blindly delegated to target, proxy.equals(proxy) would become target.equals(proxy), normally false for identity-based target equality. The example instead gives every proxy its own identity: it equals itself and not its target. HashCode uses the proxy's identity hash, and toString returns fixed diagnostic text without recursively invoking the proxy.
@@ -95,21 +112,6 @@ Concatenation asks for proxy.toString, re-entering the same handler and repeatin
 
 </details>
 
-
-## Trace the receiver across interception
-
-<Diagram client:visible definition={"sequenceDiagram\n participant C as Caller\n participant P as Proxy\n participant H as Handler\n participant T as Target\n C->>P: greet(name)\n P->>H: invoke(proxy, method, args)\n H->>T: invoke target\n T-->>H: result or target exception\n H-->>C: result or preserved cause"} caption="Delegation goes to the target receiver. Reflectively invoking the same method on the proxy would enter the handler again." />
-
-For the successful call, the argument array contains Mira and the target is the original Greeting lambda. The result is returned through the handler. For an empty name, the target throws IOException; reflective invocation wraps it; the handler unwraps it so the caller sees the declared failure. A handler that returns a default string in that branch has changed the service contract, not just its logging.
-
-If a target method calls another method on `this`, that receiver is still the target. It does not cross the proxy boundary again. Conversely, passing the proxy to external code allows later calls to re-enter interception. Draw the receiver references before assuming every nested call is intercepted.
-
-<details>
-<summary>Does wrapping an unsynchronized target make it thread-safe?</summary>
-
-No. The handler and target can be invoked concurrently unless their contract establishes coordination. A handler's mutable counter can introduce a race even around an immutable target. Choose state ownership and synchronization separately from interception. Test the proxy's return/failure/equality contracts as well as any genuinely intended cross-call coordination.
-
-</details>
 
 <span id="references" aria-hidden="true"></span>
 <span id="reflection-and-service-references" aria-hidden="true"></span>

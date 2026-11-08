@@ -56,9 +56,9 @@ This distinction predicts behavior. Calling countDown twice can permanently open
 
 A worker first acquires a connection permit, writes its own result slot, releases the permit, then reports completion. Main waits for all completion signals and checks failures before combining results.
 
-<Diagram client:visible definition={"flowchart TD\n A[Acquire resource permit] --> B[Perform resource work]\n B --> C[Release acquired permit in finally]\n C --> D[Signal task completion in outer finally]\n D --> E[Owner observes every result or failure]"} caption="Admission, completion and failure reporting are separate responsibilities. An acquired permit must be released even when work fails." />
+<Diagram client:visible definition={"flowchart TD\n A[Acquire resource permit] --> B[Perform resource work]\n B --> C[Release acquired permit in finally]\n C --> D[Signal work milestone in outer finally]\n D --> E[Owner observes every result or failure]"} caption="Admission, milestone publication and failure reporting are separate responsibilities. An acquired permit must be released even when work fails." />
 
-If the task throws after acquiring, releasing the permit remains necessary. If it is interrupted before acquisition succeeds, releasing would create an extra permit. If a completion count means termination, every termination path must count down; successful completion is still a separate outcome.
+If the task throws after acquiring, releasing the permit remains necessary. If it is interrupted before acquisition succeeds, releasing would create an extra permit. Define what each completion signal means and perform the required result writes or cleanup before signalling. A countdown publishes that preceding milestone; the task can still have return/framework code afterward, and its worker thread may continue. Actual thread termination requires an appropriate observation such as join. Successful computation is another distinct outcome. [Latch publication contract](https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/CountDownLatch.html)
 
 ## Avoid a dependency that cannot be scheduled
 

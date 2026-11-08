@@ -33,7 +33,7 @@ For a variable assigned inside a switch, definite assignment must cover every pa
 
 ## Use a value expression when every path computes a value
 
-Java 14+ finalizes switch expressions and arrow rules. In a source file targeting that release or later, the same choice can return a value directly:
+Java 14+ finalizes switch expressions and arrow rules. In a source file targeting that release or later, classification can produce a value directly. This version deliberately rejects an out-of-range day instead of returning the invalid day label used by the first statement example:
 
 ```java
 final String kind = switch (day) {
@@ -57,7 +57,7 @@ Classic Java 8 switch accepts byte, short, char, int, their corresponding wrappe
 
 ## Practice: choose break or return
 
-A switch appears in a method that must print a footer after choosing a message. Should each case return immediately?
+A switch appears in main, which must print a footer after choosing a message. Should each case return immediately?
 
 <details>
 <summary>Answer</summary>

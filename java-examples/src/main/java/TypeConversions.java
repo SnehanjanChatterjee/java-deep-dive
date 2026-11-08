@@ -4,7 +4,7 @@ import java.lang.Math;
 public final class TypeConversions {
 
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         final int maximum = Integer.MAX_VALUE;
         System.out.println(maximum + 1);
         System.out.println((byte) 130);

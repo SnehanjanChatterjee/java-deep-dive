@@ -25,6 +25,13 @@ public final class GenericAlgorithmsTest {
         assertEquals(values, destination); assertEquals(Integer.valueOf(3), GenericAlgorithms.max(values));
         assertEquals(Integer.valueOf(-1), GenericAlgorithms.max(Arrays.asList(-3, -1, -2)));
     }
+    @Test public void testCopyFromDetachedSnapshotSupportsSelfAppend() {
+        final List<Integer> values = new ArrayList<>(Arrays.asList(3, 1, 2));
+        final List<Integer> snapshot = new ArrayList<>(values);
+        GenericAlgorithms.copy(values, snapshot);
+        assertEquals(Arrays.asList(3, 1, 2, 3, 1, 2), values);
+        assertEquals(Arrays.asList(3, 1, 2), snapshot);
+    }
     @Test public void testComparisonInheritedFromSupertype() {
         final Child first = new Child(1);
         final Child maximum = new Child(2);

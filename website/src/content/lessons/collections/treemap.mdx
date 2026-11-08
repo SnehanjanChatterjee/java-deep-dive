@@ -71,6 +71,8 @@ A rotation preserves established key ranges. For a left rotation at X with right
 
 ## Work through outer and inner insertion cases
 
+For a newly inserted node, its parent is the node directly above it, its grandparent is the parent's parent, and its uncle is the grandparent's other child. A missing child is treated as a black empty leaf in this model. These relationships identify the repair case.
+
 Insert 30 into an empty tree and make it black. Insert 20 as its red left child: no red-red conflict. Insert 10 red below 20: the parent is red and the uncle is a black empty leaf. This is an outer left-left configuration. Rotate right at 30 and recolor: 20 becomes black, with red children 10 and 30.
 
 <Diagram client:visible definition={"flowchart LR\n A[Before: 30 black] --> B[20 red]\n B --> C[10 red: conflict]\n A -. right rotation and recoloring .-> D[After: 20 black]\n D --> E[10 red]\n D --> F[30 red]"} caption="The shape changes from a chain to a branching tree, while the in-order sequence stays 10,20,30." />

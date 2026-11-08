@@ -16,7 +16,7 @@ import Diagram from '../../../components/Diagram.jsx';
 
 A score index may need sorted key traversal as well as exact lookup. A **tree** connects nodes through parent/child relationships, starting at one **root**. **Binary** means each node has at most a left and right child. A **subtree** is a node together with all descendants below it. A **binary search tree (BST)** assigns key ranges to those subtrees.
 
-A hash table uses a hash to narrow candidates. A BST uses order: every key in a node's left subtree is smaller, and every key in its right subtree is larger. Compare a query with the current node; equality finds the mapping, while a negative or positive result chooses one subtree.
+A hash table uses a hash to narrow candidates. A BST uses order: every key in a node's left subtree is smaller, and every key in its right subtree is larger. Compare a query with the current node; comparison zero finds the mapping, while a negative or positive result chooses one subtree.
 
 For keys inserted as 20,10,30,25,40, searching for 25 compares with 20, then 30, then 25. Searching for 27 follows the same first two edges, goes right from 25 and reaches an empty child. No later scan is needed: the ordering invariant excludes every discarded subtree.
 

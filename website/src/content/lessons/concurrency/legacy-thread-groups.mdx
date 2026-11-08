@@ -27,9 +27,9 @@ The example retains the two handles because it owns two required lifetimes. It d
 
 ## Group interruption is still only a request
 
-Group-level interruption can request interruption of member platform Threads under its documented scope. It does not join them, gather causes or guarantee they honor the request. Each task still needs the interruption protocol from the previous lesson, and an owner still needs completion accounting.
+Group-level interruption can request interruption of member platform Threads under its documented scope. It does not join them, gather causes or guarantee they honor the request. Each task still needs the protocol from the earlier interruption chapter, and an owner still needs completion accounting.
 
-An ExecutorService later supplies acceptance and task-result APIs over an owned service lifetime. Structured task scopes add different parent/child lifetime constraints. These facilities are not interchangeable simply because all concern multiple tasks.
+The earlier executors chapter introduced ExecutorService acceptance and task-result APIs over an owned service lifetime. Structured task scopes add different parent/child lifetime constraints. These facilities are not interchangeable simply because all concern multiple tasks.
 
 Modern virtual threads have special grouping/enumeration behavior; traditional group enumeration is not an inventory of all virtual task lifetimes. Keep that version-specific limitation beside diagnostic use, after understanding ordinary platform membership.
 

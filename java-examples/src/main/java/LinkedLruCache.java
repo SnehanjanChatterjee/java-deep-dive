@@ -58,10 +58,12 @@ public final class LinkedLruCache<K, V> {
     /** Reports live mappings. */
     public int size() { return index.size(); }
 
-    /** Reconnects both neighbors of a live node. */
+    /** Reconnects both neighbors and clears a detached node's former links. */
     private void unlink(final Node<K, V> node) {
         node.previous.next = node.next;
         node.next.previous = node.previous;
+        node.previous = null;
+        node.next = null;
     }
 
     /** Links a detached node as most recently used. */

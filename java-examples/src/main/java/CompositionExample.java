@@ -13,7 +13,7 @@ public final class CompositionExample {
         int total(final int amount) { return pricing.apply(amount); }
     }
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         final Pricing pricing = new DiscountPricing();
         final Checkout checkout = new Checkout(pricing);
         System.out.println(checkout.total(100));

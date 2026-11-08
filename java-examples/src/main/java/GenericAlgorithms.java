@@ -7,7 +7,10 @@ import java.util.Objects;
 
 /** Implements producer/consumer bounds and wildcard capture. @author Snehanjan Chatterjee */
 public final class GenericAlgorithms {
-    /** Appends source values to a destination accepting their common type. */
+    /**
+     * Appends source values to a destination accepting their common type.
+     * Destination mutation must not invalidate source iteration; snapshot the source first when storage overlaps.
+     */
     public static <T> void copy(final List<? super T> destination, final List<? extends T> source) {
         Objects.requireNonNull(destination, "destination");
         for (final T value : Objects.requireNonNull(source, "source")) { destination.add(value); }

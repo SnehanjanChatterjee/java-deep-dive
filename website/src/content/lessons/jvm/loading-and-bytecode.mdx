@@ -87,18 +87,13 @@ A public compile-time constant can be copied into a separately compiled client. 
 <span id="loader-retention-and-plugin-boundaries"></span>
 ## Class identity and loader boundaries
 
-A runtime type is identified by binary name and defining loader. Two plugin loaders can define incompatible types called plugin.Item even when the names/bytes match. An initiating loader may delegate to another defining loader. Common parent delegation is a policy, not a universal mandate for every custom loader.
+For ordinary named classes and interfaces, runtime identity depends on the binary name and defining class loader. Two plugin loaders can define incompatible types called plugin.Item even when the names/bytes match. An initiating loader may delegate to another defining loader. Common parent delegation is a policy, not a universal mandate for every custom loader.
 
 Modern runtimes distinguish bootstrap, platform and application loaders. Class.getClassLoader may represent bootstrap loading with null. Live loaders/thread-context-loader references and registries can retain classes plus their static graphs after a plugin is logically retired. Diagnose artifact and loader identities rather than comparing source names alone.
 
 <span id="common-mistakes"></span>
 <span id="exercises-and-interview-questions"></span>
 <span id="coding-exercise"></span>
-## Exercise and complete reference solution
-
-Predict the constant, explicit load, nonconstant active use and first/later failure outputs before running `CoreInitializationLab`. It is the complete reference solution. Explain why retrying new is not an ordinary method retry after class initialization failed. For a bytecode exercise, inspect the actual caller before and after changing the constant expression; recompiling the library alone cannot update a literal already in an old client.
-
-<span id="loaders-symbolic-resolution-and-bytecode"></span>
 ## Distinguish lookup failure, initialization failure and loader conflict
 
 | Symptom | Stage to inspect | Useful evidence |
@@ -117,6 +112,12 @@ If VALUE is a nonconstant static field declared by Parent, the relevant initiali
 
 </details>
 
+
+## Exercise and complete reference solution
+
+Predict the constant, explicit load, nonconstant active use and first/later failure outputs before running `CoreInitializationLab`. It is the complete reference solution. Explain why retrying new is not an ordinary method retry after class initialization failed. For a bytecode exercise, inspect the actual caller before and after changing the constant expression; recompiling the library alone cannot update a literal already in an old client.
+
+<span id="loaders-symbolic-resolution-and-bytecode"></span>
 <span id="references"></span>
 <span id="constant-pool-and-symbolic-references"></span>
 

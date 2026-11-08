@@ -11,6 +11,7 @@ advanced: true
 
 import JavaExample from '../../../components/JavaExample.astro';
 import Diagram from '../../../components/Diagram.jsx';
+import {url as lessonUrl} from '../../../lib/paths';
 
 ## Request, transport and application outcomes
 
@@ -92,9 +93,18 @@ This completes byte-size and decoding policy, not a full streaming deadline. A d
 
 ## Timeout and cancellation scopes
 
-Connection timeout concerns establishing a connection. A request timeout concerns the request's documented response behavior; streaming consumption after the response has been made available needs particular care. A caller's Future.get timeout only bounds that wait. CompletableFuture exceptional timeout is another completion event and does not establish that a remote side effect never happened.
+Connection timeout concerns establishing a connection. A request timeout concerns the request's documented response behavior; streaming consumption after the response has been made available needs particular care. Neither setting should be described as an automatic end-to-end deadline for every later body read.
 
-Interruption should propagate or be preserved at the boundary that cannot throw it. A cancelled operation still needs body/resource cleanup. Closing a modern client has documented shutdown semantics and can wait for operations; unconsumed streaming work can therefore affect closure. Define task ownership rather than treating client.close as a universal forced abort.
+Closing a modern client has documented shutdown semantics and can wait for operations; unconsumed streaming work can therefore affect closure. Consume, close or cancel owned response bodies under the selected protocol rather than treating client.close as a universal forced abort.
+
+<details>
+<summary>After task APIs: asynchronous waits and cancellation</summary>
+
+A Future represents the eventual result of a task; CompletableFuture additionally supports completion-stage composition. The <a href={lessonUrl('learn/concurrency/future-cancellation/')}>future and cancellation lesson</a> and <a href={lessonUrl('learn/concurrency/completablefuture/')}>completion-stage lesson</a> teach their execution and ownership models.
+
+A caller's Future.get timeout bounds that wait. A CompletableFuture exceptional timeout is a completion event; neither proves that a remote side effect never happened or that body consumption has stopped. Interruption should propagate or be preserved at a boundary that cannot throw it. A cancelled operation still needs body/resource cleanup under its owning task's protocol.
+
+</details>
 
 ## Retry only with a meaningful policy
 

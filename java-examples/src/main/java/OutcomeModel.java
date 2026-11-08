@@ -8,7 +8,7 @@ public final class OutcomeModel {
         Outcome(final Status status, final String message) { this.status = Objects.requireNonNull(status); this.message = message; }
     }
     /** Runs the worked example. */
-    public static void main(final String[] args) throws Exception {
+    public static void main(final String[] args) {
         final Outcome outcome = new Outcome(Status.SUCCESS, "saved");
         System.out.println(outcome.status + ":" + outcome.message);
     }
