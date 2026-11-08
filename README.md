@@ -3,7 +3,7 @@
 </p>
 
 <p align="center">
-  <a href="https://snehanjanchatterjee.github.io/java-deep-dive/" target="_blank" rel="noopener noreferrer"><img src="docs/assets/readme-open-course.svg" alt="Open the live website →" width="240" height="40" /></a>
+  <a href="https://snehanjanchatterjee.github.io/java-deep-dive/" target="_blank" rel="noopener noreferrer"><img src="docs/assets/readme-open-course.svg" alt="Open the live website →" width="214" height="40" /></a>
 </p>
 
 <p align="center">Learn Java from fundamentals to internals with runnable examples, interactive diagrams and interview exercises.</p>
