@@ -439,3 +439,9 @@
 .quiz .answer{align-items:flex-start;font-size:14px;line-height:1.6}
 .quiz .answer input{flex:0 0 auto;width:14px;height:14px;margin:4px 0 0}
 .quiz .feedback,.quiz .feedback p{font-size:14px;line-height:1.75}
+
+/* Show the theme the control will switch to, including before hydration. */
+[data-theme] .theme-icon-moon{display:inline-flex}
+[data-theme] .theme-icon-sun{display:none}
+:root[data-color-theme="dark"] [data-theme] .theme-icon-moon{display:none}
+:root[data-color-theme="dark"] [data-theme] .theme-icon-sun{display:inline-flex}
