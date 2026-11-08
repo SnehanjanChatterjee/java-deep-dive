@@ -8,7 +8,7 @@ Learn the fundamentals, explore how things work, and build the confidence to exp
 
 **Concepts · Runnable examples · Visual walkthroughs · Interview practice**
 
-[Explore the curriculum](docs/curriculum.md) · [Quick start](#quick-start) · [Inside the project](#inside-the-project)
+[Open the course](https://snehanjanchatterjee.github.io/java-deep-dive/) · [Curriculum](docs/curriculum.md) · [Quick start](#quick-start) · [Inside the project](#inside-the-project)
 
 </div>
 
