@@ -42,3 +42,7 @@ Inspect the final diff and preserve unrelated work. Commit and publish only when
 ## Public-file hygiene
 
 Never put personal email addresses, real local Git identities, machine paths, credentials, private configuration or development-conversation history in public documentation, lessons, tests or CI. Configuration examples use clearly generic placeholders. Keep machine-specific operational notes outside tracked project files. Preserve third-party legal notices.
+
+## README assets
+
+Keep README images, animations and other presentation assets under `docs/assets/readme/`. This directory is excluded from push-triggered deployment through one recursive path filter; new README assets do not need workflow edits.

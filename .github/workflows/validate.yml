@@ -4,9 +4,7 @@ on:
     branches: [main]
     paths-ignore:
       - README.md
-      - docs/assets/readme-banner.svg
-      - docs/assets/readme-open-course.svg
-      - docs/assets/demo/**
+      - docs/assets/readme/**
   pull_request:
   workflow_dispatch:
 permissions:
