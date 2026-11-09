@@ -6,6 +6,7 @@ on:
       - README.md
       - docs/assets/readme-banner.svg
       - docs/assets/readme-open-course.svg
+      - docs/assets/demo/**
   pull_request:
   workflow_dispatch:
 permissions:

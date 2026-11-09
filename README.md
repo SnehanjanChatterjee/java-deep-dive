@@ -16,6 +16,31 @@
 
 <p align="center"><a href="docs/curriculum.md">Browse the curriculum →</a></p>
 
+<h2 align="center">See the course in action</h2>
+
+<p align="center">Explore → Learn → Trace → Visualize → Run</p>
+
+<p align="center">
+  <a href="https://snehanjanchatterjee.github.io/java-deep-dive/"><img src="docs/assets/demo/course-tour.gif" alt="Animated course tour: curriculum navigation, Java programs and output, HashMap lookup, JVM architecture in dark theme, and a running thread walkthrough" width="880" /></a>
+</p>
+
+<h3 align="center">Explore the screens</h3>
+<p align="center">Real course screens, from foundations to internals. Select an image to enlarge.</p>
+
+<p align="center">
+  <a href="docs/assets/demo/course-overview.png"><img src="docs/assets/demo/card-course.png" alt="Browse the learning path · Light theme" width="430" /></a>
+  <a href="docs/assets/demo/java-example.png"><img src="docs/assets/demo/card-java.png" alt="Complete Java programs and output · Light theme" width="430" /></a>
+  <a href="docs/assets/demo/hashmap-lookup.png"><img src="docs/assets/demo/card-collections.png" alt="HashMap internals explorer · Light theme" width="430" /></a>
+  <a href="docs/assets/demo/jvm-dark.png"><img src="docs/assets/demo/card-jvm.png" alt="JVM architecture · Dark theme" width="430" /></a>
+</p>
+
+<h3 align="center">Inside an animated lesson</h3>
+<p align="center"><strong>Threads and concurrency · Light theme</strong><br>A closer look at one example: follow the caller, worker, source code and output through <code>start()</code> and <code>join()</code>.</p>
+
+<p align="center">
+  <a href="https://snehanjanchatterjee.github.io/java-deep-dive/learn/concurrency/first-thread/"><img src="docs/assets/demo/thread-walkthrough.gif" alt="Animated start-and-join example: worker startup, main waiting, worker termination and final output" width="880" /></a>
+</p>
+
 <h2 align="center">Built with</h2>
 
 <p align="center">
